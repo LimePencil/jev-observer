@@ -365,7 +365,7 @@ shutil.copyfile(source, destination / name)
         self.assertNotIn("v" + VERSION, downloads[0])
         self.assertIn("v" + VERSION, downloads[1])
         for call in downloads:
-            self.assertEqual(call[call.index("--repo") + 1], "github.com/LimePencil/jev-observer-public")
+            self.assertEqual(call[call.index("--repo") + 1], "github.com/LimePencil/jev-observer")
         self.assertEqual(self.server.requests, [])
 
     def test_gh_failure_does_not_echo_private_download_logs(self):

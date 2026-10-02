@@ -6,7 +6,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$officialBase = 'https://github.com/LimePencil/jev-observer-public/releases'
+$officialBase = 'https://github.com/LimePencil/jev-observer/releases'
 $releaseBase = if ($env:JEV_OBSERVER_RELEASE_BASE_URL) { $env:JEV_OBSERVER_RELEASE_BASE_URL.TrimEnd('/') } else { $officialBase }
 $releaseUri = [uri]$releaseBase
 if (-not $releaseUri.IsAbsoluteUri -or $releaseUri.UserInfo -or $releaseUri.Query -or $releaseUri.Fragment -or
@@ -37,7 +37,7 @@ function Download-Asset([string]$AssetTag, [string]$Name, [string]$Destination) 
     if ($useGh) {
         $arguments = @('release', 'download')
         if ($AssetTag -ne 'latest') { $arguments += $AssetTag }
-        $arguments += @('--repo', 'github.com/LimePencil/jev-observer-public', '--pattern', $Name, '--output', $Destination)
+        $arguments += @('--repo', 'github.com/LimePencil/jev-observer', '--pattern', $Name, '--output', $Destination)
         & gh @arguments
         if ($LASTEXITCODE -ne 0) { throw "Could not download $Name. Confirm repository access with gh auth login." }
     } else {

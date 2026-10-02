@@ -30,7 +30,7 @@ Inspect individual answers, their reported probabilities and request-level usage
 
 ## Release and platform status
 
-**[Download 0.1.0](https://github.com/LimePencil/jev-observer-public/releases/tag/v0.1.0)** for Linux, macOS or Windows. Each release includes six native packages and `SHA256SUMS`.
+**[Download 0.1.0](https://github.com/LimePencil/jev-observer/releases/tag/v0.1.0)** for Linux, macOS or Windows. Each release includes six native packages and `SHA256SUMS`.
 
 | Platform | Architectures | Package |
 |---|---|---|
@@ -42,12 +42,12 @@ macOS and Windows executables are unsigned; see [installation](docs/installation
 
 ## Install and try the sample
 
-The following commands use anonymous downloads once the repository is public. During private access, use the [authenticated installation commands](docs/installation.md#private-repository-access).
+The following commands use anonymous downloads. For private forks, use the [authenticated installation commands](docs/installation.md#private-repository-access).
 
 Linux / macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer-public/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
 sh install.sh --version 0.1.0
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
@@ -56,7 +56,7 @@ jev-observer --demo
 Windows PowerShell:
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer-public/main/install.ps1 -OutFile install.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
 .\install.ps1 -Version 0.1.0
 & "$env:LOCALAPPDATA\JevObserver\bin\jev-observer.exe" --demo
 ```

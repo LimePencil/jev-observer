@@ -16,7 +16,7 @@ Linux x86_64/arm64 and macOS Intel/Apple Silicon are supported when the
 corresponding release asset is published. No compiler or Node.js is needed.
 
 For a private repository, authenticate GitHub CLI with `gh auth login`, then:
-  gh api --hostname github.com repos/LimePencil/jev-observer-public/contents/install.sh \
+  gh api --hostname github.com repos/LimePencil/jev-observer/contents/install.sh \
     -H 'Accept: application/vnd.github.raw+json' | sh
 
 Authenticated GitHub CLI is preferred for the official repository. HTTPS
@@ -25,7 +25,7 @@ JEV_OBSERVER_RELEASE_BASE_URL can point to an HTTPS release mirror with the
 same latest/download and download/vVERSION layout. HTTP is disabled unless
 JEV_OBSERVER_ALLOW_INSECURE_HTTP=1 is explicitly set for local fixture tests.
 
-Build instructions: https://github.com/LimePencil/jev-observer-public/blob/main/README.md
+Build instructions: https://github.com/LimePencil/jev-observer/blob/main/README.md
 EOF
 }
 
@@ -130,11 +130,11 @@ download_asset() {
     download_name=$2
     if [ "$downloader" = gh ]; then
         if [ "$download_tag" = latest ]; then
-            gh release download --repo github.com/LimePencil/jev-observer-public \
+            gh release download --repo github.com/LimePencil/jev-observer \
                 --pattern "$download_name" --dir "$work_dir" \
                 >"$work_dir/download.log" 2>&1 && return 0
         else
-            gh release download "$download_tag" --repo github.com/LimePencil/jev-observer-public \
+            gh release download "$download_tag" --repo github.com/LimePencil/jev-observer \
                 --pattern "$download_name" --dir "$work_dir" \
                 >"$work_dir/download.log" 2>&1 && return 0
         fi
@@ -168,8 +168,8 @@ main() {
     # User tar defaults must not alter the archive validation or extraction.
     unset TAR_OPTIONS
     umask 077
-    build_docs=https://github.com/LimePencil/jev-observer-public/blob/main/README.md
-    official_base=https://github.com/LimePencil/jev-observer-public/releases
+    build_docs=https://github.com/LimePencil/jev-observer/blob/main/README.md
+    official_base=https://github.com/LimePencil/jev-observer/releases
     requested_version=
     version_given=0
     install_dir=

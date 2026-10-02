@@ -4,12 +4,12 @@ Jev Observer 0.1.0 runs as one executable with its dashboard, fonts and SQLite i
 
 ## Install a release
 
-These anonymous downloads work once the repository is public. If you are accessing a private copy, use [private repository access](#private-repository-access) below.
+These commands download the public release without authentication. If you are accessing a private copy, use [private repository access](#private-repository-access) below.
 
 ### Linux and macOS
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer-public/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
 sh install.sh --version 0.1.0
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
@@ -18,7 +18,7 @@ jev-observer --demo
 ### Windows PowerShell
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer-public/main/install.ps1 -OutFile install.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
 .\install.ps1 -Version 0.1.0
 $env:PATH = "$env:LOCALAPPDATA\JevObserver\bin;$env:PATH"
 jev-observer --demo
@@ -34,12 +34,12 @@ For live requests, [generate and save a database key](../README.md#connect-an-ap
 
 ### Private repository access
 
-Install [GitHub CLI](https://cli.github.com/) and sign in with `gh auth login` using an account that can read `LimePencil/jev-observer-public`.
+Install [GitHub CLI](https://cli.github.com/) and sign in with `gh auth login` using an account that can read `LimePencil/jev-observer`.
 
 Linux / macOS:
 
 ```sh
-gh api --hostname github.com repos/LimePencil/jev-observer-public/contents/install.sh \
+gh api --hostname github.com repos/LimePencil/jev-observer/contents/install.sh \
   -H 'Accept: application/vnd.github.raw+json' > install.sh
 sh install.sh --version 0.1.0
 ```
@@ -47,7 +47,7 @@ sh install.sh --version 0.1.0
 Windows PowerShell:
 
 ```powershell
-gh api --hostname github.com repos/LimePencil/jev-observer-public/contents/install.ps1 `
+gh api --hostname github.com repos/LimePencil/jev-observer/contents/install.ps1 `
   -H 'Accept: application/vnd.github.raw+json' | Set-Content -Encoding UTF8 install.ps1
 .\install.ps1 -Version 0.1.0
 ```
@@ -109,7 +109,7 @@ History stays in place. Remove it separately only when you intend to discard tho
 
 ## Troubleshooting
 
-- **GitHub returns 404:** verify repository access with `gh repo view LimePencil/jev-observer-public` and authenticate with `gh auth login` if needed.
+- **GitHub returns 404:** verify repository access with `gh repo view LimePencil/jev-observer` and authenticate with `gh auth login` if needed.
 - **Command not found or wrong version:** use the installer's printed `PATH` command and check which executable the shell finds; try its absolute path.
 - **Checksum, archive or version mismatch:** installation stops before replacing the executable. Retry and report the version, platform and error if it persists.
 - **Windows refuses an upgrade:** stop the running Observer process and try again.
