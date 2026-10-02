@@ -2,6 +2,8 @@
 
 See what Jev chose, and what changed when you edited a question.
 
+[Website & product tour](https://jev-observer-web.vercel.app/) · [Installation](docs/installation.md) · [Documentation](#documentation-and-project-history)
+
 Jev Observer is a local proxy and dashboard for TypeSafe's Jev API. It groups recurring questions, keeps their definition versions separate, and shows requests, answers, failures, latency, token usage and estimated cost in one local history.
 
 Built with Rust, SQLite and React, it runs as one executable with the dashboard and fonts included. It is [MIT-licensed](LICENSE), requires no Observer account or subscription, and sends no analytics or automatic event uploads. Live inference goes to your configured provider and remains subject to its charges. This is an independent project; the name is provisional.
