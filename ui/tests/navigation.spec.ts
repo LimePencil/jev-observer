@@ -27,6 +27,11 @@ test('SDK examples keep credentials in environment variables and model strings e
     expect(local).toContain('"Accept-Encoding": "identity"');
     expect(local).toContain('model\\"\\\\name');
     expect(local).not.toContain('JEV_OBSERVER_CLIENT_TOKEN');
+    expect(local).toContain(language === 'python' ? 'timeout=180,' : 'timeout: 180000,');
+    expect(connectionSnippet(language, 'http://127.0.0.1:8765', false, '')).not.toContain('timeout');
+    const protectedLocal = connectionSnippet(language, 'http://127.0.0.1:8765', false, 'english', true);
+    expect(protectedLocal).toContain('JEV_OBSERVER_CLIENT_TOKEN');
+    expect(protectedLocal).toContain(language === 'python' ? 'timeout=180,' : 'timeout: 180000,');
     expect(connectionSnippet(language, 'http://127.0.0.1:8765', false, '')).toContain('JEV_OBSERVER_CLIENT_TOKEN');
   }
   expect(costBasis('provider_reported')).toBe('Provider-reported charge');

@@ -84,7 +84,7 @@ function exchange(port, route, agent, post = false, observerMetadata = true) {
     let settled = false;
     const finish = value => { if (!settled) { settled = true; clearTimeout(deadline); resolve({ ...value, ms: performance.now() - started }); } };
     const request = http.request({ hostname: '127.0.0.1', port, path: route, method: post ? 'POST' : 'GET', agent,
-      headers: post ? { authorization: `Bearer ${key}`, 'content-type': 'application/json', 'content-length': requestBytes.length, 'accept-encoding': 'identity', 'x-observer-access': observerAccess, ...(observerMetadata ? { 'x-observer-source': 'local-stress' } : {}) } : { authorization: dashboardAuthorization },
+      headers: post ? { authorization: `Bearer ${key}`, 'content-type': 'application/json', 'content-length': requestBytes.length, 'accept-encoding': 'identity', ...(observerMetadata ? { 'x-observer-access': observerAccess, 'x-observer-source': 'local-stress' } : {}) } : { authorization: dashboardAuthorization },
     }, response => {
       const chunks = [];
       response.on('data', chunk => chunks.push(chunk));

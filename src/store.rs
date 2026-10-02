@@ -906,9 +906,6 @@ impl Store {
         let (predicate, mut args) = Self::predicate(filter)?;
         args.push(id.to_owned().into());
         let selector = if family { "g.family_id=?" } else { "g.id=?" };
-        let from = format!(
-            "FROM answers a JOIN requests r ON r.id=a.request_id JOIN groups g ON g.id=a.group_id WHERE {predicate} AND {selector}"
-        );
         let (parent_predicate, mut parent_args) = Self::predicate(filter)?;
         parent_args.push(id.to_owned().into());
         let parent_selector = if family { "gg.family_id=?" } else { "gg.id=?" };
@@ -923,35 +920,21 @@ impl Store {
                 "output_tokens":row.get::<_,Option<i64>>(4)?, "error_count":row.get::<_,i64>(5)?
             })),
         )?;
-        let warning_count: i64 = conn.query_row(
-            &format!("SELECT count(*) {from} AND coalesce(json_array_length(json_extract(a.data,'$.warnings')),0)>0"),
-            params_from_iter(&args), |row| row.get(0),
+        // Labels are unique by (request_id,key), so this join preserves answer
+        // multiplicity while computing reviews and warnings in the same pass.
+        let answer_metrics: Value = conn.query_row(
+            &format!("SELECT coalesce(sum(coalesce(json_array_length(json_extract(a.data,'$.warnings')),0)>0),0),coalesce(sum(l.label='correct'),0),coalesce(sum(l.label='incorrect'),0),coalesce(sum(l.label='unknown'),0),coalesce(sum(l.label IS NULL),0) FROM answers a JOIN requests r ON r.id=a.request_id JOIN groups g ON g.id=a.group_id LEFT JOIN labels l ON l.request_id=a.request_id AND l.key=a.key WHERE {predicate} AND {selector}"),
+            params_from_iter(&args), |row| Ok(json!({
+                "warning_count":row.get::<_,i64>(0)?,
+                "review_counts":{
+                    "correct":row.get::<_,i64>(1)?,"incorrect":row.get::<_,i64>(2)?,
+                    "unknown":row.get::<_,i64>(3)?,"unlabeled":row.get::<_,i64>(4)?
+                }
+            })),
         )?;
         let mut result = metrics.as_object().unwrap().clone();
-        result.insert("warning_count".into(), json!(warning_count));
-        result.insert(
-            "review_counts".into(),
-            Self::group_review_counts(conn, id, family, filter)?,
-        );
+        result.extend(answer_metrics.as_object().unwrap().clone());
         Ok(result)
-    }
-
-    fn group_review_counts(
-        conn: &Connection,
-        id: &str,
-        family: bool,
-        filter: &Filter,
-    ) -> Result<Value> {
-        let (predicate, mut args) = Self::predicate(filter)?;
-        args.push(id.to_owned().into());
-        let selector = if family { "g.family_id=?" } else { "g.id=?" };
-        Ok(conn.query_row(
-            &format!("SELECT coalesce(sum(l.label='correct'),0),coalesce(sum(l.label='incorrect'),0),coalesce(sum(l.label='unknown'),0),coalesce(sum(l.label IS NULL),0) FROM answers a JOIN requests r ON r.id=a.request_id JOIN groups g ON g.id=a.group_id LEFT JOIN labels l ON l.request_id=a.request_id AND l.key=a.key WHERE {predicate} AND {selector}"),
-            params_from_iter(&args), |row| Ok(json!({
-                "correct":row.get::<_,i64>(0)?,"incorrect":row.get::<_,i64>(1)?,
-                "unknown":row.get::<_,i64>(2)?,"unlabeled":row.get::<_,i64>(3)?
-            })),
-        )?)
     }
 
     /// Scan compact request metrics once for every overview component. The
@@ -1230,8 +1213,9 @@ impl Store {
                     json!({"label":distribution_label(&group, bin["label"].as_str().unwrap()),"count":bin["count"]})
                 }).collect();
                 group["distribution"] = json!(distribution);
-                let metrics = Self::group_metrics(&tx, id, group["is_family"] == true, filter)?;
-                group.as_object_mut().unwrap().extend(metrics);
+                // Comparison-only metrics belong to the detail endpoint. They
+                // read saved answer JSON and must not run for every group on
+                // each overview poll when the overview does not display them.
                 groups.push(group);
             }
         }
@@ -1374,6 +1358,10 @@ impl Store {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let mut versions = Vec::new();
         for id in ids {
+            if group["id"] == id {
+                versions.push(group.clone());
+                continue;
+            }
             if let Some(version) = Self::group_summary(&conn, &id, filter)? {
                 versions.push(version);
             }
@@ -1574,6 +1562,24 @@ fn csv_cell(value: &Value) -> String {
 mod tests {
     use super::*;
     use sha2::Digest;
+
+    pub(super) fn assert_overview_matches_detail(overview: &Value, detail: &Value) {
+        let mut shared = detail.clone();
+        for field in [
+            "warning_count",
+            "review_counts",
+            "mean_latency_ms",
+            "cost_usd",
+            "cost_known_requests",
+            "input_tokens",
+            "output_tokens",
+            "error_count",
+        ] {
+            assert!(overview.get(field).is_none(), "detail-only field {field}");
+            assert!(shared.as_object_mut().unwrap().remove(field).is_some());
+        }
+        assert_eq!(*overview, shared);
+    }
 
     #[test]
     fn encrypted_history_rejects_wrong_key_and_migrates_existing_records() {
@@ -1939,7 +1945,10 @@ mod tests {
                 {"label":"0.8–<0.9","count":1}
             ])
         );
-        assert_eq!(*group, store.group("g", &filter).unwrap().unwrap()["group"]);
+        assert_overview_matches_detail(
+            group,
+            &store.group("g", &filter).unwrap().unwrap()["group"],
+        );
     }
 
     #[test]
@@ -2008,7 +2017,7 @@ mod tests {
             let baseline = Store::group_summary(&connection, &text(group, "id"), &filter)
                 .unwrap()
                 .unwrap();
-            assert_eq!(*group, baseline);
+            assert_overview_matches_detail(group, &baseline);
             assert_eq!(group["request_count"], 1);
             if group["is_family"] == true {
                 assert_eq!(group["answer_count"], 2);
@@ -2023,11 +2032,11 @@ mod tests {
         let overview = store.dashboard(&narrowed).unwrap();
         assert_eq!(overview["groups"].as_array().unwrap().len(), 1);
         assert_eq!(overview["groups"][0]["id"], "strict-129");
-        assert_eq!(
-            overview["groups"][0],
-            Store::group_summary(&connection, "strict-129", &narrowed)
+        assert_overview_matches_detail(
+            &overview["groups"][0],
+            &Store::group_summary(&connection, "strict-129", &narrowed)
                 .unwrap()
-                .unwrap()
+                .unwrap(),
         );
         let missing_source = Filter {
             source: Some("absent".into()),
@@ -2099,7 +2108,7 @@ mod tests {
                     .group(group["id"].as_str().unwrap(), &filter)
                     .unwrap()
                     .unwrap();
-                assert_eq!(*group, detail["group"]);
+                assert_overview_matches_detail(group, &detail["group"]);
                 let total: i64 = group["distribution"]
                     .as_array()
                     .unwrap()
@@ -2147,9 +2156,9 @@ mod tests {
             let overview = store.dashboard(&filter).unwrap();
             assert_eq!(overview["summary"]["request_count"], count, "{window}");
             assert_eq!(overview["groups"][0]["request_count"], count, "{window}");
-            assert_eq!(
-                store.group("g", &filter).unwrap().unwrap()["group"],
-                overview["groups"][0]
+            assert_overview_matches_detail(
+                &overview["groups"][0],
+                &store.group("g", &filter).unwrap().unwrap()["group"],
             );
             assert_eq!(
                 store.export(&filter, "jsonl").unwrap().lines().count(),
@@ -2208,9 +2217,9 @@ mod tests {
         let overview = reopened.dashboard(&Filter::default()).unwrap();
         assert_eq!(overview["summary"]["request_count"], 1);
         assert_eq!(overview["groups"][0]["valid_count"], 1);
-        assert_eq!(
-            overview["groups"][0],
-            reopened.group("g", &Filter::default()).unwrap().unwrap()["group"]
+        assert_overview_matches_detail(
+            &overview["groups"][0],
+            &reopened.group("g", &Filter::default()).unwrap().unwrap()["group"],
         );
     }
     #[test]

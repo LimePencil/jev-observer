@@ -1,4 +1,4 @@
-export function connectionSnippet(language: 'python' | 'javascript', origin: string, local: boolean, model: string): string {
+export function connectionSnippet(language: 'python' | 'javascript', origin: string, local: boolean, model: string, longTimeout = local): string {
   const token = local ? 'JEV_OBSERVER_ACCESS_TOKEN' : 'JEV_OBSERVER_CLIENT_TOKEN';
   const chosenModel = model.trim() || 'YOUR_MODEL_NAME';
   if (language === 'python') return `import os
@@ -9,7 +9,7 @@ client = TypeSafeClient(
     base_url=${JSON.stringify(origin)},
     model=${JSON.stringify(chosenModel)},
     retry=RetryPolicy(max_retries=0),
-    headers={
+${longTimeout ? '    timeout=180,\n' : ''}    headers={
         "x-observer-source": "my-application",
         "Accept-Encoding": "identity",
     },
@@ -25,7 +25,7 @@ const client = new TypeSafeClient({
   apiKey: process.env.${token},
   baseURL: ${JSON.stringify(origin)},
   retry: { maxRetries: 0 },
-  defaultHeaders: {
+${longTimeout ? '  timeout: 180000,\n' : ''}  defaultHeaders: {
     "x-observer-source": "my-application",
     "Accept-Encoding": "identity",
   },

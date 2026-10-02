@@ -81,7 +81,7 @@ jev-observer --upstream http://127.0.0.1:8000/v1/systemone \
   --upstream-auth none --provider laya
 ```
 
-This example assumes `LAYA_API_KEY` is unset. Read the workspace access token into `JEV_OBSERVER_ACCESS_TOKEN` privately, then use it as the SDK's `api_key` / `apiKey`. Keep the SDK base URL at the Observer origin and `Accept-Encoding: identity`. Set the request model to `english`. The connection panel supplies matching Python and JavaScript examples and confirms the first saved request.
+This example assumes `LAYA_API_KEY` is unset. Read the workspace access token into `JEV_OBSERVER_ACCESS_TOKEN` privately, then use it as the SDK's `api_key` / `apiKey`. Keep the SDK base URL at the Observer origin and `Accept-Encoding: identity`. Set the request model to `english`. CPU inference can exceed the SDKs' ten-second defaults: set Python's `timeout=180` (seconds) or JavaScript's `timeout: 180000` (milliseconds), then tune this for your model and machine. This also applies when Laya requires a provider key. The connection panel supplies matching examples and confirms the first saved request.
 
 `--upstream-auth none` requires a loopback upstream. Observer still authenticates every caller using its workspace access token and removes local authorization before forwarding. No provider-key registration is needed, and inherited `TYPESAFE_API_KEY` values are ignored. If Laya requires `LAYA_API_KEY`, keep the default bearer mode instead, register that key in Observer, and use the returned local client token.
 

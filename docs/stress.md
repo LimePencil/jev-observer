@@ -1,5 +1,30 @@
 # Local overload and recovery checks
 
+## Encrypted history checks for 0.2.0
+
+The October 2, 2026 SQLCipher checks passed capture-slot exhaustion, writer-lock recovery and a corrected burst run on a shared Linux ARM64 host with two Neoverse-N1 logical CPUs. These used candidate binary SHA-256 `e81762daa75859bc7d36d3c332e8a1c2d2740f8c26f1b1f358a36bf21cf24c7a`, before the final dashboard query optimization. They used the same small 402-byte request and 415-byte response as the older checks; no provider inference or real credential was involved.
+
+| Pressure phase | Successful client calls | Persisted / visibly dropped | Client p95 / p99 | Recovery |
+|---|---:|---:|---:|---|
+| Four capture slots; 500/sec for 3 seconds; 100 ms mock | 1,500 | 92 / 1,408 | 140.84 / 163.56 ms | 20/20 persisted, no new loss |
+| Locked writer; 500/sec for 3 seconds; 5 ms mock | 1,500 | 26 / 1,474 | 12.31 / 24.81 ms | 20/20 persisted, no new loss |
+| Default limits; 500/sec for 5 seconds; 5 ms mock | 2,500 | 2,500 / 0 | 10.65 / 47.87 ms | 20/20 persisted, no new loss |
+
+The [first encrypted report](../reports/stress/v0.2.0-encrypted.json) contains the passing capture-slot and writer-lock cases. The lock case reported 1,463 captures rejected before queueing and 11 accepted records lost during the injected write failure; these add to the 1,474 visible drops. Calls completed while the lock was held. All three accepted cases checked exact responses, usage totals, health access, encrypted database headers and complete recovery.
+
+That first report is **failed overall** because its burst control phase exposed a harness bug: direct-to-mock requests carried an Observer access header that the mock correctly rejected. The proxy burst still retained all 2,500 requests. The corrected harness omits Observer metadata from direct control requests; the [separate burst rerun](../reports/stress/v0.2.0-encrypted-burst.json) passed every check. The original evidence remains unchanged.
+
+The corrected burst had a 15.49 ms generator scheduling-lateness p99, 181 ms dashboard-query p95 and 39.1 MiB peak sampled proxy RSS. Its direct-to-mock control had a 255.54 ms client p99, showing considerable host variability even without Observer. These observations establish the recorded recovery behavior, not an isolated throughput limit or latency promise. The final dashboard optimization is measured separately in [performance measurements](performance.md).
+
+To run the encrypted cases with a fresh report:
+
+```bash
+node scripts/stress.mjs --binary=target/release/jev-observer \
+  --burst-rate=500 --burst-seconds=5 --output=reports/stress/encrypted-local.json
+```
+
+## Historical results before encrypted history
+
 All three reference cases passed on September 22, 2026 using binary SHA-256 `eadc2bf4eca4f8edec0710de6a0a10394dd1f4999bd0c7d72049eee7d7eec71f` on the shared Intel N100 Linux host. The [complete reference report](../reports/stress/latest.json) records the executable, harness, runtime and effective settings. These are failure-injection checks on a 402-byte request and 415-byte response containing three questions, not a universal throughput guarantee.
 
 | Reference pressure phase | Successful client calls | Persisted / visibly dropped | Client p95 / p99 | Result |

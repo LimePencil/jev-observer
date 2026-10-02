@@ -572,10 +572,26 @@ test('local model onboarding uses workspace authentication and identity SDK exam
   await expect(snippet).toContainText('JEV_OBSERVER_ACCESS_TOKEN');
   await expect(snippet).toContainText('"Accept-Encoding": "identity"');
   await expect(snippet).toContainText('model="my-local-laya"');
+  await expect(snippet).toContainText('timeout=180,');
   await page.getByRole('button', { name: 'JavaScript', exact: true }).click();
   await expect(snippet).toContainText('apiKey: process.env.JEV_OBSERVER_ACCESS_TOKEN');
   await expect(snippet).toContainText('model: "my-local-laya"');
+  await expect(snippet).toContainText('timeout: 180000,');
   await expect(dialog).toContainText('2 captures saved in this Observer session.');
+});
+
+test('key-protected Laya keeps client authentication and longer SDK timeouts', async ({ page }) => {
+  await harness(page, { settings: { provider: 'laya', upstream_auth: 'bearer', upstream: 'http://127.0.0.1:8080/v1/systemone' } });
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await expect(page.getByRole('button', { name: 'Register key' })).toBeVisible();
+  const snippet = page.getByLabel('SDK connection example');
+  await expect(snippet).toContainText('JEV_OBSERVER_CLIENT_TOKEN');
+  await expect(snippet).not.toContainText('JEV_OBSERVER_ACCESS_TOKEN');
+  await expect(snippet).toContainText('timeout=180,');
+  await page.getByRole('button', { name: 'JavaScript', exact: true }).click();
+  await expect(snippet).toContainText('apiKey: process.env.JEV_OBSERVER_CLIENT_TOKEN');
+  await expect(snippet).toContainText('timeout: 180000,');
+  await expect(page.getByRole('dialog')).toContainText('Python: seconds; JavaScript: milliseconds');
 });
 
 test('older request pages survive reloading a bookmarked view', async ({ page }) => {

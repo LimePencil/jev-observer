@@ -12,8 +12,8 @@
     "command": "OBSERVER_UI_PREVIEW=1 npm test --prefix ui -- --timeout=90000 --grep \"timeline spacing|partial timeline bucket\""
   },
   "final_assets": [
-    "index-WxkIQsdc.js",
-    "Details-BdotNVFy.js"
+    "index-p_41OYsh.js",
+    "Details-DwMXzGuI.js"
   ],
   "build_and_typecheck": "passed",
   "real_backend_checks": {
@@ -25,5 +25,11 @@
       "live encrypted workspace, UI key registration, synthetic capture, review/export, process restart"
     ],
     "note": "The first live harness run had an ambiguous selector; after narrowing it, the live journey passed. Demo journey passed separately."
+  },
+  "local_timeout_checks": {
+    "passed": 3,
+    "failed": 0,
+    "scope": "No-key local and bearer-protected Laya timeout units; hosted defaults unchanged",
+    "unique_ui_tests_total": 44
   }
 }

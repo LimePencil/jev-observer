@@ -151,6 +151,10 @@ fn version_metrics_count_parent_cost_once_and_keep_reviews_in_the_parent_scope()
     second["key"] = json!("second");
     second["warnings"] = json!(["Reported score differs from displayed probabilities"]);
     record["answers"].as_array_mut().unwrap().push(second);
+    let mut unlabeled = record["answers"][0].clone();
+    unlabeled["key"] = json!("unlabeled");
+    unlabeled["warnings"] = json!([]);
+    record["answers"].as_array_mut().unwrap().push(unlabeled);
     let mut other = dashboard_record("other-source", now);
     other["source"] = json!("outside-filter");
     store
@@ -167,10 +171,13 @@ fn version_metrics_count_parent_cost_once_and_keep_reviews_in_the_parent_scope()
         ..Default::default()
     };
     let detail = store.group("dashboard-group", &filter).unwrap().unwrap();
+    let overview = store.dashboard(&filter).unwrap();
+    tests::assert_overview_matches_detail(&overview["groups"][0], &detail["group"]);
+    assert_eq!(detail["group"], detail["versions"][0]);
     for group in [&detail["group"], &detail["versions"][0]] {
         assert_eq!(
             group["review_counts"],
-            json!({"correct":1,"incorrect":0,"unknown":1,"unlabeled":0})
+            json!({"correct":1,"incorrect":0,"unknown":1,"unlabeled":1})
         );
         assert_eq!(group["request_count"], 1);
         assert_eq!(group["cost_usd"], 0.25);
@@ -179,6 +186,21 @@ fn version_metrics_count_parent_cost_once_and_keep_reviews_in_the_parent_scope()
         assert_eq!(group["mean_latency_ms"], 4.0);
         assert_eq!(group["warning_count"], 1);
     }
+    let empty = store
+        .group(
+            "dashboard-group",
+            &Filter {
+                source: Some("missing-source".into()),
+                ..filter
+            },
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(empty["group"]["warning_count"], 0);
+    assert_eq!(
+        empty["group"]["review_counts"],
+        json!({"correct":0,"incorrect":0,"unknown":0,"unlabeled":0})
+    );
 }
 
 fn dashboard_record(id: &str, timestamp: i64) -> Value {
