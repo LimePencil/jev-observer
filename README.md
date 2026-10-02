@@ -204,7 +204,7 @@ For frontend development, run the backend on port 8765 and `npm run dev --prefix
 
 The [verification workflow](.github/workflows/ci.yml) builds the executable, runs Rust and browser checks, and exercises both pinned SDKs against a loopback mock. Browser checks include synthetic API fixtures and a separate journey against the executable and its real authentication, captures, labels, exports and restart. The [release workflow](.github/workflows/release.yml) requires all six native targets to pass Rust, browser, SDK and packaged live/demo checks before publishing; Windows also runs PowerShell installation and upgrade tests.
 
-Native forwarding currently covers `POST /v1/systemone`. Offline threshold previews, matched-dataset replay and universal provider routing are outside the implemented scope. [Performance measurements](docs/performance.md) and the [stress harness](docs/stress.md) document reproducible local tests; historical load results predate encrypted live history and are not current capacity claims.
+Native forwarding currently covers `POST /v1/systemone`. Offline threshold previews, matched-dataset replay and universal provider routing are outside the implemented scope. [Performance measurements](docs/performance.md) and the [stress harness](docs/stress.md) include 0.2.0 encrypted-history checks, retained-history query comparisons and overload recovery. Their recorded workloads and shared-host timings do not establish a general capacity limit.
 
 ## Documentation and project history
 

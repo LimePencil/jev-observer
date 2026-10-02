@@ -639,19 +639,28 @@ test('question search reaches server history and stays editable after no matches
   await expect(page.locator('.group-row')).toContainText('department');
 });
 
-test('timeline spacing preserves quiet periods and shows calendar dates', async ({ page }) => {
-  const state = await harness(page);
-  const hour = 3_600_000, start = Date.UTC(2026, 9, 1);
-  state.dashboard.timeline = [0, 1, 24].map(offset => ({ timestamp: start + offset * hour, requests: 1, errors: 0, mean_latency_ms: 10, cost_usd: 0 }));
-  state.dashboard.timeline_meta = { start, end: start + 48 * hour, bucket_width: hour, truncated: false };
-  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
-  await expect(page.locator('.activity-panel .chart-bar')).toHaveCount(3);
-  const positions = await page.locator('.activity-panel .chart-bar').evaluateAll(nodes => nodes.map(node => Number(node.getAttribute('x'))));
-  expect((positions[2] - positions[1]) / (positions[1] - positions[0])).toBeCloseTo(23);
-  await expect(page.locator('.activity-panel .chart-axis').last()).toContainText('Oct 3');
-  await page.locator('.activity-panel').getByText('View chart data', { exact: true }).click();
-  await expect(page.locator('.activity-panel .chart-accessible')).toContainText('Oct 2');
-});
+for (const { timezoneId, endDate, lastBucketDate } of [
+  { timezoneId: 'UTC', endDate: 'Oct 3', lastBucketDate: 'Oct 2' },
+  { timezoneId: 'America/Los_Angeles', endDate: 'Oct 2', lastBucketDate: 'Oct 1' },
+]) {
+  test.describe(`timeline calendar in ${timezoneId}`, () => {
+    test.use({ timezoneId, locale: 'en-US' });
+
+    test('timeline spacing preserves quiet periods and shows calendar dates', async ({ page }) => {
+      const state = await harness(page);
+      const hour = 3_600_000, start = Date.UTC(2026, 9, 1);
+      state.dashboard.timeline = [0, 1, 24].map(offset => ({ timestamp: start + offset * hour, requests: 1, errors: 0, mean_latency_ms: 10, cost_usd: 0 }));
+      state.dashboard.timeline_meta = { start, end: start + 48 * hour, bucket_width: hour, truncated: false };
+      await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      await expect(page.locator('.activity-panel .chart-bar')).toHaveCount(3);
+      const positions = await page.locator('.activity-panel .chart-bar').evaluateAll(nodes => nodes.map(node => Number(node.getAttribute('x'))));
+      expect((positions[2] - positions[1]) / (positions[1] - positions[0])).toBeCloseTo(23);
+      await expect(page.locator('.activity-panel .chart-axis').last()).toContainText(endDate);
+      await page.locator('.activity-panel').getByText('View chart data', { exact: true }).click();
+      await expect(page.locator('.activity-panel .chart-accessible tbody tr').last().locator('td').first()).toContainText(lastBucketDate);
+    });
+  });
+}
 
 test('a partial timeline bucket keeps the selected exclusive range end', async ({ page }) => {
   const state = await harness(page);

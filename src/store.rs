@@ -160,9 +160,33 @@ fn plaintext_database(path: &Path) -> Result<bool> {
     Ok(&header == b"SQLite format 3\0")
 }
 
+#[cfg(unix)]
+fn check_database_peers(path: &Path) -> Result<()> {
+    let database = std::fs::canonicalize(path)?;
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut peer = database.as_os_str().to_owned();
+        peer.push(suffix);
+        let peer = PathBuf::from(peer);
+        match std::fs::symlink_metadata(&peer) {
+            Ok(metadata) if !metadata.file_type().is_file() => {
+                bail!(
+                    "Database journal must be a regular file: {}",
+                    peer.display()
+                );
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("Inspect database journal before reading"),
+        }
+    }
+    Ok(())
+}
+
 fn migrate_plaintext(path: &Path, key: &str) -> Result<()> {
     // Opening a future database must be a read-only operation, including the
     // live plaintext-upgrade path. Do this before permissions, journals or files change.
+    #[cfg(unix)]
+    check_database_peers(path)?;
     let preflight = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     check_schema(&preflight)?;
     drop(preflight);
@@ -315,6 +339,20 @@ impl Store {
             retention_days,
             max_records,
         };
+        let existing = match std::fs::metadata(path) {
+            Ok(metadata) => metadata.len() > 0,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error).context("Inspect existing history before opening"),
+        };
+        if existing {
+            // Closing even an untouched READ_WRITE connection can checkpoint
+            // a crash-left WAL. Reject future schemas before any writer opens.
+            // READ_ONLY honors committed WAL state; immutable mode does not.
+            #[cfg(unix)]
+            check_database_peers(path)?;
+            let preflight = store.reader()?;
+            check_schema(&preflight)?;
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -1703,6 +1741,75 @@ mod tests {
             before,
             "Failed startup must not change schema, data, or journal mode"
         );
+    }
+
+    #[test]
+    fn unsupported_schema_in_crash_left_wal_preserves_database_and_wal_bytes() {
+        for encrypted in [true, false] {
+            let directory = tempfile::tempdir().unwrap();
+            let original = directory.path().join("original.sqlite");
+            let crashed = directory.path().join("crashed.sqlite");
+            let key = "e".repeat(64);
+            let store = if encrypted {
+                Store::open_encrypted(&original, key.clone(), 7, 100)
+            } else {
+                Store::open(&original, 7, 100)
+            }
+            .unwrap();
+            let writer = store.writer_connection().unwrap();
+            writer
+                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+                .unwrap();
+            let main = std::fs::read(&original).unwrap();
+            writer
+                .execute("UPDATE schema_version SET version=999", [])
+                .unwrap();
+            assert_eq!(
+                std::fs::read(&original).unwrap(),
+                main,
+                "The unsupported version must exist only in the committed WAL"
+            );
+            let peer = |path: &Path, suffix: &str| {
+                let mut name = path.as_os_str().to_owned();
+                name.push(suffix);
+                PathBuf::from(name)
+            };
+            // The writer is quiescent. Copying its complete file set leaves a
+            // fixture with committed WAL state and no live SQLite connection.
+            for suffix in ["", "-wal", "-shm"] {
+                std::fs::copy(peer(&original, suffix), peer(&crashed, suffix)).unwrap();
+            }
+            drop(writer);
+            let before: Vec<_> = ["", "-wal"]
+                .into_iter()
+                .map(|suffix| {
+                    let bytes = std::fs::read(peer(&crashed, suffix)).unwrap();
+                    assert!(!bytes.is_empty());
+                    (suffix, sha2::Sha256::digest(bytes))
+                })
+                .collect();
+            let error = if encrypted {
+                Store::open_encrypted(&crashed, key, 7, 100)
+            } else {
+                Store::open(&crashed, 7, 100)
+            }
+            .err()
+            .expect("Committed future schema must be rejected");
+            assert!(
+                error
+                    .to_string()
+                    .contains("Unsupported database schema [999]")
+            );
+            for (suffix, digest) in before {
+                assert_eq!(
+                    sha2::Sha256::digest(std::fs::read(peer(&crashed, suffix)).unwrap()),
+                    digest,
+                    "Rejected startup must preserve {suffix:?} data bytes (encrypted={encrypted})"
+                );
+            }
+            // SHM is a transient WAL index; SQLite may rebuild it while reading
+            // a crash-left WAL. Its bytes are not persistent database content.
+        }
     }
 
     #[test]

@@ -1,0 +1,98 @@
+{
+  "checked_at": "2026-10-02T13:47:32.814734+00:00",
+  "scope": "Measure encrypted synthetic history queries and verify retention and paging.\n\nOne loopback request seeds a SQLCipher fixture. The SQLCipher helper expands its\nstored rows; this is a quiet database query check, not an ingestion benchmark.",
+  "binary_sha256": "1cdbb0e6fec54aa6e8c78df0b767977ec86bec42ce41111c4c5cad5d82f4301f",
+  "harness_sha256": "02e42b1e030c101eb15d7b00e07cc7397d2817646a562f56cae83c97ef0545fa",
+  "probe_sha256": "a072f1676a92edd02f0d55b1f8b94e003aa5cea9b58d5d440788dbb6a81cf6bd",
+  "platform": "Linux-6.17.0-1019-oracle-aarch64-with-glibc2.39",
+  "records": 100000,
+  "answers": 300000,
+  "definition_groups": 3,
+  "storage": "SQLCipher",
+  "queries": {
+    "all": {
+      "samples_ms": [
+        956.012,
+        1052.73,
+        984.93,
+        1001.985,
+        957.553
+      ],
+      "median_ms": 984.93,
+      "requests": 100000
+    },
+    "search": {
+      "samples_ms": [
+        1872.879,
+        1984.768,
+        2402.47,
+        1788.385,
+        1692.575
+      ],
+      "median_ms": 1872.879,
+      "requests": 100000
+    },
+    "source": {
+      "samples_ms": [
+        1289.03,
+        1209.824,
+        1068.321,
+        1278.706,
+        1301.443
+      ],
+      "median_ms": 1278.706,
+      "requests": 100000
+    },
+    "failures": {
+      "samples_ms": [
+        1428.163,
+        1929.206,
+        2253.987,
+        1833.62,
+        2851.916
+      ],
+      "median_ms": 1929.206,
+      "requests": 0
+    }
+  },
+  "passed": true,
+  "notes": [
+    "Shared host; results do not establish a capacity limit or compare provider latency.",
+    "Fixture contains three repeated definitions and small answers; higher cardinalities and larger payloads need separate measurements."
+  ],
+  "database_bytes": 508047360,
+  "retention": {
+    "before": 100000,
+    "after_expiration": 90000,
+    "after_record_cap": 1000
+  },
+  "checks": {
+    "seed_starts": true,
+    "template_capture_persisted": true,
+    "seed_clean_shutdown": true,
+    "encrypted_fixture_expanded": true,
+    "fixture_has_no_plaintext_header": true,
+    "large_history_starts": true,
+    "all_count_exact": true,
+    "search_count_exact": true,
+    "source_count_exact": true,
+    "failures_count_exact": true,
+    "answers_and_groups_exact": true,
+    "first_page_bounded": true,
+    "request_pages_do_not_repeat": true,
+    "inclusive_date_range_exact": true,
+    "group_search_matches_definition": true,
+    "timeline_covers_entire_history": true,
+    "query_phase_has_no_inference": true,
+    "large_history_clean_shutdown": true,
+    "probe_age-history": true,
+    "retention_starts": true,
+    "expired_tenth_removed_on_startup": true,
+    "retention_clean_shutdown": true,
+    "record_cap_starts": true,
+    "record_cap_enforced_on_startup": true,
+    "only_one_loopback_fixture_call": true,
+    "record_cap_clean_shutdown": true
+  },
+  "finished_at": "2026-10-02T13:48:48.694712+00:00"
+}
