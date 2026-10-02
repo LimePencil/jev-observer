@@ -1,0 +1,131 @@
+
+> jev-observer-ui@0.1.0 test
+> playwright test --workers=1 -g cannot hide newer collection gaps
+
+[WebServer] (node:1636788) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:1636810) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:1636859) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/dashboard.spec.ts:200:3 › a delayed dashboard response cannot hide newer collection gaps (8.5s)
+(node:1637032) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 tests/dashboard.spec.ts:200:3 › a delayed health response cannot hide newer collection gaps (8.6s)
+(node:1637226) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  3 tests/dashboard.spec.ts:200:3 › a delayed previous process response cannot hide newer collection gaps (8.7s)
+
+
+  1) tests/dashboard.spec.ts:200:3 › a delayed dashboard response cannot hide newer collection gaps 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.health-panel')
+    Expected substring: "History gaps detected"
+    Received string:    "Collection healthReady to observeCapture queue0 pendingWrite lag0 msDropped captures0Incomplete captures0Write failures0Current process. Calls keep moving if recording falls behind.Raw input is not retained"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('.health-panel') with timeout 5000ms
+      - waiting for locator('.health-panel')
+        14 × locator resolved to <section class="panel health-panel ">…</section>
+           - unexpected value "Collection healthReady to observeCapture queue0 pendingWrite lag0 msDropped captures0Incomplete captures0Write failures0Current process. Calls keep moving if recording falls behind.Raw input is not retained"
+
+
+      235 |     release();
+      236 |     await response;
+    > 237 |     await expect(page.locator('.health-panel')).toContainText('History gaps detected');
+          |                                                 ^
+      238 |     await expect(page.locator('.health-fields').getByText('17', { exact: true })).toBeVisible();
+      239 |   });
+      240 | }
+        at <repo>/ui/tests/dashboard.spec.ts:237:49
+
+    Error Context: test-results/dashboard-a-delayed-dashbo-92379--hide-newer-collection-gaps/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/dashboard-a-delayed-dashbo-92379--hide-newer-collection-gaps/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/dashboard-a-delayed-dashbo-92379--hide-newer-collection-gaps/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) tests/dashboard.spec.ts:200:3 › a delayed health response cannot hide newer collection gaps ───
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.health-panel')
+    Expected substring: "History gaps detected"
+    Received string:    "Collection healthReady to observeCapture queue0 pendingWrite lag0 msDropped captures0Incomplete captures0Write failures0Current process. Calls keep moving if recording falls behind.Raw input is not retained"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('.health-panel') with timeout 5000ms
+      - waiting for locator('.health-panel')
+        14 × locator resolved to <section class="panel health-panel ">…</section>
+           - unexpected value "Collection healthReady to observeCapture queue0 pendingWrite lag0 msDropped captures0Incomplete captures0Write failures0Current process. Calls keep moving if recording falls behind.Raw input is not retained"
+
+
+      235 |     release();
+      236 |     await response;
+    > 237 |     await expect(page.locator('.health-panel')).toContainText('History gaps detected');
+          |                                                 ^
+      238 |     await expect(page.locator('.health-fields').getByText('17', { exact: true })).toBeVisible();
+      239 |   });
+      240 | }
+        at <repo>/ui/tests/dashboard.spec.ts:237:49
+
+    Error Context: test-results/dashboard-a-delayed-health-633c0--hide-newer-collection-gaps/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/dashboard-a-delayed-health-633c0--hide-newer-collection-gaps/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/dashboard-a-delayed-health-633c0--hide-newer-collection-gaps/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) tests/dashboard.spec.ts:200:3 › a delayed previous process response cannot hide newer collection gaps 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.health-panel')
+    Expected substring: "History gaps detected"
+    Received string:    "Collection healthReady to observeCapture queue0 pendingWrite lag0 msDropped captures0Incomplete captures0Write failures0Current process. Calls keep moving if recording falls behind.Raw input is not retained"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('.health-panel') with timeout 5000ms
+      - waiting for locator('.health-panel')
+        14 × locator resolved to <section class="panel health-panel ">…</section>
+           - unexpected value "Collection healthReady to observeCapture queue0 pendingWrite lag0 msDropped captures0Incomplete captures0Write failures0Current process. Calls keep moving if recording falls behind.Raw input is not retained"
+
+
+      235 |     release();
+      236 |     await response;
+    > 237 |     await expect(page.locator('.health-panel')).toContainText('History gaps detected');
+          |                                                 ^
+      238 |     await expect(page.locator('.health-fields').getByText('17', { exact: true })).toBeVisible();
+      239 |   });
+      240 | }
+        at <repo>/ui/tests/dashboard.spec.ts:237:49
+
+    Error Context: test-results/dashboard-a-delayed-previo-c784a--hide-newer-collection-gaps/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/dashboard-a-delayed-previo-c784a--hide-newer-collection-gaps/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/dashboard-a-delayed-previo-c784a--hide-newer-collection-gaps/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3 failed
+    tests/dashboard.spec.ts:200:3 › a delayed dashboard response cannot hide newer collection gaps ─
+    tests/dashboard.spec.ts:200:3 › a delayed health response cannot hide newer collection gaps ────
+    tests/dashboard.spec.ts:200:3 › a delayed previous process response cannot hide newer collection gaps 

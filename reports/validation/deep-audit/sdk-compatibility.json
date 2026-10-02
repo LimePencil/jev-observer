@@ -1,0 +1,49 @@
+{
+  "checked_at": "2026-09-22T11:26:49.781153+00:00",
+  "scope": "Local mock only; no provider inference",
+  "binary_sha256": "c2cc6fd4d89a8bd5af3ecc9a6a9a5b97f14152db8bc6e13fdc019246ae830a7a",
+  "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.43",
+  "python": {
+    "sdk": "typesafe-sdk",
+    "version": "0.7.1",
+    "python": "3.12.14",
+    "attempts": 4,
+    "successes": 3,
+    "errors": 1,
+    "raw_bytes_preserved": true
+  },
+  "javascript": {
+    "sdk": "@typesafe-ai/sdk",
+    "version": "0.6.0",
+    "node": "v22.22.1",
+    "attempts": 4,
+    "successes": 3,
+    "errors": 1,
+    "raw_bytes_preserved": true,
+    "unknown_fields_preserved": true
+  },
+  "upstream_attempts": 8,
+  "summary": {
+    "request_count": 8,
+    "answer_count": 24,
+    "error_count": 2,
+    "input_tokens": 600,
+    "output_tokens": 72,
+    "cost_usd": 0.0012720000000000001,
+    "cost_known_requests": 6,
+    "sample_count": 0,
+    "incomplete_count": 0,
+    "action_count": 0,
+    "p50_ms": 41.017442,
+    "p95_ms": 41.40592
+  },
+  "groups": 8,
+  "valid_answers": 18,
+  "request_extensions_preserved": true,
+  "response_bytes_preserved": true,
+  "accept_encoding_identity_forwarded": true,
+  "health_endpoints_share_sample_order": true,
+  "credentials_and_state_excluded": true,
+  "capture_gaps": 0,
+  "passed": true
+}

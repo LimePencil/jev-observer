@@ -1,0 +1,105 @@
+name: Build and verify
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-prototype:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      CI: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            fixtures/sdk/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: fixtures/sdk/python-requirements.txt
+      - name: Install pinned Rust checks
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.98.1
+          rustc --version
+      - name: Restore Rust dependencies and build outputs
+        id: cargo-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: verify-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}-${{ github.sha }}
+          restore-keys: verify-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}-
+      - name: Verify locked dependency notices
+        run: python3 scripts/generate-license-notices.py --check
+      - name: Build dashboard before embedding
+        run: |
+          npm ci --prefix ui --no-audit --no-fund
+          npm run build --prefix ui
+      - name: Verify shell installation and failed-upgrade handling
+        run: python3 scripts/test-install.py
+      - name: Check Rust formatting, lints and tests
+        run: |
+          cargo fmt --all --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+      - name: Build bundled executable
+        run: cargo build --release --locked
+      - name: Configure reliable Ubuntu dependency downloads
+        run: bash scripts/configure-ci-apt.sh
+      - name: Run browser interaction and accessibility checks
+        timeout-minutes: 12
+        working-directory: ui
+        run: |
+          npx playwright install --with-deps chromium
+          npm test
+      - name: Install pinned SDK fixtures
+        run: |
+          python -m venv "$RUNNER_TEMP/observer-sdk-python"
+          "$RUNNER_TEMP/observer-sdk-python/bin/python" -m pip install -r fixtures/sdk/python-requirements.txt
+          npm ci --prefix fixtures/sdk --ignore-scripts --no-audit --no-fund
+      - name: Verify real SDKs against loopback mock only
+        run: |
+          "$RUNNER_TEMP/observer-sdk-python/bin/python" scripts/sdk-compatibility.py \
+            --binary target/release/jev-observer \
+            --node-sdk "$GITHUB_WORKSPACE/fixtures/sdk/node_modules/@typesafe-ai/sdk" \
+            --output "$RUNNER_TEMP/sdk-compatibility.json"
+      - name: Retain SDK results and browser failure traces
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: local-verification
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/sdk-compatibility.json
+            ui/test-results/
+      - name: Save Rust dependencies and build outputs
+        if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}

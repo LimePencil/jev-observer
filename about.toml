@@ -1,0 +1,14 @@
+# Generate notices for every supported native release target.
+accepted = [
+  "MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "ISC",
+  "Unicode-3.0", "Unicode-DFS-2016", "Zlib", "BSL-1.0",
+  "CC0-1.0", "Unlicense", "CDLA-Permissive-2.0", "OpenSSL",
+]
+targets = [
+  "x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl",
+  "x86_64-apple-darwin", "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc",
+]
+ignore-build-dependencies = false
+ignore-dev-dependencies = true
+ignore-transitive-dependencies = false

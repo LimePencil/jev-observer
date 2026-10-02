@@ -1,0 +1,40 @@
+[package]
+name = "jev-observer"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Local observability for recurring Jev decisions"
+
+[dependencies]
+anyhow = "1"
+async-stream = "0.3"
+axum = "0.8"
+base64 = "0.22"
+bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures-util = "0.3"
+http-body-util = "0.1"
+include_dir = "0.7"
+keyring = "4.2"
+libc = "0.2"
+mime_guess = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "stream", "json"] }
+rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+uuid = { version = "1", features = ["v4", "v7"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+lto = "thin"
+strip = true

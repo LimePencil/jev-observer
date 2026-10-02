@@ -1,0 +1,149 @@
+{
+  "date": "2026-09-22T05:58:22.293Z",
+  "binary": "<repo>/target/release/jev-observer",
+  "node": "v22.22.1",
+  "platform": "linux 7.0.0-31-generic x64",
+  "cpu": "Intel(R) N100",
+  "logical_cpus": 4,
+  "total_memory_gib": 7.0009613037109375,
+  "fixture": {
+    "small_bytes": 9764,
+    "large_bytes": 131744,
+    "large_fraction": 0.1,
+    "questions": [
+      3,
+      20
+    ],
+    "upstream_delay_ms": 25
+  },
+  "baseline": {
+    "label": "direct mock baseline",
+    "target_rps": 500,
+    "offered": 10000,
+    "completed": 10000,
+    "errors": 0,
+    "expected_answers": 47000,
+    "elapsed_seconds": 20.024101370999997,
+    "achieved_rps": 499.39819094616394,
+    "latency_ms": {
+      "p50": 25.461294000000635,
+      "p95": 26.31391399999984,
+      "p99": 26.530262999999877,
+      "max": 34.49612799999997
+    },
+    "first_byte_ms": {
+      "p50": 25.455286000000342,
+      "p95": 26.30639300000007,
+      "p99": 26.519944000000123
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.1630279999999402,
+      "p99": 1.3033990000003541
+    },
+    "dashboard": {
+      "queries": 0,
+      "errors": [],
+      "p95_ms": null
+    }
+  },
+  "sustained": {
+    "label": "proxy with capture and dashboard",
+    "target_rps": 500,
+    "offered": 10000,
+    "completed": 10000,
+    "errors": 0,
+    "expected_answers": 47000,
+    "elapsed_seconds": 20.029609405,
+    "achieved_rps": 499.2608591510375,
+    "latency_ms": {
+      "p50": 26.09868799999822,
+      "p95": 30.1677520000012,
+      "p99": 33.665680999998585,
+      "max": 44.12068200000067
+    },
+    "first_byte_ms": {
+      "p50": 26.090596999998525,
+      "p95": 30.15592800000013,
+      "p99": 33.66078500000003
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.9116570000005595,
+      "p99": 3.561286000000109
+    },
+    "dashboard": {
+      "queries": 17,
+      "errors": [],
+      "p95_ms": 716.7848920000033
+    }
+  },
+  "burst": {
+    "label": "proxy burst with capture and dashboard",
+    "target_rps": 1000,
+    "offered": 10000,
+    "completed": 10000,
+    "errors": 0,
+    "expected_answers": 47000,
+    "elapsed_seconds": 10.025386953000002,
+    "achieved_rps": 997.4677333534338,
+    "latency_ms": {
+      "p50": 26.423533000001044,
+      "p95": 34.7097999999969,
+      "p99": 45.13999600000534,
+      "max": 77.57647400000133
+    },
+    "first_byte_ms": {
+      "p50": 26.41660199999751,
+      "p95": 34.693421999996644,
+      "p99": 45.13649100000475
+    },
+    "scheduling_lateness_ms": {
+      "p95": 2.800708000002487,
+      "p99": 6.1085930000044755
+    },
+    "dashboard": {
+      "queries": 6,
+      "errors": [],
+      "p95_ms": 1110.9536910000024
+    }
+  },
+  "peak_rss_mib": 46.87890625,
+  "health": {
+    "forwarded": 20000,
+    "captured": 20000,
+    "persisted": 20000,
+    "dropped": 0,
+    "truncated": 0,
+    "write_failures": 0,
+    "queue_depth": 0,
+    "queued_bytes": 0,
+    "last_persisted_at": 1790056699706,
+    "last_gap_at": null,
+    "lag_ms": 45,
+    "active_captures": 0,
+    "capture_limit": 262144,
+    "capture_slots": 256,
+    "scope": "current process",
+    "stopping": false
+  },
+  "summary": {
+    "request_count": 20000,
+    "answer_count": 94000,
+    "error_count": 0,
+    "input_tokens": 20000000,
+    "output_tokens": 800000,
+    "cost_usd": null,
+    "cost_known_requests": 0,
+    "sample_count": 0,
+    "incomplete_count": 0,
+    "action_count": 0,
+    "p50_ms": 25.668103000000002,
+    "p95_ms": 29.631438
+  },
+  "complete": true,
+  "notes": [
+    "Local mock only; does not measure provider latency or paid API capacity.",
+    "Exact body/status and retained-count checks enabled.",
+    "Latency distributions are independent runs; subtracting percentiles does not produce a per-request overhead percentile.",
+    "Host was shared with build/editor workloads; report hardware and conditions with any comparison."
+  ]
+}

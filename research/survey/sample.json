@@ -1,0 +1,502 @@
+[
+  {
+    "id": 1,
+    "repository": "carldaws/hunch",
+    "discovery_category": "SDKs and developer tools"
+  },
+  {
+    "id": 2,
+    "repository": "can1357/jegrep",
+    "discovery_category": "SDKs and developer tools"
+  },
+  {
+    "id": 3,
+    "repository": "formulahendry/jev-acp",
+    "discovery_category": "SDKs and developer tools"
+  },
+  {
+    "id": 4,
+    "repository": "blakestone-x/jev-mcp",
+    "discovery_category": "SDKs and developer tools"
+  },
+  {
+    "id": 5,
+    "repository": "mrnugget/jev-shell-history",
+    "discovery_category": "SDKs and developer tools"
+  },
+  {
+    "id": 6,
+    "repository": "allebee/jevgrep",
+    "discovery_category": "SDKs and developer tools"
+  },
+  {
+    "id": 7,
+    "repository": "kyu1204/jgrep",
+    "discovery_category": "SDKs and developer tools"
+  },
+  {
+    "id": 8,
+    "repository": "allebee/pytest-jev",
+    "discovery_category": "SDKs and developer tools"
+  },
+  {
+    "id": 9,
+    "repository": "jomatsu/zod-jev",
+    "discovery_category": "SDKs and developer tools"
+  },
+  {
+    "id": 10,
+    "repository": "ellipsis-dev/blink",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 11,
+    "repository": "qkal/Canny",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 12,
+    "repository": "devanshbatham/commit-miner",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 13,
+    "repository": "thruwire/foreman",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 14,
+    "repository": "luantak/is-malicious",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 15,
+    "repository": "valentynkit/jev-belay",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 16,
+    "repository": "0xNatoshi/jev-codex-router",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 17,
+    "repository": "valentynkit/jev-commit",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 18,
+    "repository": "eugeniughelbur/jev-engineering",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 19,
+    "repository": "leepokai/jev-guard",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 20,
+    "repository": "doeixd/jev-pref",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 21,
+    "repository": "devagrawal09/jev-review",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 22,
+    "repository": "NiazMorshed2007/jev-review",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 23,
+    "repository": "gargpratyush/jev-router",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 24,
+    "repository": "BillionsBobby/JevRouter",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 25,
+    "repository": "kierandotai/jev-scout",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 26,
+    "repository": "shimo4228/jev-skill-router",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 27,
+    "repository": "xinyao27/jevonian",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 28,
+    "repository": "lakeday-org/perch",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 29,
+    "repository": "y0usaf/pi-jev",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 30,
+    "repository": "DevMortimer/pi-warden",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 31,
+    "repository": "Dicklesworthstone/skillranker",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 32,
+    "repository": "lukstei/slop-grader",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 33,
+    "repository": "supercorp-ai/supercov",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 34,
+    "repository": "mblode/taste-lint",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 35,
+    "repository": "shitianfang/wakegate",
+    "discovery_category": "Agents, coding, and guardrails"
+  },
+  {
+    "id": 36,
+    "repository": "leonaaardob/fast-dev-compaction",
+    "discovery_category": "Context and compaction"
+  },
+  {
+    "id": 37,
+    "repository": "tamaratran/fast-jev-compaction",
+    "discovery_category": "Context and compaction"
+  },
+  {
+    "id": 38,
+    "repository": "joelhooks/pi-fast-jev-compaction",
+    "discovery_category": "Context and compaction"
+  },
+  {
+    "id": 39,
+    "repository": "ilkerulusoy/pi-jev-compact",
+    "discovery_category": "Context and compaction"
+  },
+  {
+    "id": 40,
+    "repository": "kevinpita/pi-jev-context",
+    "discovery_category": "Context and compaction"
+  },
+  {
+    "id": 41,
+    "repository": "GhalebDweikat/winnow",
+    "discovery_category": "Context and compaction"
+  },
+  {
+    "id": 42,
+    "repository": "compozy/yoshi",
+    "discovery_category": "Context and compaction"
+  },
+  {
+    "id": 43,
+    "repository": "GoldenLoaf24h/browserclaw",
+    "discovery_category": "Browser and computer use"
+  },
+  {
+    "id": 44,
+    "repository": "jkudish/jev-browser",
+    "discovery_category": "Browser and computer use"
+  },
+  {
+    "id": 45,
+    "repository": "wy-coliney/jev-browser-use",
+    "discovery_category": "Browser and computer use"
+  },
+  {
+    "id": 46,
+    "repository": "socai-io/jev-social",
+    "discovery_category": "Browser and computer use"
+  },
+  {
+    "id": 47,
+    "repository": "browser-use/jev-ultrafast",
+    "discovery_category": "Browser and computer use"
+  },
+  {
+    "id": 48,
+    "repository": "moritzkremb/jev-voice-browser",
+    "discovery_category": "Browser and computer use"
+  },
+  {
+    "id": 49,
+    "repository": "chy4pro/jev-for-chrome",
+    "discovery_category": "Browser and computer use"
+  },
+  {
+    "id": 50,
+    "repository": "droidrun/mobile-jev",
+    "discovery_category": "Browser and computer use"
+  },
+  {
+    "id": 51,
+    "repository": "awlevin/typesafe-computer-use",
+    "discovery_category": "Browser and computer use"
+  },
+  {
+    "id": 52,
+    "repository": "colliber/duckdb-jev",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 53,
+    "repository": "AboveColin/HA-Jev",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 54,
+    "repository": "yusukebe/hono-jev-router",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 55,
+    "repository": "sutro-sh/jev-align",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 56,
+    "repository": "AkashPriyadarshii/jev-curate",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 57,
+    "repository": "jyatesdotdev/jev-logtriage",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 58,
+    "repository": "fazlerocks/jevmail",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 59,
+    "repository": "hotchpotch/jev-reranker",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 60,
+    "repository": "shinpr/jev-reranker",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 61,
+    "repository": "choxos/jev-reviewer",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 62,
+    "repository": "superagents-lab/jev-search",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 63,
+    "repository": "Cab14bacc/jev-sheets",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 64,
+    "repository": "reachjalil/jev-tree",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 65,
+    "repository": "replynodes/jev-web-analyzer",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 66,
+    "repository": "gaborishka/jev-wrapped",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 67,
+    "repository": "reachjalil/jevlogs",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 68,
+    "repository": "kylemclaren/jevql",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 69,
+    "repository": "EugeneBoondock/jevsql",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 70,
+    "repository": "WiktorB2004/llama-index-jev",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 71,
+    "repository": "n3ndor/n8n-nodes-typesafe-jev",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 72,
+    "repository": "realZachi/pg-jev",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 73,
+    "repository": "kyotofin/tax-doc-classifier",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 74,
+    "repository": "iamvatsalpatel/tiershift",
+    "discovery_category": "Routing, data, and workflows"
+  },
+  {
+    "id": 75,
+    "repository": "AbdelStark/heist-one",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 76,
+    "repository": "gaborishka/jev-canvas",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 77,
+    "repository": "RomanSlack/jev-drone",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 78,
+    "repository": "dabit3/jev-experiments",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 79,
+    "repository": "amycardoso/jev-palette",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 80,
+    "repository": "valentynkit/jev-plays-pokemon-red",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 81,
+    "repository": "thelau/jev-tetris",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 82,
+    "repository": "standardagents/jevpilot",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 83,
+    "repository": "gaborishka/jevtown",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 84,
+    "repository": "spoonnotfound/soupbase",
+    "discovery_category": "Games, robotics, and interactive demos"
+  },
+  {
+    "id": 85,
+    "repository": "achimala/jev-paint",
+    "discovery_category": "Media and creative tools"
+  },
+  {
+    "id": 86,
+    "repository": "valentynkit/jev-skip",
+    "discovery_category": "Media and creative tools"
+  },
+  {
+    "id": 87,
+    "repository": "cocktailpeanut/jevthoven",
+    "discovery_category": "Media and creative tools"
+  },
+  {
+    "id": 88,
+    "repository": "Dearest/plotveil",
+    "discovery_category": "Media and creative tools"
+  },
+  {
+    "id": 89,
+    "repository": "harshil1712/slidepilot",
+    "discovery_category": "Media and creative tools"
+  },
+  {
+    "id": 90,
+    "repository": "kitze/unclutter",
+    "discovery_category": "Media and creative tools"
+  },
+  {
+    "id": 91,
+    "repository": "FirasSX914/Janus",
+    "discovery_category": "Evaluation and calibration"
+  },
+  {
+    "id": 92,
+    "repository": "chunxiaoxx/nautilus-compass",
+    "discovery_category": "Evaluation and calibration"
+  },
+  {
+    "id": 93,
+    "repository": "jev-ids/jev-ids",
+    "discovery_category": "Evaluation and calibration"
+  },
+  {
+    "id": 94,
+    "repository": "RINNECODER/jev-behavior-study",
+    "discovery_category": "Evaluation and calibration"
+  },
+  {
+    "id": 95,
+    "repository": "AbdelStark/jev-benchmarks",
+    "discovery_category": "Evaluation and calibration"
+  },
+  {
+    "id": 96,
+    "repository": "baibizhe/jev-decision-benchmarks",
+    "discovery_category": "Evaluation and calibration"
+  },
+  {
+    "id": 97,
+    "repository": "vinilana/jev-eval-agent",
+    "discovery_category": "Evaluation and calibration"
+  },
+  {
+    "id": 98,
+    "repository": "yodablocks/jev-orderby-bench",
+    "discovery_category": "Evaluation and calibration"
+  },
+  {
+    "id": 99,
+    "repository": "zhuyansen/jev-search-rerank-eval",
+    "discovery_category": "Evaluation and calibration"
+  },
+  {
+    "id": 100,
+    "repository": "abhixhek/jevcal",
+    "discovery_category": "Evaluation and calibration"
+  }
+]

@@ -1,0 +1,56 @@
+{
+  "request_id": "synthetic-router-request-001",
+  "decision_id": "synthetic-router-decision-001",
+  "mode": "decision_only",
+  "status": "selected",
+  "decision": {
+    "kind": "choice",
+    "question": "Which single capability should handle this request?",
+    "selected": "safe",
+    "jev_choice": "unsafe",
+    "input": { "private": "input secret" },
+    "candidates": [
+      {
+        "id": "unsafe", "type": "cli", "name": "Unapproved command",
+        "jev_probability": 0.8, "jev_confidence": 0.7,
+        "jev_stage": "single", "router_rank": 1,
+        "router": {
+          "available": true, "verified": false,
+          "verification_status": "unverified", "verification_source": null,
+          "allowed": false, "risk_level": "high",
+          "requires_confirmation": true, "filtered": true,
+          "filter_reason": "risk_not_allowed:high"
+        }
+      },
+      {
+        "id": "safe", "type": "mcp_tool", "name": "Read-only search",
+        "jev_probability": 0.2, "jev_confidence": 0.7,
+        "jev_stage": "single", "router_rank": 2,
+        "router": {
+          "available": true, "verified": true,
+          "verification_status": "verified", "verification_source": "synthetic_fixture",
+          "allowed": true, "risk_level": "low",
+          "requires_confirmation": false, "filtered": false,
+          "filter_reason": null
+        }
+      }
+    ]
+  },
+  "fallback": { "type": "manual_review", "reason": "The first candidate was filtered by policy" },
+  "execution": { "enabled": false, "status": "not_started" },
+  "raw_jev": {
+    "model": "jevrouter-demo",
+    "answers": {
+      "tool": {
+        "type": "choice", "choice": "unsafe",
+        "probabilities": { "unsafe": 0.8, "safe": 0.2 },
+        "confidence": 0.7
+      }
+    }
+  },
+  "provenance": {
+    "jev_provider": "demo",
+    "candidate_snapshot_hash": "synthetic-candidate-snapshot",
+    "policy_hash": "synthetic-policy"
+  }
+}

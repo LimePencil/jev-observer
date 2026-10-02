@@ -1,0 +1,237 @@
+{
+  "date": "2026-09-22T06:41:04.616Z",
+  "binary": "<repo>/target/release/jev-observer",
+  "binary_sha256": "15433574df562d6b87b995008b04c3e0496326d5631efb543afb98559c8a65f7",
+  "database_directory": "<repo>/.jev-observer/benchmarks/run-pf2PbT",
+  "node": "v22.22.1",
+  "platform": "linux 7.0.0-31-generic x64",
+  "cpu": "Intel(R) N100",
+  "logical_cpus": 4,
+  "total_memory_gib": 7.0009613037109375,
+  "settings": {
+    "demo": false,
+    "capture_state": false,
+    "retention_days": 7,
+    "max_records": 2000000,
+    "capture_limit": 262144,
+    "capture_slots": 1024,
+    "queue_capacity": 1024,
+    "upstream": "http://127.0.0.1:42001/v1/systemone",
+    "version": "0.1.0",
+    "input_price_per_million": null,
+    "output_price_per_million": null
+  },
+  "fixture": {
+    "small_bytes": 9764,
+    "large_bytes": 131744,
+    "large_fraction": 0.1,
+    "questions": [
+      3,
+      20
+    ],
+    "upstream_delay_ms": 25
+  },
+  "baseline": {
+    "label": "direct mock baseline",
+    "target_rps": 500,
+    "offered": 15000,
+    "completed": 15000,
+    "errors": 0,
+    "failure_details": [],
+    "expected_answers": 70500,
+    "load_duration_seconds": 30,
+    "warmup_seconds": 5,
+    "elapsed_seconds": 30.025304256,
+    "achieved_rps": 499.578617825414,
+    "steady_completed": 12501,
+    "steady_rps": 500.04,
+    "latency_ms": {
+      "p50": 25.687313999998878,
+      "p95": 26.634649000003265,
+      "p99": 27.51113899999973,
+      "max": 47.429674999999975
+    },
+    "first_byte_ms": {
+      "p50": 25.678640000001906,
+      "p95": 26.62588699999833,
+      "p99": 27.445019000000002
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.1687510000010661,
+      "p99": 1.3648160000002463
+    },
+    "dashboard": {
+      "queries": 0,
+      "errors": [],
+      "p95_ms": null
+    },
+    "collection_health_at_phase_end": null
+  },
+  "sustained": {
+    "label": "proxy with capture and dashboard",
+    "target_rps": 500,
+    "offered": 150000,
+    "completed": 150000,
+    "errors": 0,
+    "failure_details": [],
+    "expected_answers": 705000,
+    "load_duration_seconds": 300,
+    "warmup_seconds": 5,
+    "elapsed_seconds": 300.023534956,
+    "achieved_rps": 499.9607781502817,
+    "steady_completed": 147500,
+    "steady_rps": 500,
+    "latency_ms": {
+      "p50": 26.026851000002353,
+      "p95": 27.910612000036053,
+      "p99": 31.153223000001162,
+      "max": 63.36420900000667
+    },
+    "first_byte_ms": {
+      "p50": 26.01886199999717,
+      "p95": 27.89902599999914,
+      "p99": 31.14368700000341
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.264422000007471,
+      "p99": 2.1827789999952074
+    },
+    "dashboard": {
+      "queries": 145,
+      "errors": [],
+      "p95_ms": 2938.4875630000024
+    },
+    "collection_health_at_phase_end": {
+      "forwarded": 150000,
+      "captured": 150000,
+      "persisted": 150000,
+      "dropped": 0,
+      "truncated": 0,
+      "write_failures": 0,
+      "maintenance_failures": 0,
+      "maintenance_healthy": true,
+      "last_maintenance_at": 1790059249012,
+      "queue_depth": 0,
+      "queued_bytes": 0,
+      "last_persisted_at": 1790059249012,
+      "last_gap_at": null,
+      "lag_ms": 0,
+      "last_batch_lag_ms": 89,
+      "active_captures": 0,
+      "capture_limit": 262144,
+      "capture_slots": 1024,
+      "scope": "current process",
+      "stopping": false
+    }
+  },
+  "burst": {
+    "label": "proxy burst with capture and dashboard",
+    "target_rps": 1000,
+    "offered": 10000,
+    "completed": 10000,
+    "errors": 0,
+    "failure_details": [],
+    "expected_answers": 47000,
+    "load_duration_seconds": 10,
+    "warmup_seconds": 5,
+    "elapsed_seconds": 10.025117899000005,
+    "achieved_rps": 997.4945033811014,
+    "steady_completed": 5001,
+    "steady_rps": 1000.2,
+    "latency_ms": {
+      "p50": 25.929369999968912,
+      "p95": 26.95876100001624,
+      "p99": 27.780790000048,
+      "max": 32.456577000033576
+    },
+    "first_byte_ms": {
+      "p50": 25.92339599999832,
+      "p95": 26.95295599999372,
+      "p99": 27.775768999999855
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.6460879999794997,
+      "p99": 1.8307909999857657
+    },
+    "dashboard": {
+      "queries": 3,
+      "errors": [],
+      "p95_ms": 2483.781256999995
+    },
+    "collection_health_at_phase_end": {
+      "forwarded": 160000,
+      "captured": 160000,
+      "persisted": 160000,
+      "dropped": 0,
+      "truncated": 0,
+      "write_failures": 0,
+      "maintenance_failures": 0,
+      "maintenance_healthy": true,
+      "last_maintenance_at": 1790059262092,
+      "queue_depth": 0,
+      "queued_bytes": 0,
+      "last_persisted_at": 1790059262092,
+      "last_gap_at": null,
+      "lag_ms": 0,
+      "last_batch_lag_ms": 33,
+      "active_captures": 0,
+      "capture_limit": 262144,
+      "capture_slots": 1024,
+      "scope": "current process",
+      "stopping": false
+    }
+  },
+  "peak_rss_mib": 162.69140625,
+  "peak_sampled_lag_ms": 95,
+  "peak_sampled_queue_depth": 48,
+  "health_poll_errors": 0,
+  "database_bytes": 1053454336,
+  "health": {
+    "forwarded": 160000,
+    "captured": 160000,
+    "persisted": 160000,
+    "dropped": 0,
+    "truncated": 0,
+    "write_failures": 0,
+    "maintenance_failures": 0,
+    "maintenance_healthy": true,
+    "last_maintenance_at": 1790059262092,
+    "queue_depth": 0,
+    "queued_bytes": 0,
+    "last_persisted_at": 1790059262092,
+    "last_gap_at": null,
+    "lag_ms": 0,
+    "last_batch_lag_ms": 33,
+    "active_captures": 0,
+    "capture_limit": 262144,
+    "capture_slots": 1024,
+    "scope": "current process",
+    "stopping": false
+  },
+  "summary": {
+    "request_count": 160000,
+    "answer_count": 752000,
+    "error_count": 0,
+    "input_tokens": 160000000,
+    "output_tokens": 6400000,
+    "cost_usd": null,
+    "cost_known_requests": 0,
+    "sample_count": 0,
+    "incomplete_count": 0,
+    "action_count": 0,
+    "p50_ms": 25.544366999999998,
+    "p95_ms": 26.767846000000002
+  },
+  "counts_complete": true,
+  "accounting_complete": true,
+  "upstream_attempts": 175000,
+  "throughput_passed": true,
+  "complete": true,
+  "notes": [
+    "Local mock only; does not measure provider latency or paid API capacity.",
+    "Steady RPS excludes the stated warm-up and post-load drain; achieved_rps includes the drain. RSS and collection lag are sampled once per second.",
+    "Exact body/status and retained-count checks enabled.",
+    "Latency distributions are independent runs; subtracting percentiles does not produce a per-request overhead percentile.",
+    "Host was shared with build/editor workloads; report hardware and conditions with any comparison."
+  ]
+}

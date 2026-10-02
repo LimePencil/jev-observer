@@ -1,0 +1,395 @@
+{
+  "createdAt": "2026-09-22T10:48:03.703Z",
+  "method": {
+    "before": "Production build of isolated git HEAD ui source",
+    "after": "Production build of isolated working-tree ui source",
+    "backend": "Both snapshots proxy real API traffic to current release binary, private empty DB, port 19862",
+    "clipboard": "Default uses untouched browser permissions; allowed grants native clipboard read/write; denied uses CDP Browser.setPermission for clipboard-write; unavailable replaces navigator.clipboard with undefined at document init",
+    "delete": "Browser interception performs route.fetch() against real DELETE, then withholds its real response until user has opened another panel. No fabricated API data."
+  },
+  "clipboard": [
+    {
+      "label": "before",
+      "mode": "default",
+      "initial": {
+        "secureContext": true,
+        "clipboardAvailable": true,
+        "writePermission": "prompt"
+      },
+      "pageErrors": [],
+      "unhandledRejections": [],
+      "feedback": [
+        {
+          "text": "Could not copy. Select the URL to copy it manually.",
+          "insideDialog": false,
+          "ariaHiddenAncestors": [
+            "DIV#root"
+          ],
+          "display": "flex"
+        }
+      ],
+      "accessibleStatuses": [],
+      "exposedCopyFeedback": [],
+      "readback": ""
+    },
+    {
+      "label": "before",
+      "mode": "allowed",
+      "initial": {
+        "secureContext": true,
+        "clipboardAvailable": true,
+        "writePermission": "granted"
+      },
+      "pageErrors": [],
+      "unhandledRejections": [],
+      "feedback": [
+        {
+          "text": "Local base URL copied.",
+          "insideDialog": false,
+          "ariaHiddenAncestors": [
+            "DIV#root"
+          ],
+          "display": "flex"
+        }
+      ],
+      "accessibleStatuses": [],
+      "exposedCopyFeedback": [],
+      "readback": "http://127.0.0.1:19861"
+    },
+    {
+      "label": "before",
+      "mode": "denied",
+      "initial": {
+        "secureContext": true,
+        "clipboardAvailable": true,
+        "writePermission": "denied"
+      },
+      "pageErrors": [],
+      "unhandledRejections": [],
+      "feedback": [
+        {
+          "text": "Could not copy. Select the URL to copy it manually.",
+          "insideDialog": false,
+          "ariaHiddenAncestors": [
+            "DIV#root"
+          ],
+          "display": "flex"
+        }
+      ],
+      "accessibleStatuses": [],
+      "exposedCopyFeedback": [],
+      "readback": null
+    },
+    {
+      "label": "before",
+      "mode": "unavailable",
+      "initial": {
+        "secureContext": true,
+        "clipboardAvailable": false,
+        "writePermission": "prompt"
+      },
+      "pageErrors": [
+        {
+          "name": "TypeError",
+          "message": "Cannot read properties of undefined (reading 'writeText')"
+        }
+      ],
+      "unhandledRejections": [],
+      "feedback": [],
+      "accessibleStatuses": [],
+      "exposedCopyFeedback": [],
+      "readback": null
+    },
+    {
+      "label": "after",
+      "mode": "default",
+      "initial": {
+        "secureContext": true,
+        "clipboardAvailable": true,
+        "writePermission": "prompt"
+      },
+      "pageErrors": [],
+      "unhandledRejections": [],
+      "feedback": [
+        {
+          "text": "Could not copy. Select the URL to copy it manually.",
+          "insideDialog": true,
+          "ariaHiddenAncestors": [],
+          "display": "block"
+        }
+      ],
+      "accessibleStatuses": [
+        "Could not copy. Select the URL to copy it manually."
+      ],
+      "exposedCopyFeedback": [
+        {
+          "role": "StaticText",
+          "name": "Could not copy. Select the URL to copy it manually."
+        },
+        {
+          "role": "InlineTextBox",
+          "name": "Could not copy. Select the URL to copy it manually."
+        }
+      ],
+      "readback": "http://127.0.0.1:19861"
+    },
+    {
+      "label": "after",
+      "mode": "allowed",
+      "initial": {
+        "secureContext": true,
+        "clipboardAvailable": true,
+        "writePermission": "granted"
+      },
+      "pageErrors": [],
+      "unhandledRejections": [],
+      "feedback": [
+        {
+          "text": "Local base URL copied.",
+          "insideDialog": true,
+          "ariaHiddenAncestors": [],
+          "display": "block"
+        }
+      ],
+      "accessibleStatuses": [
+        "Local base URL copied."
+      ],
+      "exposedCopyFeedback": [
+        {
+          "role": "StaticText",
+          "name": "Local base URL copied."
+        },
+        {
+          "role": "InlineTextBox",
+          "name": "Local base URL copied."
+        }
+      ],
+      "readback": "http://127.0.0.1:19863"
+    },
+    {
+      "label": "after",
+      "mode": "denied",
+      "initial": {
+        "secureContext": true,
+        "clipboardAvailable": true,
+        "writePermission": "denied"
+      },
+      "pageErrors": [],
+      "unhandledRejections": [],
+      "feedback": [
+        {
+          "text": "Could not copy. Select the URL to copy it manually.",
+          "insideDialog": true,
+          "ariaHiddenAncestors": [],
+          "display": "block"
+        }
+      ],
+      "accessibleStatuses": [
+        "Could not copy. Select the URL to copy it manually."
+      ],
+      "exposedCopyFeedback": [
+        {
+          "role": "StaticText",
+          "name": "Could not copy. Select the URL to copy it manually."
+        },
+        {
+          "role": "InlineTextBox",
+          "name": "Could not copy. Select the URL to copy it manually."
+        }
+      ],
+      "readback": null
+    },
+    {
+      "label": "after",
+      "mode": "unavailable",
+      "initial": {
+        "secureContext": true,
+        "clipboardAvailable": false,
+        "writePermission": "prompt"
+      },
+      "pageErrors": [],
+      "unhandledRejections": [],
+      "feedback": [
+        {
+          "text": "Could not copy. Select the URL to copy it manually.",
+          "insideDialog": true,
+          "ariaHiddenAncestors": [],
+          "display": "block"
+        }
+      ],
+      "accessibleStatuses": [
+        "Could not copy. Select the URL to copy it manually."
+      ],
+      "exposedCopyFeedback": [
+        {
+          "role": "StaticText",
+          "name": "Could not copy. Select the URL to copy it manually."
+        },
+        {
+          "role": "InlineTextBox",
+          "name": "Could not copy. Select the URL to copy it manually."
+        }
+      ],
+      "readback": null
+    }
+  ],
+  "deletion": [
+    {
+      "label": "before",
+      "nextPanel": "stay",
+      "originalWasDeleting": true,
+      "responseStatus": 200,
+      "responseText": "{\"ok\":true}",
+      "beforeRelease": {
+        "dialogs": 1,
+        "heading": [
+          "Local by design.",
+          "Input capture",
+          "History and retention",
+          "Connection",
+          "Delete local history"
+        ]
+      },
+      "afterRelease": {
+        "dialogs": 0,
+        "heading": [],
+        "toast": [
+          "Local history deleted. New incoming requests will still be recorded."
+        ]
+      },
+      "pageErrors": []
+    },
+    {
+      "label": "before",
+      "nextPanel": "connect",
+      "originalWasDeleting": true,
+      "responseStatus": 200,
+      "responseText": "{\"ok\":true}",
+      "beforeRelease": {
+        "dialogs": 1,
+        "heading": [
+          "Your next request, visible.",
+          "Native endpoint",
+          "Keep sources recognizable"
+        ]
+      },
+      "afterRelease": {
+        "dialogs": 0,
+        "heading": [],
+        "toast": [
+          "Local history deleted. New incoming requests will still be recorded."
+        ]
+      },
+      "pageErrors": []
+    },
+    {
+      "label": "before",
+      "nextPanel": "settings",
+      "originalWasDeleting": true,
+      "responseStatus": 200,
+      "responseText": "{\"ok\":true}",
+      "beforeRelease": {
+        "dialogs": 1,
+        "heading": [
+          "Local by design.",
+          "Input capture",
+          "History and retention",
+          "Connection",
+          "Delete local history"
+        ]
+      },
+      "afterRelease": {
+        "dialogs": 0,
+        "heading": [],
+        "toast": [
+          "Local history deleted. New incoming requests will still be recorded."
+        ]
+      },
+      "pageErrors": []
+    },
+    {
+      "label": "after",
+      "nextPanel": "stay",
+      "originalWasDeleting": true,
+      "responseStatus": 200,
+      "responseText": "{\"ok\":true}",
+      "beforeRelease": {
+        "dialogs": 1,
+        "heading": [
+          "Local by design.",
+          "Input capture",
+          "History and retention",
+          "Connection",
+          "Delete local history"
+        ]
+      },
+      "afterRelease": {
+        "dialogs": 0,
+        "heading": [],
+        "toast": [
+          "Local history deleted. New incoming requests will still be recorded."
+        ]
+      },
+      "pageErrors": []
+    },
+    {
+      "label": "after",
+      "nextPanel": "connect",
+      "originalWasDeleting": true,
+      "responseStatus": 200,
+      "responseText": "{\"ok\":true}",
+      "beforeRelease": {
+        "dialogs": 1,
+        "heading": [
+          "Your next request, visible.",
+          "Native endpoint",
+          "Keep sources recognizable"
+        ]
+      },
+      "afterRelease": {
+        "dialogs": 1,
+        "heading": [
+          "Your next request, visible.",
+          "Native endpoint",
+          "Keep sources recognizable"
+        ],
+        "toast": [
+          "Local history deleted. New incoming requests will still be recorded."
+        ]
+      },
+      "pageErrors": []
+    },
+    {
+      "label": "after",
+      "nextPanel": "settings",
+      "originalWasDeleting": true,
+      "responseStatus": 200,
+      "responseText": "{\"ok\":true}",
+      "beforeRelease": {
+        "dialogs": 1,
+        "heading": [
+          "Local by design.",
+          "Input capture",
+          "History and retention",
+          "Connection",
+          "Delete local history"
+        ]
+      },
+      "afterRelease": {
+        "dialogs": 1,
+        "heading": [
+          "Local by design.",
+          "Input capture",
+          "History and retention",
+          "Connection",
+          "Delete local history"
+        ],
+        "toast": [
+          "Local history deleted. New incoming requests will still be recorded."
+        ]
+      },
+      "pageErrors": []
+    }
+  ],
+  "browser": "153.0.8010.12"
+}

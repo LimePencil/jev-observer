@@ -1,0 +1,1004 @@
+{
+  "manifest": {
+    "head": "90e3cfb625d85b4279977a690903b7790468f7ed",
+    "head_store_sha256": "f5d9728c597d3443b7a41ca9e1694aced25493bd5f9e3e09d1f53c7e58e0f255",
+    "working_store_sha256": "ad2cfc590c45303c3d7104bacfd32ab9e10930a48867ac3d2930a8045a04f1b4",
+    "evidence": "Instrumented exact source; public API call; hook after parent SELECT allows separate writer thread to commit deletion/replacement. Not an unmodified release-binary race."
+  },
+  "results": [
+    {
+      "operation": "request",
+      "mutation": "delete",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079383,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079383,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079383,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [],
+        "answers": []
+      },
+      "after": null,
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "head",
+      "observed_parent_generation": "A",
+      "observed_answer_generations": [],
+      "observed_labels": []
+    },
+    {
+      "operation": "request",
+      "mutation": "replace",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079391,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079391,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079391,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "incorrect",
+            "timestamp": 1790074079393,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "B",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "after": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "B",
+        "timestamp": 1790074079393,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "incorrect",
+            "timestamp": 1790074079393,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "B",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "head",
+      "observed_parent_generation": "A",
+      "observed_answer_generations": [
+        "B"
+      ],
+      "observed_labels": [
+        "incorrect"
+      ]
+    },
+    {
+      "operation": "export-jsonl",
+      "mutation": "delete",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079399,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079399,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079399,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [],
+        "answers": []
+      },
+      "after": null,
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "head",
+      "observed_parent_generation": "A",
+      "observed_answer_generations": [],
+      "observed_labels": []
+    },
+    {
+      "operation": "export-jsonl",
+      "mutation": "replace",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079406,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079406,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079406,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "incorrect",
+            "timestamp": 1790074079409,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "B",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "after": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "B",
+        "timestamp": 1790074079408,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "incorrect",
+            "timestamp": 1790074079409,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "B",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "head",
+      "observed_parent_generation": "A",
+      "observed_answer_generations": [
+        "B"
+      ],
+      "observed_labels": [
+        "incorrect"
+      ]
+    },
+    {
+      "operation": "export-csv",
+      "mutation": "delete",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079414,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079415,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "csv": "id,timestamp,source,model,status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,event_kind\n\"race\",\"1790074079414\",\"independent\",\"test\",\"200\",\"\",\"\",\"\",\"\",\"\",\"0\",\"request\"\n"
+      },
+      "after": null,
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "head",
+      "observed_answer_count": "\"0\""
+    },
+    {
+      "operation": "export-csv",
+      "mutation": "replace",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079421,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079422,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "csv": "id,timestamp,source,model,status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,event_kind\n\"race\",\"1790074079421\",\"independent\",\"test\",\"200\",\"\",\"\",\"\",\"\",\"\",\"1\",\"request\"\n"
+      },
+      "after": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "B",
+        "timestamp": 1790074079424,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "incorrect",
+            "timestamp": 1790074079424,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "B",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "head",
+      "observed_answer_count": "\"1\""
+    },
+    {
+      "operation": "request",
+      "mutation": "delete",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079942,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079942,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079942,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079942,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "after": null,
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "working",
+      "observed_parent_generation": "A",
+      "observed_answer_generations": [
+        "A"
+      ],
+      "observed_labels": [
+        "correct"
+      ]
+    },
+    {
+      "operation": "request",
+      "mutation": "replace",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079950,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079950,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079950,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079950,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "after": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "B",
+        "timestamp": 1790074079952,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "incorrect",
+            "timestamp": 1790074079952,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "B",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "working",
+      "observed_parent_generation": "A",
+      "observed_answer_generations": [
+        "A"
+      ],
+      "observed_labels": [
+        "correct"
+      ]
+    },
+    {
+      "operation": "export-jsonl",
+      "mutation": "delete",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079958,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079958,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079958,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079958,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "after": null,
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "working",
+      "observed_parent_generation": "A",
+      "observed_answer_generations": [
+        "A"
+      ],
+      "observed_labels": [
+        "correct"
+      ]
+    },
+    {
+      "operation": "export-jsonl",
+      "mutation": "replace",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079965,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079966,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079965,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079966,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "after": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "B",
+        "timestamp": 1790074079968,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "incorrect",
+            "timestamp": 1790074079968,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "B",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "working",
+      "observed_parent_generation": "A",
+      "observed_answer_generations": [
+        "A"
+      ],
+      "observed_labels": [
+        "correct"
+      ]
+    },
+    {
+      "operation": "export-csv",
+      "mutation": "delete",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079974,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079974,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "csv": "id,timestamp,source,model,status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,event_kind\n\"race\",\"1790074079974\",\"independent\",\"test\",\"200\",\"\",\"\",\"\",\"\",\"\",\"1\",\"request\"\n"
+      },
+      "after": null,
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "working",
+      "observed_answer_count": "\"1\""
+    },
+    {
+      "operation": "export-csv",
+      "mutation": "replace",
+      "before": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "A",
+        "timestamp": 1790074079982,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "correct",
+            "timestamp": 1790074079982,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "A",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "observed": {
+        "csv": "id,timestamp,source,model,status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,event_kind\n\"race\",\"1790074079982\",\"independent\",\"test\",\"200\",\"\",\"\",\"\",\"\",\"\",\"1\",\"request\"\n"
+      },
+      "after": {
+        "schema_version": 1,
+        "id": "race",
+        "generation": "B",
+        "timestamp": 1790074079984,
+        "source": "independent",
+        "model": "test",
+        "status": 200,
+        "capture_complete": true,
+        "labels": [
+          {
+            "key": "flag",
+            "label": "incorrect",
+            "timestamp": 1790074079984,
+            "source": "independent"
+          }
+        ],
+        "answers": [
+          {
+            "key": "flag",
+            "group_id": "g",
+            "kind": "noul",
+            "valid": true,
+            "value": 0.7,
+            "generation": "B",
+            "definition_id": "definition",
+            "presentation_id": "presentation",
+            "definition": {
+              "type": "noul",
+              "instructions": "Flag?"
+            }
+          }
+        ]
+      },
+      "completed_read_checkpoint_busy": 0,
+      "hook_consumed": true,
+      "version": "working",
+      "observed_answer_count": "\"1\""
+    }
+  ]
+}

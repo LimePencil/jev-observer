@@ -1,0 +1,22 @@
+{
+  "repositories": 100,
+  "github_declared_forks": 0,
+  "collected_files": 531,
+  "discovery_categories": {
+    "SDKs and developer tools": 9,
+    "Agents, coding, and guardrails": 26,
+    "Context and compaction": 7,
+    "Browser and computer use": 9,
+    "Routing, data, and workflows": 23,
+    "Games, robotics, and interactive demos": 10,
+    "Media and creative tools": 6,
+    "Evaluation and calibration": 10
+  },
+  "primary_patterns": {
+    "rules": 20,
+    "candidates": 26,
+    "indexed": 18,
+    "fixed": 29,
+    "study": 7
+  }
+}

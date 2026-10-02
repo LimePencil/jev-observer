@@ -1,0 +1,154 @@
+{
+  "date": "2026-09-22T06:05:35.711Z",
+  "binary": "<repo>/target/release/jev-observer",
+  "binary_sha256": "d4eed69df09d645520d86bacb7f4252b83e1000450073c367f0920dd52090261",
+  "database_directory": "<repo>/.jev-observer/benchmarks/run-CjsBrt",
+  "node": "v22.22.1",
+  "platform": "linux 7.0.0-31-generic x64",
+  "cpu": "Intel(R) N100",
+  "logical_cpus": 4,
+  "total_memory_gib": 7.0009613037109375,
+  "fixture": {
+    "small_bytes": 9764,
+    "large_bytes": 131744,
+    "large_fraction": 0.1,
+    "questions": [
+      3,
+      20
+    ],
+    "upstream_delay_ms": 25
+  },
+  "baseline": {
+    "label": "direct mock baseline",
+    "target_rps": 500,
+    "offered": 15000,
+    "completed": 15000,
+    "errors": 0,
+    "expected_answers": 70500,
+    "elapsed_seconds": 30.024560840000003,
+    "achieved_rps": 499.59098752300014,
+    "latency_ms": {
+      "p50": 25.450197999998636,
+      "p95": 26.446484000000055,
+      "p99": 27.059583000000202,
+      "max": 34.34911200000002
+    },
+    "first_byte_ms": {
+      "p50": 25.443978999999672,
+      "p95": 26.436788000000035,
+      "p99": 27.044895999999426
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.1793280000001687,
+      "p99": 1.7665120000000343
+    },
+    "dashboard": {
+      "queries": 0,
+      "errors": [],
+      "p95_ms": null
+    }
+  },
+  "sustained": {
+    "label": "proxy with capture and dashboard",
+    "target_rps": 500,
+    "offered": 30000,
+    "completed": 30000,
+    "errors": 0,
+    "expected_answers": 141000,
+    "elapsed_seconds": 60.02559742300001,
+    "achieved_rps": 499.78677910675657,
+    "latency_ms": {
+      "p50": 26.267343999999866,
+      "p95": 33.25280400000338,
+      "p99": 40.26003800000035,
+      "max": 60.94306300000608
+    },
+    "first_byte_ms": {
+      "p50": 26.25956999999471,
+      "p95": 33.236041999996814,
+      "p99": 40.23812100000214
+    },
+    "scheduling_lateness_ms": {
+      "p95": 2.6526899999953457,
+      "p99": 5.4771639999962645
+    },
+    "dashboard": {
+      "queries": 43,
+      "errors": [],
+      "p95_ms": 888.5385899999965
+    }
+  },
+  "burst": {
+    "label": "proxy burst with capture and dashboard",
+    "target_rps": 1000,
+    "offered": 10000,
+    "completed": 10000,
+    "errors": 0,
+    "expected_answers": 47000,
+    "elapsed_seconds": 10.024920916999996,
+    "achieved_rps": 997.5141033823284,
+    "latency_ms": {
+      "p50": 26.066244999994524,
+      "p95": 27.605297000001883,
+      "p99": 29.82732899999246,
+      "max": 38.52161900000647
+    },
+    "first_byte_ms": {
+      "p50": 26.060186999995494,
+      "p95": 27.59762000000046,
+      "p99": 29.822977000003448
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.6249430000025313,
+      "p99": 1.8453900000022259
+    },
+    "dashboard": {
+      "queries": 5,
+      "errors": [],
+      "p95_ms": 1199.5583100000076
+    }
+  },
+  "peak_rss_mib": 45.91015625,
+  "health": {
+    "forwarded": 40000,
+    "captured": 40000,
+    "persisted": 40000,
+    "dropped": 0,
+    "truncated": 0,
+    "write_failures": 0,
+    "queue_depth": 0,
+    "queued_bytes": 0,
+    "last_persisted_at": 1790057134476,
+    "last_gap_at": null,
+    "lag_ms": 0,
+    "last_batch_lag_ms": 68,
+    "active_captures": 0,
+    "capture_limit": 262144,
+    "capture_slots": 256,
+    "scope": "current process",
+    "stopping": false
+  },
+  "summary": {
+    "request_count": 40000,
+    "answer_count": 188000,
+    "error_count": 0,
+    "input_tokens": 40000000,
+    "output_tokens": 1600000,
+    "cost_usd": null,
+    "cost_known_requests": 0,
+    "sample_count": 0,
+    "incomplete_count": 0,
+    "action_count": 0,
+    "p50_ms": 25.639611,
+    "p95_ms": 29.507719
+  },
+  "counts_complete": true,
+  "throughput_passed": true,
+  "complete": true,
+  "notes": [
+    "Local mock only; does not measure provider latency or paid API capacity.",
+    "Exact body/status and retained-count checks enabled.",
+    "Latency distributions are independent runs; subtracting percentiles does not produce a per-request overhead percentile.",
+    "Host was shared with build/editor workloads; report hardware and conditions with any comparison."
+  ]
+}

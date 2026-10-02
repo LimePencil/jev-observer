@@ -1,0 +1,119 @@
+{
+  "recorded_date": "2026-09-22",
+  "description": "Original SHA-256 hashes and byte counts identify the synthetic evidence and scripts recorded before packaging. Public copies replace the original absolute checkout prefix with <repo>; published_sha256 and published_bytes identify those normalized copies. Only path text changes; recorded observations are preserved. Scripts retain their documented reproduction adaptations. The historical application comparisons have not been rerun.",
+  "files": {
+    "backend/evidence.json": {
+      "original_sha256": "2ce871382299a281459aa7205f1ce740eca44b6970c881909f1df9b393d99043",
+      "original_bytes": 325221,
+      "unchanged": false,
+      "privacy_normalized": true,
+      "published_sha256": "9b5708349c0fbc4269dbf53a7c5b191eef70068950df7b8bb1ded80904b8a6ab",
+      "published_bytes": 325113
+    },
+    "backend/reproduce_backend.py": {
+      "original_sha256": "3605edafc4853deefb5936ce747c178769b48d5fd41f28b0323053ad7b42839f",
+      "original_bytes": 17666,
+      "unchanged": false
+    },
+    "storage/groups-results.json": {
+      "original_sha256": "7cb36fb7ceefc5797fddffc381254d43a156808e67e3cfe29413fb707699c745",
+      "original_bytes": 11186,
+      "unchanged": true
+    },
+    "storage/http-races-results.json": {
+      "original_sha256": "de62fe0e7f663f37dfd8931806d853ad1b47980a09b071f1bce53a8057c2d8bd",
+      "original_bytes": 50023,
+      "unchanged": true
+    },
+    "storage/snapshots-results.json": {
+      "original_sha256": "a75aa23a2d095720bc1937c9cd86e46f09fec14b7714ef5560b4fdd0210b5d61",
+      "original_bytes": 26532,
+      "unchanged": true
+    },
+    "storage/check_groups.py": {
+      "original_sha256": "061b6f7195bb9e4c1fd1e2723b98939568daf567c63428120a6787a182eec7e2",
+      "original_bytes": 5350,
+      "unchanged": false
+    },
+    "storage/check_http_races.py": {
+      "original_sha256": "d9effd4908bde2b6be76349a64b8353b981c4405e5832271561ca387441f2a2d",
+      "original_bytes": 6305,
+      "unchanged": false
+    },
+    "storage/check_snapshots.py": {
+      "original_sha256": "086fd872f15152d39969f53c8935a406f4c6ce1f7c6e9ebbddce88462dcd94ce",
+      "original_bytes": 6271,
+      "unchanged": false
+    },
+    "ui/results.json": {
+      "original_sha256": "fb64b7da6a2a9a68b2c7cc35142fab7b98929744b0775316dda64ab5212de79f",
+      "original_bytes": 10436,
+      "unchanged": true
+    },
+    "ui/source-manifest.json": {
+      "original_sha256": "876042670fbeaf6788f8cfab62021e2520b1fc33cc4809e0383b62e31c9a691e",
+      "original_bytes": 5334,
+      "unchanged": true
+    },
+    "ui/reproduce.mjs": {
+      "original_sha256": "be778a154b6e26231458f3d406e101bacc692db2e3a18db01f4780137dbb5a70",
+      "original_bytes": 9071,
+      "unchanged": false
+    },
+    "ui/verify-results.py": {
+      "original_sha256": "2b527bdeb18aea2597a7769eb526aa9c5bc79b007530cdf57485e2692f17ef5d",
+      "original_bytes": 1860,
+      "unchanged": false
+    },
+    "test-quality/existing-regression-with-fix-removed.log": {
+      "original_sha256": "0685592d27a3f31cf81b1ac5d9fca06dfabbf8f2e903084cd990f984dc4c7dce",
+      "original_bytes": 522,
+      "unchanged": false,
+      "privacy_normalized": true,
+      "published_sha256": "7534ec077adf6693ece48afd523a94642451ac529ef1384099c7c86b85c7e28a",
+      "published_bytes": 495
+    },
+    "test-quality/public-snapshot-regression/results.json": {
+      "original_sha256": "af52e1771896c33b8357c3c260ba717d3806fb80cf879677c4690edfd5daa5aa",
+      "original_bytes": 10035,
+      "unchanged": false,
+      "privacy_normalized": true,
+      "published_sha256": "92d4eee7c65734167122fb4e721c5363967a1a34ff3ec3a95c0e410fd36c49e5",
+      "published_bytes": 8847
+    },
+    "test-quality/public-snapshot-regression/check_mutations.py": {
+      "original_sha256": "6b1b7b8c2e0912095de43af6c782f6891fbbd85d67c907a047a33b6af22f9b81",
+      "original_bytes": 5556,
+      "unchanged": false
+    },
+    "test-quality/public-snapshot-regression/current.test.log": {
+      "original_sha256": "f99a4e0064ebc2ab1df84b9411f87d5364b1934aed274801210793f1e95cfbf0",
+      "original_bytes": 540,
+      "unchanged": true
+    },
+    "test-quality/public-snapshot-regression/without_request_transaction.test.log": {
+      "original_sha256": "f8d10226f4c3f89be19d746c04491ebe06279ba2b96a3301ae13ff2b89413b37",
+      "original_bytes": 4347,
+      "unchanged": false,
+      "privacy_normalized": true,
+      "published_sha256": "7e96578907df4700de8c5e350ee749c616a61d49a8b3845647a10d9ad8a052f4",
+      "published_bytes": 4293
+    },
+    "test-quality/public-snapshot-regression/without_export_transaction.test.log": {
+      "original_sha256": "96ac61c4f226b39b3be7918995b2dec6584b5d891393c5d95800bd1be2246029",
+      "original_bytes": 5286,
+      "unchanged": false,
+      "privacy_normalized": true,
+      "published_sha256": "39332e4b85b6deaa2f340ffbf03e2b49d889903f4147e7e4737b4dfa246d75d6",
+      "published_bytes": 5205
+    },
+    "test-quality/public-snapshot-regression/without_both_transactions.test.log": {
+      "original_sha256": "050d791230fa913903e6d478f861367ed202e13650aa2b89ff660279b14fcd16",
+      "original_bytes": 8982,
+      "unchanged": false,
+      "privacy_normalized": true,
+      "published_sha256": "c9d292df512e3aa2e480e2890906cd216b368d4a3ebcca056011ecf0dca73614",
+      "published_bytes": 8847
+    }
+  }
+}

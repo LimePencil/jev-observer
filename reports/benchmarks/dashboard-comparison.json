@@ -1,0 +1,489 @@
+{
+  "started_at": "2026-09-22T07:08:06.748251+00:00",
+  "environment": {
+    "python": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+    "sqlite": "3.46.1",
+    "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.43",
+    "cpu": "Intel(R) N100",
+    "logical_cpus": 4,
+    "load_average_at_start": [
+      0.70654296875,
+      1.34765625,
+      1.19677734375
+    ],
+    "total_memory_bytes": 7517224960
+  },
+  "fixture": "<repo>/.jev-observer/benchmarks/run-DPpUSp/bench.sqlite",
+  "excluded_top_level_fields": [
+    "generated_at",
+    "health"
+  ],
+  "complete": true,
+  "notes": [
+    "Binaries run sequentially on independent SQLite backup copies; no provider requests are sent.",
+    "Only object-key order is normalized. Array order and all remaining JSON values compare exactly; no floating-point tolerance.",
+    "Timings include loopback HTTP response transfer and exclude client JSON parsing and hashing. All-history gets one warm-up and five samples by default; other filters get one query each.",
+    "Each server uses its current clock. Rows crossing 1h/24h boundaries during the run can cause a real comparison failure; no timestamp fields are silently removed.",
+    "The source database and WAL are byte-staged before SQLite backup, preventing writes even to original shared-memory sidecars."
+  ],
+  "source_before": {
+    "database": {
+      "bytes": 997494784,
+      "mtime_ns": 1790060583238258591,
+      "sha256": "ab3c145e915376a8bc3445905d7f6d8ea604c67631bb8317f13c448c1f42127c"
+    },
+    "-wal": null,
+    "-shm": null
+  },
+  "fixture_counts": {
+    "records": 150000,
+    "requests": 150000,
+    "actions": 0,
+    "oldest_timestamp": 1790060283091,
+    "latest_timestamp": 1790060343091,
+    "answers": 705000,
+    "groups": 20,
+    "labels": 0
+  },
+  "baseline": {
+    "binary": "<repo>/.jev-observer/baseline-observer",
+    "binary_sha256": "15433574df562d6b87b995008b04c3e0496326d5631efb543afb98559c8a65f7",
+    "database_sha256_before_start": "396a4855c6874bd429e4a944a83f93a3bbec10a18f9b80a2ec12f0bb7eb0633a",
+    "command": [
+      "<repo>/.jev-observer/baseline-observer",
+      "--port",
+      "35063",
+      "--db",
+      "<repo>/.jev-observer/dashboard-comparison-8euiufz7/baseline.sqlite",
+      "--upstream",
+      "http://127.0.0.1:9/v1/systemone",
+      "--retention-days",
+      "7",
+      "--max-records",
+      "150001"
+    ],
+    "started_at": "2026-09-22T07:08:17.258334+00:00",
+    "filters": {
+      "all": {
+        "parameters": {
+          "window": "all"
+        },
+        "samples_ms": [
+          2211.915,
+          2442.959,
+          2143.597,
+          2225.591,
+          2186.321
+        ],
+        "response_sha256": [
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925"
+        ],
+        "warmup_ms": 3325.416338,
+        "warmup_sha256": "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+        "median_ms": 2211.915,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "24h": {
+        "parameters": {
+          "window": "24h"
+        },
+        "samples_ms": [
+          2373.897
+        ],
+        "response_sha256": [
+          "e0507f8ac26d53757e88d16398396a8414dcbd5cd9ff8e405e6184c4541c2aff"
+        ],
+        "median_ms": 2373.897,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "1h": {
+        "parameters": {
+          "window": "1h"
+        },
+        "samples_ms": [
+          2443.806
+        ],
+        "response_sha256": [
+          "a5ef4636ddfaf02b8907d75f77cc260d46deadf01d40a7bc9ac9893d5ac45f0b"
+        ],
+        "median_ms": 2443.806,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "source": {
+        "parameters": {
+          "window": "all",
+          "source": "benchmark"
+        },
+        "samples_ms": [
+          2376.656
+        ],
+        "response_sha256": [
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925"
+        ],
+        "median_ms": 2376.656,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "model": {
+        "parameters": {
+          "window": "all",
+          "model": "jev-benchmark-1"
+        },
+        "samples_ms": [
+          2383.25
+        ],
+        "response_sha256": [
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925"
+        ],
+        "median_ms": 2383.25,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "search": {
+        "parameters": {
+          "window": "all",
+          "search": "urgency"
+        },
+        "samples_ms": [
+          9877.681
+        ],
+        "response_sha256": [
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925"
+        ],
+        "median_ms": 9877.681,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "error": {
+        "parameters": {
+          "window": "all",
+          "status": "error"
+        },
+        "samples_ms": [
+          668.692
+        ],
+        "response_sha256": [
+          "5149d26b9bbffd11bc2f5ffd2fea843c6003963101495278a7390bee28200095"
+        ],
+        "median_ms": 668.692,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 0,
+          "action_count": 0,
+          "answer_count": 0,
+          "error_count": 0,
+          "groups": 0,
+          "request_feed": 0
+        }
+      }
+    },
+    "no_forwarded_calls": true,
+    "fixture_counts_preserved": true,
+    "finished_at": "2026-09-22T07:08:53.373019+00:00",
+    "binary_unchanged": true
+  },
+  "candidate": {
+    "binary": "<repo>/target/release/jev-observer",
+    "binary_sha256": "eadc2bf4eca4f8edec0710de6a0a10394dd1f4999bd0c7d72049eee7d7eec71f",
+    "database_sha256_before_start": "396a4855c6874bd429e4a944a83f93a3bbec10a18f9b80a2ec12f0bb7eb0633a",
+    "command": [
+      "<repo>/target/release/jev-observer",
+      "--port",
+      "59663",
+      "--db",
+      "<repo>/.jev-observer/dashboard-comparison-8euiufz7/candidate.sqlite",
+      "--upstream",
+      "http://127.0.0.1:9/v1/systemone",
+      "--retention-days",
+      "7",
+      "--max-records",
+      "150001"
+    ],
+    "started_at": "2026-09-22T07:08:54.637399+00:00",
+    "filters": {
+      "all": {
+        "parameters": {
+          "window": "all"
+        },
+        "samples_ms": [
+          1517.45,
+          2998.908,
+          2587.238,
+          1580.241,
+          1662.011
+        ],
+        "response_sha256": [
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925"
+        ],
+        "warmup_ms": 2901.813417,
+        "warmup_sha256": "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925",
+        "median_ms": 1662.011,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "24h": {
+        "parameters": {
+          "window": "24h"
+        },
+        "samples_ms": [
+          1540.144
+        ],
+        "response_sha256": [
+          "e0507f8ac26d53757e88d16398396a8414dcbd5cd9ff8e405e6184c4541c2aff"
+        ],
+        "median_ms": 1540.144,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "1h": {
+        "parameters": {
+          "window": "1h"
+        },
+        "samples_ms": [
+          1450.828
+        ],
+        "response_sha256": [
+          "a5ef4636ddfaf02b8907d75f77cc260d46deadf01d40a7bc9ac9893d5ac45f0b"
+        ],
+        "median_ms": 1450.828,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "source": {
+        "parameters": {
+          "window": "all",
+          "source": "benchmark"
+        },
+        "samples_ms": [
+          1485.211
+        ],
+        "response_sha256": [
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925"
+        ],
+        "median_ms": 1485.211,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "model": {
+        "parameters": {
+          "window": "all",
+          "model": "jev-benchmark-1"
+        },
+        "samples_ms": [
+          1480.375
+        ],
+        "response_sha256": [
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925"
+        ],
+        "median_ms": 1480.375,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "search": {
+        "parameters": {
+          "window": "all",
+          "search": "urgency"
+        },
+        "samples_ms": [
+          4694.1
+        ],
+        "response_sha256": [
+          "9bd591cde79841377c3ad2b61f18b49d4abe43d055e4835fcbed10850d007925"
+        ],
+        "median_ms": 4694.1,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 150000,
+          "action_count": 0,
+          "answer_count": 705000,
+          "error_count": 0,
+          "groups": 20,
+          "request_feed": 100
+        }
+      },
+      "error": {
+        "parameters": {
+          "window": "all",
+          "status": "error"
+        },
+        "samples_ms": [
+          696.506
+        ],
+        "response_sha256": [
+          "5149d26b9bbffd11bc2f5ffd2fea843c6003963101495278a7390bee28200095"
+        ],
+        "median_ms": 696.506,
+        "stable_responses": true,
+        "counts": {
+          "request_count": 0,
+          "action_count": 0,
+          "answer_count": 0,
+          "error_count": 0,
+          "groups": 0,
+          "request_feed": 0
+        }
+      }
+    },
+    "no_forwarded_calls": true,
+    "fixture_counts_preserved": true,
+    "finished_at": "2026-09-22T07:09:21.060091+00:00",
+    "binary_unchanged": true
+  },
+  "comparisons": {
+    "all": {
+      "equal": true,
+      "stable_responses": true,
+      "baseline_median_ms": 2211.915,
+      "candidate_median_ms": 1662.011,
+      "speedup": 1.331,
+      "first_differences": []
+    },
+    "24h": {
+      "equal": true,
+      "stable_responses": true,
+      "baseline_median_ms": 2373.897,
+      "candidate_median_ms": 1540.144,
+      "speedup": 1.541,
+      "first_differences": []
+    },
+    "1h": {
+      "equal": true,
+      "stable_responses": true,
+      "baseline_median_ms": 2443.806,
+      "candidate_median_ms": 1450.828,
+      "speedup": 1.684,
+      "first_differences": []
+    },
+    "source": {
+      "equal": true,
+      "stable_responses": true,
+      "baseline_median_ms": 2376.656,
+      "candidate_median_ms": 1485.211,
+      "speedup": 1.6,
+      "first_differences": []
+    },
+    "model": {
+      "equal": true,
+      "stable_responses": true,
+      "baseline_median_ms": 2383.25,
+      "candidate_median_ms": 1480.375,
+      "speedup": 1.61,
+      "first_differences": []
+    },
+    "search": {
+      "equal": true,
+      "stable_responses": true,
+      "baseline_median_ms": 9877.681,
+      "candidate_median_ms": 4694.1,
+      "speedup": 2.104,
+      "first_differences": []
+    },
+    "error": {
+      "equal": true,
+      "stable_responses": true,
+      "baseline_median_ms": 668.692,
+      "candidate_median_ms": 696.506,
+      "speedup": 0.96,
+      "first_differences": []
+    }
+  },
+  "source_after": {
+    "database": {
+      "bytes": 997494784,
+      "mtime_ns": 1790060583238258591,
+      "sha256": "ab3c145e915376a8bc3445905d7f6d8ea604c67631bb8317f13c448c1f42127c"
+    },
+    "-wal": null,
+    "-shm": null
+  },
+  "source_unchanged": true,
+  "finished_at": "2026-09-22T07:09:22.559513+00:00"
+}

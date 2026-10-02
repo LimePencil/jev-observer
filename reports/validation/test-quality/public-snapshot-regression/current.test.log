@@ -1,0 +1,10 @@
+
+running 5 tests
+test store::tests::request_keeps_parent_snapshot_during_concurrent_label_edit ... ok
+test store::tests::csv_export_keeps_parent_snapshot_during_concurrent_delete ... ok
+test store::tests::request_keeps_parent_snapshot_during_concurrent_delete ... ok
+test store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_label_edit ... ok
+test store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_delete ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 44 filtered out; finished in 0.06s
+

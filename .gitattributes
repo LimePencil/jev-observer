@@ -1,0 +1,13 @@
+* text=auto eol=lf
+*.png binary
+*.webp binary
+*.pdf binary
+
+# Preserve upstream notice formatting verbatim.
+ui/public/licenses/* whitespace=-blank-at-eol,-blank-at-eof
+
+# Raw validation logs preserve the test runner's whitespace.
+reports/validation/test-quality/*.log whitespace=-blank-at-eof
+reports/validation/test-quality/public-snapshot-regression/*.log whitespace=-blank-at-eof
+reports/validation/deep-audit/*.log whitespace=-blank-at-eof
+reports/validation/deep-audit/out-of-order-before-fix.log whitespace=-blank-at-eof,-blank-at-eol

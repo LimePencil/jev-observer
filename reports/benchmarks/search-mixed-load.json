@@ -1,0 +1,1918 @@
+{
+  "date": "2026-09-22T07:48:06.896Z",
+  "binary": "<repo>/target/release/jev-observer",
+  "binary_sha256": "ec5f0ae0f5ca6ef1f8267bb5dc4560747096736638a01c67a6bd5ec445d7c047",
+  "database_directory": "<repo>/.jev-observer/benchmarks/run-Z27Hy1",
+  "node": "v22.22.1",
+  "platform": "linux 7.0.0-31-generic x64",
+  "cpu": "Intel(R) N100",
+  "logical_cpus": 4,
+  "total_memory_gib": 7.0009613037109375,
+  "dashboard_query": "/api/dashboard?window=all&search=urgency",
+  "host_telemetry": {
+    "start": {
+      "at": "2026-09-22T07:46:50.108Z",
+      "load_average": [
+        1.12,
+        1.45,
+        4.36
+      ],
+      "free_memory_mib": 5536.9453125,
+      "available_memory_mib": 5536.9453125,
+      "total_memory_mib": 7168.984375,
+      "swap_total_mib": 8191.9921875,
+      "swap_free_mib": 4938.64453125,
+      "swap_used_mib": 3253.34765625,
+      "runnable_tasks": 3,
+      "cpu_idle_percent": null,
+      "cpu_iowait_percent": null,
+      "cpu_busy_percent": null,
+      "cpu_sample_interval_ms": null,
+      "cpu_counter_source": "linux.proc.stat"
+    },
+    "end": {
+      "at": "2026-09-22T07:48:06.895Z",
+      "load_average": [
+        0.83,
+        1.29,
+        4.07
+      ],
+      "free_memory_mib": 5206.44921875,
+      "available_memory_mib": 5206.44921875,
+      "total_memory_mib": 7168.984375,
+      "swap_total_mib": 8191.9921875,
+      "swap_free_mib": 4946.97265625,
+      "swap_used_mib": 3245.01953125,
+      "runnable_tasks": 4,
+      "cpu_idle_percent": 65.69343065693431,
+      "cpu_iowait_percent": 0,
+      "cpu_busy_percent": 34.30656934306569,
+      "cpu_sample_interval_ms": 347.29928800000926,
+      "cpu_counter_source": "linux.proc.stat"
+    },
+    "sample_interval_ms": 1000,
+    "cpu_scope": "Whole host across all logical CPUs, including unrelated processes; CPU busy excludes idle and iowait. Short/initial sample intervals remain null."
+  },
+  "settings": {
+    "demo": false,
+    "capture_state": false,
+    "retention_days": 7,
+    "max_records": 2000000,
+    "capture_limit": 262144,
+    "capture_slots": 1024,
+    "queue_capacity": 1024,
+    "upstream": "http://127.0.0.1:39207/v1/systemone",
+    "version": "0.1.0",
+    "input_price_per_million": null,
+    "output_price_per_million": null
+  },
+  "fixture": {
+    "small_bytes": 9764,
+    "large_bytes": 131744,
+    "large_fraction": 0.1,
+    "questions": [
+      3,
+      20
+    ],
+    "upstream_delay_ms": 25
+  },
+  "baseline": {
+    "label": "direct mock baseline",
+    "target_rps": 500,
+    "offered": 2500,
+    "completed": 2500,
+    "errors": 0,
+    "failure_details": [],
+    "expected_answers": 11750,
+    "load_duration_seconds": 5,
+    "warmup_seconds": 2.5,
+    "elapsed_seconds": 5.024438581,
+    "achieved_rps": 497.56802868559134,
+    "steady_completed": 1250,
+    "steady_rps": 500,
+    "latency_ms": {
+      "p50": 25.67157700000007,
+      "p95": 26.489291999999978,
+      "p99": 26.859713000000056,
+      "max": 35.540430999999955
+    },
+    "first_byte_ms": {
+      "p50": 25.659482000000025,
+      "p95": 26.47272000000021,
+      "p99": 26.84326699999997
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.1416140000001178,
+      "p99": 1.2754829999998947
+    },
+    "dashboard": {
+      "queries": 0,
+      "errors": [],
+      "p95_ms": null
+    },
+    "host_telemetry": {
+      "start": {
+        "at": "2026-09-22T07:46:50.263Z",
+        "load_average": [
+          1.12,
+          1.45,
+          4.36
+        ],
+        "free_memory_mib": 5543.0390625,
+        "available_memory_mib": 5543.0390625,
+        "total_memory_mib": 7168.984375,
+        "swap_total_mib": 8191.9921875,
+        "swap_free_mib": 4938.64453125,
+        "swap_used_mib": 3253.34765625,
+        "runnable_tasks": 2,
+        "cpu_idle_percent": null,
+        "cpu_iowait_percent": null,
+        "cpu_busy_percent": null,
+        "cpu_sample_interval_ms": 153.49678600000001,
+        "cpu_counter_source": "linux.proc.stat"
+      },
+      "end": {
+        "at": "2026-09-22T07:46:55.289Z",
+        "load_average": [
+          1.03,
+          1.43,
+          4.33
+        ],
+        "free_memory_mib": 5525.85546875,
+        "available_memory_mib": 5525.85546875,
+        "total_memory_mib": 7168.984375,
+        "swap_total_mib": 8191.9921875,
+        "swap_free_mib": 4939.72265625,
+        "swap_used_mib": 3252.26953125,
+        "runnable_tasks": 4,
+        "cpu_idle_percent": null,
+        "cpu_iowait_percent": null,
+        "cpu_busy_percent": null,
+        "cpu_sample_interval_ms": 23.004313000000366,
+        "cpu_counter_source": "linux.proc.stat"
+      },
+      "sample_interval_ms": 1000,
+      "samples": [
+        {
+          "at": "2026-09-22T07:46:51.265Z",
+          "load_average": [
+            1.12,
+            1.45,
+            4.36
+          ],
+          "free_memory_mib": 5543.0625,
+          "available_memory_mib": 5543.0625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4938.64453125,
+          "swap_used_mib": 3253.34765625,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 87.37373737373737,
+          "cpu_iowait_percent": 0,
+          "cpu_busy_percent": 12.62626262626263,
+          "cpu_sample_interval_ms": 1003.204999,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:46:52.264Z",
+          "load_average": [
+            1.12,
+            1.45,
+            4.36
+          ],
+          "free_memory_mib": 5542.33203125,
+          "available_memory_mib": 5542.33203125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4938.64453125,
+          "swap_used_mib": 3253.34765625,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 89.34010152284264,
+          "cpu_iowait_percent": 0,
+          "cpu_busy_percent": 10.659898477157356,
+          "cpu_sample_interval_ms": 998.456005,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:46:53.264Z",
+          "load_average": [
+            1.12,
+            1.45,
+            4.36
+          ],
+          "free_memory_mib": 5541.59375,
+          "available_memory_mib": 5541.59375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4938.64453125,
+          "swap_used_mib": 3253.34765625,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 90.93198992443325,
+          "cpu_iowait_percent": 0,
+          "cpu_busy_percent": 9.068010075566747,
+          "cpu_sample_interval_ms": 999.8933339999999,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:46:54.264Z",
+          "load_average": [
+            1.12,
+            1.45,
+            4.36
+          ],
+          "free_memory_mib": 5535.6875,
+          "available_memory_mib": 5535.6875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4938.64453125,
+          "swap_used_mib": 3253.34765625,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 90.88607594936708,
+          "cpu_iowait_percent": 0,
+          "cpu_busy_percent": 9.113924050632917,
+          "cpu_sample_interval_ms": 1000.1951600000002,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:46:55.265Z",
+          "load_average": [
+            1.03,
+            1.43,
+            4.33
+          ],
+          "free_memory_mib": 5528.04296875,
+          "available_memory_mib": 5528.04296875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4939.5546875,
+          "swap_used_mib": 3252.4375,
+          "runnable_tasks": 11,
+          "cpu_idle_percent": 88.88888888888889,
+          "cpu_iowait_percent": 1.5151515151515151,
+          "cpu_busy_percent": 9.595959595959599,
+          "cpu_sample_interval_ms": 1000.9166049999994,
+          "cpu_counter_source": "linux.proc.stat"
+        }
+      ]
+    },
+    "collection_health_at_phase_end": null
+  },
+  "sustained": {
+    "label": "proxy with capture and dashboard",
+    "target_rps": 500,
+    "offered": 30000,
+    "completed": 30000,
+    "errors": 0,
+    "failure_details": [],
+    "expected_answers": 141000,
+    "load_duration_seconds": 60,
+    "warmup_seconds": 5,
+    "elapsed_seconds": 60.023935109,
+    "achieved_rps": 499.80062029458304,
+    "steady_completed": 27500,
+    "steady_rps": 500,
+    "latency_ms": {
+      "p50": 25.69515500000125,
+      "p95": 26.82495100000233,
+      "p99": 28.52983499999391,
+      "max": 37.54791099999966
+    },
+    "first_byte_ms": {
+      "p50": 25.68861199999992,
+      "p95": 26.815523999997822,
+      "p99": 28.518387999996776
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.259049000000232,
+      "p99": 1.6510659999985364
+    },
+    "dashboard": {
+      "queries": 50,
+      "errors": [],
+      "p95_ms": 426.4102730000013
+    },
+    "host_telemetry": {
+      "start": {
+        "at": "2026-09-22T07:46:55.298Z",
+        "load_average": [
+          1.03,
+          1.43,
+          4.33
+        ],
+        "free_memory_mib": 5525.85546875,
+        "available_memory_mib": 5525.85546875,
+        "total_memory_mib": 7168.984375,
+        "swap_total_mib": 8191.9921875,
+        "swap_free_mib": 4939.7734375,
+        "swap_used_mib": 3252.21875,
+        "runnable_tasks": 6,
+        "cpu_idle_percent": null,
+        "cpu_iowait_percent": null,
+        "cpu_busy_percent": null,
+        "cpu_sample_interval_ms": 9.302593999999772,
+        "cpu_counter_source": "linux.proc.stat"
+      },
+      "end": {
+        "at": "2026-09-22T07:47:55.648Z",
+        "load_average": [
+          0.79,
+          1.3,
+          4.11
+        ],
+        "free_memory_mib": 5187.640625,
+        "available_memory_mib": 5187.640625,
+        "total_memory_mib": 7168.984375,
+        "swap_total_mib": 8191.9921875,
+        "swap_free_mib": 4946.6328125,
+        "swap_used_mib": 3245.359375,
+        "runnable_tasks": 2,
+        "cpu_idle_percent": 97.79411764705883,
+        "cpu_iowait_percent": 0,
+        "cpu_busy_percent": 2.205882352941174,
+        "cpu_sample_interval_ms": 340.0833990000028,
+        "cpu_counter_source": "linux.proc.stat"
+      },
+      "sample_interval_ms": 1000,
+      "samples": [
+        {
+          "at": "2026-09-22T07:46:56.299Z",
+          "load_average": [
+            1.03,
+            1.43,
+            4.33
+          ],
+          "free_memory_mib": 5506.09765625,
+          "available_memory_mib": 5505.9296875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4942.859375,
+          "swap_used_mib": 3249.1328125,
+          "runnable_tasks": 13,
+          "cpu_idle_percent": 78.03030303030303,
+          "cpu_iowait_percent": 1.5151515151515151,
+          "cpu_busy_percent": 20.454545454545453,
+          "cpu_sample_interval_ms": 1005.7736380000006,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:46:57.299Z",
+          "load_average": [
+            1.03,
+            1.43,
+            4.33
+          ],
+          "free_memory_mib": 5494.78125,
+          "available_memory_mib": 5494.78125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4943.14453125,
+          "swap_used_mib": 3248.84765625,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 78.57142857142857,
+          "cpu_iowait_percent": 0.5102040816326531,
+          "cpu_busy_percent": 20.918367346938776,
+          "cpu_sample_interval_ms": 994.7890189999998,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:46:58.300Z",
+          "load_average": [
+            1.03,
+            1.43,
+            4.33
+          ],
+          "free_memory_mib": 5487.68359375,
+          "available_memory_mib": 5487.68359375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4943.14453125,
+          "swap_used_mib": 3248.84765625,
+          "runnable_tasks": 5,
+          "cpu_idle_percent": 83.54430379746836,
+          "cpu_iowait_percent": 1.0126582278481013,
+          "cpu_busy_percent": 15.44303797468354,
+          "cpu_sample_interval_ms": 1001.7931089999993,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:46:59.300Z",
+          "load_average": [
+            1.03,
+            1.43,
+            4.33
+          ],
+          "free_memory_mib": 5484.65625,
+          "available_memory_mib": 5484.65625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4943.14453125,
+          "swap_used_mib": 3248.84765625,
+          "runnable_tasks": 6,
+          "cpu_idle_percent": 84.34343434343434,
+          "cpu_iowait_percent": 0.25252525252525254,
+          "cpu_busy_percent": 15.404040404040408,
+          "cpu_sample_interval_ms": 1000.7606750000014,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:00.302Z",
+          "load_average": [
+            0.94,
+            1.41,
+            4.31
+          ],
+          "free_memory_mib": 5477.10546875,
+          "available_memory_mib": 5477.10546875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4943.19921875,
+          "swap_used_mib": 3248.79296875,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 83.54430379746836,
+          "cpu_iowait_percent": 0.5063291139240507,
+          "cpu_busy_percent": 15.949367088607591,
+          "cpu_sample_interval_ms": 1000.7545989999999,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:01.301Z",
+          "load_average": [
+            0.94,
+            1.41,
+            4.31
+          ],
+          "free_memory_mib": 5471.8828125,
+          "available_memory_mib": 5471.8828125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4943.19921875,
+          "swap_used_mib": 3248.79296875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 84.17085427135679,
+          "cpu_iowait_percent": 0.5025125628140703,
+          "cpu_busy_percent": 15.326633165829142,
+          "cpu_sample_interval_ms": 998.7620929999994,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:02.301Z",
+          "load_average": [
+            0.94,
+            1.41,
+            4.31
+          ],
+          "free_memory_mib": 5435.44921875,
+          "available_memory_mib": 5435.6171875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4943.26953125,
+          "swap_used_mib": 3248.72265625,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 75.51020408163265,
+          "cpu_iowait_percent": 0.5102040816326531,
+          "cpu_busy_percent": 23.979591836734695,
+          "cpu_sample_interval_ms": 1000.6477770000001,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:03.302Z",
+          "load_average": [
+            0.94,
+            1.41,
+            4.31
+          ],
+          "free_memory_mib": 5366.01171875,
+          "available_memory_mib": 5366.01171875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4943.2734375,
+          "swap_used_mib": 3248.71875,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 61.518987341772146,
+          "cpu_iowait_percent": 1.0126582278481013,
+          "cpu_busy_percent": 37.468354430379755,
+          "cpu_sample_interval_ms": 1000.557487,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:04.302Z",
+          "load_average": [
+            0.94,
+            1.41,
+            4.31
+          ],
+          "free_memory_mib": 5345.640625,
+          "available_memory_mib": 5344.80078125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.203125,
+          "swap_used_mib": 3247.7890625,
+          "runnable_tasks": 8,
+          "cpu_idle_percent": 64.79591836734694,
+          "cpu_iowait_percent": 0.5102040816326531,
+          "cpu_busy_percent": 34.69387755102041,
+          "cpu_sample_interval_ms": 1002.5385559999995,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:05.302Z",
+          "load_average": [
+            1.27,
+            1.47,
+            4.31
+          ],
+          "free_memory_mib": 5186.27734375,
+          "available_memory_mib": 5186.27734375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.2890625,
+          "swap_used_mib": 3247.703125,
+          "runnable_tasks": 4,
+          "cpu_idle_percent": 43.62244897959184,
+          "cpu_iowait_percent": 0.5102040816326531,
+          "cpu_busy_percent": 55.86734693877551,
+          "cpu_sample_interval_ms": 998.4473390000003,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:06.302Z",
+          "load_average": [
+            1.27,
+            1.47,
+            4.31
+          ],
+          "free_memory_mib": 5186.86328125,
+          "available_memory_mib": 5186.86328125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.29296875,
+          "swap_used_mib": 3247.69921875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 81.51898734177216,
+          "cpu_iowait_percent": 0.25316455696202533,
+          "cpu_busy_percent": 18.227848101265813,
+          "cpu_sample_interval_ms": 999.709413999999,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:07.303Z",
+          "load_average": [
+            1.27,
+            1.47,
+            4.31
+          ],
+          "free_memory_mib": 5182,
+          "available_memory_mib": 5182,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.37109375,
+          "swap_used_mib": 3247.62109375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 79.7979797979798,
+          "cpu_iowait_percent": 0.5050505050505051,
+          "cpu_busy_percent": 19.69696969696969,
+          "cpu_sample_interval_ms": 1001.010295,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:08.303Z",
+          "load_average": [
+            1.27,
+            1.47,
+            4.31
+          ],
+          "free_memory_mib": 5184.73046875,
+          "available_memory_mib": 5184.73046875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.37109375,
+          "swap_used_mib": 3247.62109375,
+          "runnable_tasks": 5,
+          "cpu_idle_percent": 82.66331658291458,
+          "cpu_iowait_percent": 0.25125628140703515,
+          "cpu_busy_percent": 17.08542713567839,
+          "cpu_sample_interval_ms": 1000.0308990000012,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:09.303Z",
+          "load_average": [
+            1.27,
+            1.47,
+            4.31
+          ],
+          "free_memory_mib": 5199.68359375,
+          "available_memory_mib": 5199.68359375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.37109375,
+          "swap_used_mib": 3247.62109375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 81.06060606060606,
+          "cpu_iowait_percent": 1.0101010101010102,
+          "cpu_busy_percent": 17.929292929292927,
+          "cpu_sample_interval_ms": 999.3089140000011,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:10.303Z",
+          "load_average": [
+            1.17,
+            1.44,
+            4.29
+          ],
+          "free_memory_mib": 5206.875,
+          "available_memory_mib": 5206.875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.3828125,
+          "swap_used_mib": 3247.609375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 81.26582278481013,
+          "cpu_iowait_percent": 0.25316455696202533,
+          "cpu_busy_percent": 18.481012658227847,
+          "cpu_sample_interval_ms": 1000.1594809999988,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:11.303Z",
+          "load_average": [
+            1.17,
+            1.44,
+            4.29
+          ],
+          "free_memory_mib": 5207.04296875,
+          "available_memory_mib": 5207.04296875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.44140625,
+          "swap_used_mib": 3247.55078125,
+          "runnable_tasks": 6,
+          "cpu_idle_percent": 72.22222222222221,
+          "cpu_iowait_percent": 0.5050505050505051,
+          "cpu_busy_percent": 27.27272727272728,
+          "cpu_sample_interval_ms": 1000.4045010000009,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:12.303Z",
+          "load_average": [
+            1.17,
+            1.44,
+            4.29
+          ],
+          "free_memory_mib": 5195.5078125,
+          "available_memory_mib": 5195.5078125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.44140625,
+          "swap_used_mib": 3247.55078125,
+          "runnable_tasks": 7,
+          "cpu_idle_percent": 72.51908396946564,
+          "cpu_iowait_percent": 0.2544529262086514,
+          "cpu_busy_percent": 27.22646310432571,
+          "cpu_sample_interval_ms": 1000.1679760000006,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:13.303Z",
+          "load_average": [
+            1.17,
+            1.44,
+            4.29
+          ],
+          "free_memory_mib": 5229.0234375,
+          "available_memory_mib": 5229.0390625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.44140625,
+          "swap_used_mib": 3247.55078125,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 75.06361323155217,
+          "cpu_iowait_percent": 0.5089058524173028,
+          "cpu_busy_percent": 24.42748091603053,
+          "cpu_sample_interval_ms": 999.0658149999981,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:14.303Z",
+          "load_average": [
+            1.17,
+            1.44,
+            4.29
+          ],
+          "free_memory_mib": 5235.30859375,
+          "available_memory_mib": 5235.30859375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.44140625,
+          "swap_used_mib": 3247.55078125,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 76.01010101010101,
+          "cpu_iowait_percent": 0.25252525252525254,
+          "cpu_busy_percent": 23.737373737373737,
+          "cpu_sample_interval_ms": 1000.5134920000019,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:15.303Z",
+          "load_average": [
+            1.15,
+            1.43,
+            4.27
+          ],
+          "free_memory_mib": 5233.88671875,
+          "available_memory_mib": 5233.88671875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.44140625,
+          "swap_used_mib": 3247.55078125,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 78.8265306122449,
+          "cpu_iowait_percent": 0.25510204081632654,
+          "cpu_busy_percent": 20.91836734693878,
+          "cpu_sample_interval_ms": 1000.0974859999988,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:16.303Z",
+          "load_average": [
+            1.15,
+            1.43,
+            4.27
+          ],
+          "free_memory_mib": 5243.578125,
+          "available_memory_mib": 5243.578125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.4765625,
+          "swap_used_mib": 3247.515625,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 72.72727272727273,
+          "cpu_iowait_percent": 0.5050505050505051,
+          "cpu_busy_percent": 26.76767676767676,
+          "cpu_sample_interval_ms": 999.3711259999982,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:17.303Z",
+          "load_average": [
+            1.15,
+            1.43,
+            4.27
+          ],
+          "free_memory_mib": 5249.76953125,
+          "available_memory_mib": 5249.76953125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4944.4765625,
+          "swap_used_mib": 3247.515625,
+          "runnable_tasks": 4,
+          "cpu_idle_percent": 79.59697732997482,
+          "cpu_iowait_percent": 0.2518891687657431,
+          "cpu_busy_percent": 20.151133501259437,
+          "cpu_sample_interval_ms": 1000.7697440000011,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:18.304Z",
+          "load_average": [
+            1.15,
+            1.43,
+            4.27
+          ],
+          "free_memory_mib": 5251.74609375,
+          "available_memory_mib": 5251.74609375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4945.33203125,
+          "swap_used_mib": 3246.66015625,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 72.15189873417721,
+          "cpu_iowait_percent": 0.7594936708860759,
+          "cpu_busy_percent": 27.088607594936715,
+          "cpu_sample_interval_ms": 1000.1820259999986,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:19.303Z",
+          "load_average": [
+            1.15,
+            1.43,
+            4.27
+          ],
+          "free_memory_mib": 5252.80078125,
+          "available_memory_mib": 5252.80078125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.0234375,
+          "swap_used_mib": 3245.96875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 78.37150127226464,
+          "cpu_iowait_percent": 1.2722646310432568,
+          "cpu_busy_percent": 20.356234096692106,
+          "cpu_sample_interval_ms": 999.3597990000017,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:20.303Z",
+          "load_average": [
+            1.06,
+            1.41,
+            4.25
+          ],
+          "free_memory_mib": 5255.5,
+          "available_memory_mib": 5255.5,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.0234375,
+          "swap_used_mib": 3245.96875,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 81.10831234256926,
+          "cpu_iowait_percent": 0.5037783375314862,
+          "cpu_busy_percent": 18.38790931989925,
+          "cpu_sample_interval_ms": 999.4812090000014,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:21.304Z",
+          "load_average": [
+            1.06,
+            1.41,
+            4.25
+          ],
+          "free_memory_mib": 5257.19921875,
+          "available_memory_mib": 5257.19921875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.0234375,
+          "swap_used_mib": 3245.96875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 82.57575757575758,
+          "cpu_iowait_percent": 0.5050505050505051,
+          "cpu_busy_percent": 16.919191919191917,
+          "cpu_sample_interval_ms": 1001.3064029999987,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:22.305Z",
+          "load_average": [
+            1.06,
+            1.41,
+            4.25
+          ],
+          "free_memory_mib": 5303.65625,
+          "available_memory_mib": 5303.65625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.0234375,
+          "swap_used_mib": 3245.96875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 78.48101265822784,
+          "cpu_iowait_percent": 0.25316455696202533,
+          "cpu_busy_percent": 21.265822784810133,
+          "cpu_sample_interval_ms": 1000.7003819999991,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:23.304Z",
+          "load_average": [
+            1.06,
+            1.41,
+            4.25
+          ],
+          "free_memory_mib": 5306.81640625,
+          "available_memory_mib": 5306.81640625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.0390625,
+          "swap_used_mib": 3245.953125,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 72.08121827411168,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 27.411167512690355,
+          "cpu_sample_interval_ms": 999.5094710000012,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:24.305Z",
+          "load_average": [
+            1.06,
+            1.41,
+            4.25
+          ],
+          "free_memory_mib": 5294.671875,
+          "available_memory_mib": 5294.671875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.04296875,
+          "swap_used_mib": 3245.94921875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 68.35443037974683,
+          "cpu_iowait_percent": 0.5063291139240507,
+          "cpu_busy_percent": 31.13924050632912,
+          "cpu_sample_interval_ms": 1000.4949330000018,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:25.304Z",
+          "load_average": [
+            1.06,
+            1.4,
+            4.23
+          ],
+          "free_memory_mib": 5290.17578125,
+          "available_memory_mib": 5290.17578125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.0546875,
+          "swap_used_mib": 3245.9375,
+          "runnable_tasks": 4,
+          "cpu_idle_percent": 74.30025445292621,
+          "cpu_iowait_percent": 0.2544529262086514,
+          "cpu_busy_percent": 25.44529262086514,
+          "cpu_sample_interval_ms": 999.9558049999978,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:26.304Z",
+          "load_average": [
+            1.06,
+            1.4,
+            4.23
+          ],
+          "free_memory_mib": 5296.05078125,
+          "available_memory_mib": 5296.05078125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.0703125,
+          "swap_used_mib": 3245.921875,
+          "runnable_tasks": 6,
+          "cpu_idle_percent": 73.46938775510205,
+          "cpu_iowait_percent": 0.5102040816326531,
+          "cpu_busy_percent": 26.020408163265298,
+          "cpu_sample_interval_ms": 1001.0014599999995,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:27.304Z",
+          "load_average": [
+            1.06,
+            1.4,
+            4.23
+          ],
+          "free_memory_mib": 5301.55859375,
+          "available_memory_mib": 5301.55859375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.0703125,
+          "swap_used_mib": 3245.921875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 82.74111675126903,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 16.751269035533,
+          "cpu_sample_interval_ms": 999.1366839999973,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:28.305Z",
+          "load_average": [
+            1.06,
+            1.4,
+            4.23
+          ],
+          "free_memory_mib": 5302.74609375,
+          "available_memory_mib": 5302.74609375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.0703125,
+          "swap_used_mib": 3245.921875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 78.22784810126582,
+          "cpu_iowait_percent": 0.25316455696202533,
+          "cpu_busy_percent": 21.518987341772153,
+          "cpu_sample_interval_ms": 1000.6969710000049,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:29.304Z",
+          "load_average": [
+            1.06,
+            1.4,
+            4.23
+          ],
+          "free_memory_mib": 5306.0703125,
+          "available_memory_mib": 5306.0703125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.078125,
+          "swap_used_mib": 3245.9140625,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 74.36548223350253,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 25.1269035532995,
+          "cpu_sample_interval_ms": 999.1119719999988,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:30.305Z",
+          "load_average": [
+            0.97,
+            1.38,
+            4.21
+          ],
+          "free_memory_mib": 5295.73046875,
+          "available_memory_mib": 5296.06640625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.3359375,
+          "swap_used_mib": 3245.65625,
+          "runnable_tasks": 21,
+          "cpu_idle_percent": 50.63291139240506,
+          "cpu_iowait_percent": 1.7721518987341773,
+          "cpu_busy_percent": 47.59493670886076,
+          "cpu_sample_interval_ms": 1004.3435610000015,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:31.304Z",
+          "load_average": [
+            0.97,
+            1.38,
+            4.21
+          ],
+          "free_memory_mib": 5217.45703125,
+          "available_memory_mib": 5217.45703125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.390625,
+          "swap_used_mib": 3245.6015625,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 37.628865979381445,
+          "cpu_iowait_percent": 5.154639175257731,
+          "cpu_busy_percent": 57.21649484536083,
+          "cpu_sample_interval_ms": 995.4664310000007,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:32.304Z",
+          "load_average": [
+            0.97,
+            1.38,
+            4.21
+          ],
+          "free_memory_mib": 5202.796875,
+          "available_memory_mib": 5202.796875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.39453125,
+          "swap_used_mib": 3245.59765625,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 61.61616161616161,
+          "cpu_iowait_percent": 3.535353535353535,
+          "cpu_busy_percent": 34.84848484848485,
+          "cpu_sample_interval_ms": 1001.4497589999955,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:33.304Z",
+          "load_average": [
+            0.97,
+            1.38,
+            4.21
+          ],
+          "free_memory_mib": 5176.50390625,
+          "available_memory_mib": 5176.50390625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.39453125,
+          "swap_used_mib": 3245.59765625,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 65.13994910941476,
+          "cpu_iowait_percent": 1.7811704834605597,
+          "cpu_busy_percent": 33.078880407124686,
+          "cpu_sample_interval_ms": 999.014737000005,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:34.304Z",
+          "load_average": [
+            0.97,
+            1.38,
+            4.21
+          ],
+          "free_memory_mib": 5179.55859375,
+          "available_memory_mib": 5179.55859375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.39453125,
+          "swap_used_mib": 3245.59765625,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 75.62814070351759,
+          "cpu_iowait_percent": 0.5025125628140703,
+          "cpu_busy_percent": 23.869346733668344,
+          "cpu_sample_interval_ms": 1000.0172349999993,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:35.304Z",
+          "load_average": [
+            0.89,
+            1.36,
+            4.19
+          ],
+          "free_memory_mib": 5180.2890625,
+          "available_memory_mib": 5180.2890625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.42578125,
+          "swap_used_mib": 3245.56640625,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 70.05076142131979,
+          "cpu_iowait_percent": 0.25380710659898476,
+          "cpu_busy_percent": 29.695431472081225,
+          "cpu_sample_interval_ms": 1000.084213999995,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:36.305Z",
+          "load_average": [
+            0.89,
+            1.36,
+            4.19
+          ],
+          "free_memory_mib": 5184.01171875,
+          "available_memory_mib": 5184.01171875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.4375,
+          "swap_used_mib": 3245.5546875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 82.99492385786802,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 16.497461928934015,
+          "cpu_sample_interval_ms": 1000.7888129999992,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:37.306Z",
+          "load_average": [
+            0.89,
+            1.36,
+            4.19
+          ],
+          "free_memory_mib": 5193.52734375,
+          "available_memory_mib": 5193.52734375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.4375,
+          "swap_used_mib": 3245.5546875,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 72.58883248730965,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 26.903553299492387,
+          "cpu_sample_interval_ms": 1000.3905310000046,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:38.306Z",
+          "load_average": [
+            0.89,
+            1.36,
+            4.19
+          ],
+          "free_memory_mib": 5201.95703125,
+          "available_memory_mib": 5201.95703125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.46484375,
+          "swap_used_mib": 3245.52734375,
+          "runnable_tasks": 17,
+          "cpu_idle_percent": 57.82828282828283,
+          "cpu_iowait_percent": 0.25252525252525254,
+          "cpu_busy_percent": 41.91919191919192,
+          "cpu_sample_interval_ms": 1002.6824899999992,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:39.307Z",
+          "load_average": [
+            0.89,
+            1.36,
+            4.19
+          ],
+          "free_memory_mib": 5200.18359375,
+          "available_memory_mib": 5200.18359375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.50390625,
+          "swap_used_mib": 3245.48828125,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 57.25190839694656,
+          "cpu_iowait_percent": 0.5089058524173028,
+          "cpu_busy_percent": 42.23918575063614,
+          "cpu_sample_interval_ms": 998.7730099999972,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:40.307Z",
+          "load_average": [
+            0.82,
+            1.33,
+            4.16
+          ],
+          "free_memory_mib": 5205.4140625,
+          "available_memory_mib": 5205.4140625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.53515625,
+          "swap_used_mib": 3245.45703125,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 69.72010178117048,
+          "cpu_iowait_percent": 0.5089058524173028,
+          "cpu_busy_percent": 29.770992366412212,
+          "cpu_sample_interval_ms": 999.7901750000019,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:41.306Z",
+          "load_average": [
+            0.82,
+            1.33,
+            4.16
+          ],
+          "free_memory_mib": 5210.8828125,
+          "available_memory_mib": 5210.8828125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.53515625,
+          "swap_used_mib": 3245.45703125,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 73.85786802030458,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 25.634517766497453,
+          "cpu_sample_interval_ms": 999.5101020000002,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:42.306Z",
+          "load_average": [
+            0.82,
+            1.33,
+            4.16
+          ],
+          "free_memory_mib": 5215.9765625,
+          "available_memory_mib": 5215.9765625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.546875,
+          "swap_used_mib": 3245.4453125,
+          "runnable_tasks": 6,
+          "cpu_idle_percent": 64.72081218274111,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 34.77157360406092,
+          "cpu_sample_interval_ms": 999.7485860000015,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:43.306Z",
+          "load_average": [
+            0.82,
+            1.33,
+            4.16
+          ],
+          "free_memory_mib": 5218.515625,
+          "available_memory_mib": 5218.515625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.546875,
+          "swap_used_mib": 3245.4453125,
+          "runnable_tasks": 8,
+          "cpu_idle_percent": 73.98989898989899,
+          "cpu_iowait_percent": 0.25252525252525254,
+          "cpu_busy_percent": 25.757575757575758,
+          "cpu_sample_interval_ms": 1000.3377760000003,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:44.306Z",
+          "load_average": [
+            0.82,
+            1.33,
+            4.16
+          ],
+          "free_memory_mib": 5227.859375,
+          "available_memory_mib": 5227.859375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.546875,
+          "swap_used_mib": 3245.4453125,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 80.35264483627203,
+          "cpu_iowait_percent": 0.5037783375314862,
+          "cpu_busy_percent": 19.14357682619648,
+          "cpu_sample_interval_ms": 1000.0839039999992,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:45.306Z",
+          "load_average": [
+            0.76,
+            1.31,
+            4.14
+          ],
+          "free_memory_mib": 5223.79296875,
+          "available_memory_mib": 5223.79296875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.546875,
+          "swap_used_mib": 3245.4453125,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 72.33502538071066,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 27.15736040609137,
+          "cpu_sample_interval_ms": 999.2952470000018,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:46.306Z",
+          "load_average": [
+            0.76,
+            1.31,
+            4.14
+          ],
+          "free_memory_mib": 5192.03515625,
+          "available_memory_mib": 5192.03515625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.5546875,
+          "swap_used_mib": 3245.4375,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 51.78571428571429,
+          "cpu_iowait_percent": 0.5102040816326531,
+          "cpu_busy_percent": 47.70408163265306,
+          "cpu_sample_interval_ms": 1000.6927460000006,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:47.307Z",
+          "load_average": [
+            0.76,
+            1.31,
+            4.14
+          ],
+          "free_memory_mib": 5165.5234375,
+          "available_memory_mib": 5165.5234375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.55859375,
+          "swap_used_mib": 3245.43359375,
+          "runnable_tasks": 6,
+          "cpu_idle_percent": 76.63316582914574,
+          "cpu_iowait_percent": 0.5025125628140703,
+          "cpu_busy_percent": 22.864321608040193,
+          "cpu_sample_interval_ms": 1001.5405549999996,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:48.306Z",
+          "load_average": [
+            0.76,
+            1.31,
+            4.14
+          ],
+          "free_memory_mib": 5159.76953125,
+          "available_memory_mib": 5159.76953125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.625,
+          "swap_used_mib": 3245.3671875,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 58.9873417721519,
+          "cpu_iowait_percent": 0.7594936708860759,
+          "cpu_busy_percent": 40.25316455696203,
+          "cpu_sample_interval_ms": 998.3470649999945,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:49.306Z",
+          "load_average": [
+            0.76,
+            1.31,
+            4.14
+          ],
+          "free_memory_mib": 5164.62890625,
+          "available_memory_mib": 5164.62890625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.625,
+          "swap_used_mib": 3245.3671875,
+          "runnable_tasks": 4,
+          "cpu_idle_percent": 69.79695431472082,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 29.69543147208121,
+          "cpu_sample_interval_ms": 999.6883120000057,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:50.306Z",
+          "load_average": [
+            0.86,
+            1.32,
+            4.13
+          ],
+          "free_memory_mib": 5179.7578125,
+          "available_memory_mib": 5179.7578125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.62890625,
+          "swap_used_mib": 3245.36328125,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 69.28934010152284,
+          "cpu_iowait_percent": 0.25380710659898476,
+          "cpu_busy_percent": 30.456852791878177,
+          "cpu_sample_interval_ms": 1000.0604559999992,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:51.307Z",
+          "load_average": [
+            0.86,
+            1.32,
+            4.13
+          ],
+          "free_memory_mib": 5187.078125,
+          "available_memory_mib": 5187.078125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.62890625,
+          "swap_used_mib": 3245.36328125,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 82.48730964467005,
+          "cpu_iowait_percent": 0.7614213197969544,
+          "cpu_busy_percent": 16.751269035532996,
+          "cpu_sample_interval_ms": 1000.8465559999968,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:52.308Z",
+          "load_average": [
+            0.86,
+            1.32,
+            4.13
+          ],
+          "free_memory_mib": 5189.12890625,
+          "available_memory_mib": 5189.12890625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.62890625,
+          "swap_used_mib": 3245.36328125,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 55.91939546599496,
+          "cpu_iowait_percent": 0.2518891687657431,
+          "cpu_busy_percent": 43.8287153652393,
+          "cpu_sample_interval_ms": 1000.5946719999993,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:53.307Z",
+          "load_average": [
+            0.86,
+            1.32,
+            4.13
+          ],
+          "free_memory_mib": 5186.5390625,
+          "available_memory_mib": 5186.5390625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6328125,
+          "swap_used_mib": 3245.359375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 65.48223350253807,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 34.01015228426397,
+          "cpu_sample_interval_ms": 999.5459350000019,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:54.307Z",
+          "load_average": [
+            0.86,
+            1.32,
+            4.13
+          ],
+          "free_memory_mib": 5183.203125,
+          "available_memory_mib": 5183.203125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6328125,
+          "swap_used_mib": 3245.359375,
+          "runnable_tasks": 6,
+          "cpu_idle_percent": 79.69543147208121,
+          "cpu_iowait_percent": 0.25380710659898476,
+          "cpu_busy_percent": 20.050761421319805,
+          "cpu_sample_interval_ms": 1000.3903060000011,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:55.307Z",
+          "load_average": [
+            0.79,
+            1.3,
+            4.11
+          ],
+          "free_memory_mib": 5187.640625,
+          "available_memory_mib": 5187.640625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6328125,
+          "swap_used_mib": 3245.359375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 75.1269035532995,
+          "cpu_iowait_percent": 0.5076142131979695,
+          "cpu_busy_percent": 24.365482233502533,
+          "cpu_sample_interval_ms": 999.6433039999974,
+          "cpu_counter_source": "linux.proc.stat"
+        }
+      ]
+    },
+    "collection_health_at_phase_end": {
+      "forwarded": 30000,
+      "captured": 30000,
+      "persisted": 30000,
+      "dropped": 0,
+      "truncated": 0,
+      "write_failures": 0,
+      "maintenance_failures": 0,
+      "maintenance_healthy": true,
+      "last_maintenance_at": 1790063275345,
+      "queue_depth": 0,
+      "queued_bytes": 0,
+      "last_persisted_at": 1790063275345,
+      "last_gap_at": null,
+      "lag_ms": 0,
+      "last_batch_lag_ms": 23,
+      "active_captures": 0,
+      "capture_limit": 262144,
+      "capture_slots": 1024,
+      "scope": "current process",
+      "stopping": false
+    }
+  },
+  "burst": {
+    "label": "proxy burst with capture and dashboard",
+    "target_rps": 1000,
+    "offered": 10000,
+    "completed": 10000,
+    "errors": 0,
+    "failure_details": [],
+    "expected_answers": 47000,
+    "load_duration_seconds": 10,
+    "warmup_seconds": 5,
+    "elapsed_seconds": 10.025267433999995,
+    "achieved_rps": 997.4796249410463,
+    "steady_completed": 5002,
+    "steady_rps": 1000.4,
+    "latency_ms": {
+      "p50": 25.959153999996488,
+      "p95": 27.981608999994933,
+      "p99": 31.056930999999167,
+      "max": 41.66031500000099
+    },
+    "first_byte_ms": {
+      "p50": 25.95343199999479,
+      "p95": 27.977196000007098,
+      "p99": 31.04820099999779
+    },
+    "scheduling_lateness_ms": {
+      "p95": 1.5082429999893066,
+      "p99": 1.8867360000003828
+    },
+    "dashboard": {
+      "queries": 7,
+      "errors": [],
+      "p95_ms": 626.8577679999871
+    },
+    "host_telemetry": {
+      "start": {
+        "at": "2026-09-22T07:47:55.739Z",
+        "load_average": [
+          0.79,
+          1.3,
+          4.11
+        ],
+        "free_memory_mib": 5187.640625,
+        "available_memory_mib": 5187.640625,
+        "total_memory_mib": 7168.984375,
+        "swap_total_mib": 8191.9921875,
+        "swap_free_mib": 4946.6328125,
+        "swap_used_mib": 3245.359375,
+        "runnable_tasks": 2,
+        "cpu_idle_percent": null,
+        "cpu_iowait_percent": null,
+        "cpu_busy_percent": null,
+        "cpu_sample_interval_ms": 91.47629500000039,
+        "cpu_counter_source": "linux.proc.stat"
+      },
+      "end": {
+        "at": "2026-09-22T07:48:06.548Z",
+        "load_average": [
+          0.83,
+          1.29,
+          4.07
+        ],
+        "free_memory_mib": 5212.140625,
+        "available_memory_mib": 5212.140625,
+        "total_memory_mib": 7168.984375,
+        "swap_total_mib": 8191.9921875,
+        "swap_free_mib": 4946.97265625,
+        "swap_used_mib": 3245.01953125,
+        "runnable_tasks": 3,
+        "cpu_idle_percent": 92.83489096573209,
+        "cpu_iowait_percent": 0.3115264797507788,
+        "cpu_busy_percent": 6.853582554517136,
+        "cpu_sample_interval_ms": 799.5659909999958,
+        "cpu_counter_source": "linux.proc.stat"
+      },
+      "sample_interval_ms": 1000,
+      "samples": [
+        {
+          "at": "2026-09-22T07:47:56.740Z",
+          "load_average": [
+            0.79,
+            1.3,
+            4.11
+          ],
+          "free_memory_mib": 5188.8515625,
+          "available_memory_mib": 5188.8515625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6328125,
+          "swap_used_mib": 3245.359375,
+          "runnable_tasks": 3,
+          "cpu_idle_percent": 58.43828715365239,
+          "cpu_iowait_percent": 0.7556675062972292,
+          "cpu_busy_percent": 40.80604534005038,
+          "cpu_sample_interval_ms": 1002.5921779999917,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:57.740Z",
+          "load_average": [
+            0.79,
+            1.3,
+            4.11
+          ],
+          "free_memory_mib": 5190.453125,
+          "available_memory_mib": 5190.453125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6328125,
+          "swap_used_mib": 3245.359375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 61.46095717884131,
+          "cpu_iowait_percent": 0.2518891687657431,
+          "cpu_busy_percent": 38.287153652392945,
+          "cpu_sample_interval_ms": 999.84999100001,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:58.741Z",
+          "load_average": [
+            0.79,
+            1.3,
+            4.11
+          ],
+          "free_memory_mib": 5188.23046875,
+          "available_memory_mib": 5188.23046875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6328125,
+          "swap_used_mib": 3245.359375,
+          "runnable_tasks": 4,
+          "cpu_idle_percent": 68.5929648241206,
+          "cpu_iowait_percent": 1.0050251256281406,
+          "cpu_busy_percent": 30.40201005025126,
+          "cpu_sample_interval_ms": 1001.0977799999964,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:47:59.740Z",
+          "load_average": [
+            0.79,
+            1.3,
+            4.11
+          ],
+          "free_memory_mib": 5190.90625,
+          "available_memory_mib": 5190.90625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6328125,
+          "swap_used_mib": 3245.359375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 60.60606060606061,
+          "cpu_iowait_percent": 0.5050505050505051,
+          "cpu_busy_percent": 38.888888888888886,
+          "cpu_sample_interval_ms": 999.8743379999942,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:48:00.741Z",
+          "load_average": [
+            0.72,
+            1.28,
+            4.08
+          ],
+          "free_memory_mib": 5187.734375,
+          "available_memory_mib": 5187.734375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6328125,
+          "swap_used_mib": 3245.359375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 56.99745547073791,
+          "cpu_iowait_percent": 0.2544529262086514,
+          "cpu_busy_percent": 42.74809160305344,
+          "cpu_sample_interval_ms": 1000.72185300001,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:48:01.740Z",
+          "load_average": [
+            0.72,
+            1.28,
+            4.08
+          ],
+          "free_memory_mib": 5190.06640625,
+          "available_memory_mib": 5190.06640625,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6328125,
+          "swap_used_mib": 3245.359375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 72.9113924050633,
+          "cpu_iowait_percent": 0.7594936708860759,
+          "cpu_busy_percent": 26.329113924050628,
+          "cpu_sample_interval_ms": 997.0339089999907,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:48:02.741Z",
+          "load_average": [
+            0.72,
+            1.28,
+            4.08
+          ],
+          "free_memory_mib": 5175.88671875,
+          "available_memory_mib": 5175.88671875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.6484375,
+          "swap_used_mib": 3245.34375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 50.12658227848101,
+          "cpu_iowait_percent": 0.5063291139240507,
+          "cpu_busy_percent": 49.36708860759494,
+          "cpu_sample_interval_ms": 1002.2131770000124,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:48:03.741Z",
+          "load_average": [
+            0.72,
+            1.28,
+            4.08
+          ],
+          "free_memory_mib": 5176.33984375,
+          "available_memory_mib": 5176.33984375,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.65234375,
+          "swap_used_mib": 3245.33984375,
+          "runnable_tasks": 4,
+          "cpu_idle_percent": 53.96419437340153,
+          "cpu_iowait_percent": 0.2557544757033248,
+          "cpu_busy_percent": 45.78005115089514,
+          "cpu_sample_interval_ms": 1000.8273839999893,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:48:04.742Z",
+          "load_average": [
+            0.72,
+            1.28,
+            4.08
+          ],
+          "free_memory_mib": 5202.51953125,
+          "available_memory_mib": 5202.51953125,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.65234375,
+          "swap_used_mib": 3245.33984375,
+          "runnable_tasks": 2,
+          "cpu_idle_percent": 57.90816326530612,
+          "cpu_iowait_percent": 0.5102040816326531,
+          "cpu_busy_percent": 41.58163265306123,
+          "cpu_sample_interval_ms": 999.3012140000064,
+          "cpu_counter_source": "linux.proc.stat"
+        },
+        {
+          "at": "2026-09-22T07:48:05.743Z",
+          "load_average": [
+            0.83,
+            1.29,
+            4.07
+          ],
+          "free_memory_mib": 5211.5546875,
+          "available_memory_mib": 5211.5546875,
+          "total_memory_mib": 7168.984375,
+          "swap_total_mib": 8191.9921875,
+          "swap_free_mib": 4946.65625,
+          "swap_used_mib": 3245.3359375,
+          "runnable_tasks": 4,
+          "cpu_idle_percent": 52.151898734177216,
+          "cpu_iowait_percent": 0.5063291139240507,
+          "cpu_busy_percent": 47.34177215189873,
+          "cpu_sample_interval_ms": 1005.471080999996,
+          "cpu_counter_source": "linux.proc.stat"
+        }
+      ]
+    },
+    "collection_health_at_phase_end": {
+      "forwarded": 40000,
+      "captured": 40000,
+      "persisted": 40000,
+      "dropped": 0,
+      "truncated": 0,
+      "write_failures": 0,
+      "maintenance_failures": 0,
+      "maintenance_healthy": true,
+      "last_maintenance_at": 1790063285801,
+      "queue_depth": 0,
+      "queued_bytes": 0,
+      "last_persisted_at": 1790063285801,
+      "last_gap_at": null,
+      "lag_ms": 0,
+      "last_batch_lag_ms": 36,
+      "active_captures": 0,
+      "capture_limit": 262144,
+      "capture_slots": 1024,
+      "scope": "current process",
+      "stopping": false
+    }
+  },
+  "peak_rss_mib": 74.453125,
+  "peak_sampled_lag_ms": 65,
+  "peak_sampled_queue_depth": 48,
+  "health_poll_errors": 0,
+  "database_bytes": 263319552,
+  "health": {
+    "forwarded": 40000,
+    "captured": 40000,
+    "persisted": 40000,
+    "dropped": 0,
+    "truncated": 0,
+    "write_failures": 0,
+    "maintenance_failures": 0,
+    "maintenance_healthy": true,
+    "last_maintenance_at": 1790063285801,
+    "queue_depth": 0,
+    "queued_bytes": 0,
+    "last_persisted_at": 1790063285801,
+    "last_gap_at": null,
+    "lag_ms": 0,
+    "last_batch_lag_ms": 36,
+    "active_captures": 0,
+    "capture_limit": 262144,
+    "capture_slots": 1024,
+    "scope": "current process",
+    "stopping": false
+  },
+  "summary": {
+    "request_count": 40000,
+    "answer_count": 188000,
+    "error_count": 0,
+    "input_tokens": 40000000,
+    "output_tokens": 1600000,
+    "cost_usd": null,
+    "cost_known_requests": 0,
+    "sample_count": 0,
+    "incomplete_count": 0,
+    "action_count": 0,
+    "p50_ms": 25.379443000000002,
+    "p95_ms": 26.351488999999997
+  },
+  "counts_complete": true,
+  "accounting_complete": true,
+  "upstream_attempts": 42500,
+  "throughput_passed": true,
+  "complete": true,
+  "notes": [
+    "Local mock only; does not measure provider latency or paid API capacity.",
+    "Steady RPS excludes the stated warm-up and post-load drain; achieved_rps includes the drain. RSS and collection lag are sampled once per second.",
+    "Exact body/status and retained-count checks enabled.",
+    "Latency distributions are independent runs; subtracting percentiles does not produce a per-request overhead percentile.",
+    "The proxy, mock and generator share this host with unrelated processes. Phase host telemetry samples total CPU/load/memory pressure; it cannot attribute a failure to Observer or another workload by itself.",
+    "Runtime-reported free memory and Linux MemAvailable are recorded separately and may be equal; swap and runnable tasks are null on unsupported platforms. One-second host samples can miss short pressure spikes."
+  ]
+}

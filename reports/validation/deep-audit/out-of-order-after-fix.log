@@ -1,0 +1,20 @@
+
+> jev-observer-ui@0.1.0 test
+> playwright test --workers=1 -g collection gaps|failed health refresh|independent capture gaps
+
+[WebServer] (node:1637901) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:1637913) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 5 tests using 1 worker
+
+(node:1637952) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/dashboard.spec.ts:154:1 › storage failures leave independent capture gaps visible (3.7s)
+  ✓  2 tests/dashboard.spec.ts:165:1 › a failed health refresh falls back to newer dashboard gap counters (3.1s)
+  ✓  3 tests/dashboard.spec.ts:200:3 › a delayed dashboard response cannot hide newer collection gaps (2.9s)
+  ✓  4 tests/dashboard.spec.ts:200:3 › a delayed health response cannot hide newer collection gaps (2.9s)
+  ✓  5 tests/dashboard.spec.ts:200:3 › a delayed previous process response cannot hide newer collection gaps (2.9s)
+
+  5 passed (19.1s)

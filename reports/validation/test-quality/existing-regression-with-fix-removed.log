@@ -1,0 +1,9 @@
+   Compiling observer-validation-mutant v0.1.0 (<repo>/.jev-observer/independent-validation/test-quality/snapshot-mutant)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.58s
+     Running unittests src/main.rs (target/debug/deps/observer_validation_mutant-4cf218fe51d49afc)
+
+running 1 test
+test store::tests::record_reads_keep_answers_and_labels_in_their_parent_snapshot ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 66 filtered out; finished in 0.01s
+

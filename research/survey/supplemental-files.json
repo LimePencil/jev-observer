@@ -1,0 +1,104 @@
+{
+  "12": [
+    "assets/taxonomy.json"
+  ],
+  "20": [
+    "packages/jev-pref/src/suites/prefs.js"
+  ],
+  "21": [
+    "src/review/judgments.ts"
+  ],
+  "23": [
+    "src/router.mjs"
+  ],
+  "27": [
+    "src/brain.ts"
+  ],
+  "30": [
+    "src/backend.ts"
+  ],
+  "33": [
+    "crates/supercov-cli/src/quality.rs",
+    "crates/supercov-cli/src/quality/properties.json"
+  ],
+  "36": [
+    "src/compact.ts"
+  ],
+  "38": [
+    "src/core/decide.ts"
+  ],
+  "39": [
+    "src/core/decide.ts"
+  ],
+  "42": [
+    "src/judge.ts"
+  ],
+  "50": [
+    "scripts/mobile-agent/policy.mjs"
+  ],
+  "52": [
+    "src/jev_client.cpp"
+  ],
+  "53": [
+    "custom_components/jev/coordinator.py"
+  ],
+  "54": [
+    "src/index.ts"
+  ],
+  "57": [
+    "logtriage/decide.py"
+  ],
+  "62": [
+    "src/lib/judge-config.ts"
+  ],
+  "63": [
+    "src/core/questions.ts"
+  ],
+  "64": [
+    "src/index.ts"
+  ],
+  "67": [
+    "src/index.ts"
+  ],
+  "68": [
+    "internal/exec/judge.go"
+  ],
+  "69": [
+    "src/decision-service.mjs"
+  ],
+  "72": [
+    "sql/jev--0.2.0.sql"
+  ],
+  "74": [
+    "src/signals.ts"
+  ],
+  "77": [
+    "tactics.py"
+  ],
+  "78": [
+    "agent-assist/src/lib/questions.ts"
+  ],
+  "83": [
+    "public/shared/jev.js"
+  ],
+  "84": [
+    "src/server/model.ts"
+  ],
+  "86": [
+    "lib/questions.ts"
+  ],
+  "87": [
+    "app/core/requests.ts"
+  ],
+  "92": [
+    "runtime/jev_eval_20260921/runner.py",
+    "docs/wall/GENESIS_HOSTED_JEV_CALIBRATION.md"
+  ],
+  "93": [
+    "jev_ids/detectors/jev.py",
+    "prompts/nsl-kdd/jev.json"
+  ],
+  "95": [
+    "src/jev_benchmarks/adapters/jev.py"
+  ]
+}

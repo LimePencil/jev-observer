@@ -1,0 +1,4 @@
+{
+  "error": { "type": "fixture_error", "message": "Synthetic validation failure" },
+  "provider_extension": { "preserved": true, "code": 422 }
+}

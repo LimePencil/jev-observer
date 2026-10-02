@@ -1,0 +1,33 @@
+
+running 5 tests
+test store::tests::request_keeps_parent_snapshot_during_concurrent_delete ... ok
+test store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_delete ... FAILED
+test store::tests::csv_export_keeps_parent_snapshot_during_concurrent_delete ... FAILED
+test store::tests::request_keeps_parent_snapshot_during_concurrent_label_edit ... ok
+test store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_label_edit ... FAILED
+
+failures:
+
+failures:
+    store::tests::csv_export_keeps_parent_snapshot_during_concurrent_delete
+    store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_delete
+    store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_label_edit
+
+test result: FAILED. 2 passed; 3 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.02s
+
+
+thread 'store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_delete' (1635256) panicked at <repo>/.jev-observer/independent-validation-rerun/test-quality/public-snapshot-regression/src/without_export_transaction.rs:1835:9:
+assertion `left == right` failed: Mixed snapshots during Delete
+  left: Object {"schema_version": Number(1), "id": String("reviewed"), "timestamp": Number(1790076055086), "source": String("test"), "model": String("jev-test"), "status": Number(200), "duration_ms": Number(4.0), "cost_usd": Number(0.1), "cost_basis": String("synthetic"), "input_tokens": Number(100), "output_tokens": Number(3), "capture_complete": Bool(true), "sample": Bool(true), "answers": Array [], "labels": Array []}
+ right: Object {"schema_version": Number(1), "id": String("reviewed"), "timestamp": Number(1790076055086), "source": String("test"), "model": String("jev-test"), "status": Number(200), "duration_ms": Number(4.0), "cost_usd": Number(0.1), "cost_basis": String("synthetic"), "input_tokens": Number(100), "output_tokens": Number(3), "capture_complete": Bool(true), "sample": Bool(true), "answers": Array [Object {"key": String("urgent"), "kind": String("noul"), "group_id": String("g"), "definition_id": String("d"), "presentation_id": String("p"), "value": Number(0.8), "valid": Bool(true), "definition": Object {"type": String("noul"), "instructions": String("Urgent?")}}], "labels": Array [Object {"key": String("urgent"), "label": String("correct"), "timestamp": Number(1790076055088), "source": String("local-reviewer")}]}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'store::tests::csv_export_keeps_parent_snapshot_during_concurrent_delete' (1635255) panicked at <repo>/.jev-observer/independent-validation-rerun/test-quality/public-snapshot-regression/src/without_export_transaction.rs:1924:9:
+assertion `left == right` failed
+  left: String("id,timestamp,source,model,status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,event_kind\n\"first\",\"1790076055087\",\"test\",\"jev-test\",\"200\",\"4.0\",\"100\",\"3\",\"0.1\",\"synthetic\",\"1\",\"request\"\n")
+ right: String("id,timestamp,source,model,status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,event_kind\n\"first\",\"1790076055087\",\"test\",\"jev-test\",\"200\",\"4.0\",\"100\",\"3\",\"0.1\",\"synthetic\",\"1\",\"request\"\n\"second\",\"1790076055087\",\"test\",\"jev-test\",\"200\",\"4.0\",\"100\",\"3\",\"0.1\",\"synthetic\",\"1\",\"request\"\n")
+
+thread 'store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_label_edit' (1635257) panicked at <repo>/.jev-observer/independent-validation-rerun/test-quality/public-snapshot-regression/src/without_export_transaction.rs:1835:9:
+assertion `left == right` failed: Mixed snapshots during Relabel
+  left: Object {"schema_version": Number(1), "id": String("reviewed"), "timestamp": Number(1790076055089), "source": String("test"), "model": String("jev-test"), "status": Number(200), "duration_ms": Number(4.0), "cost_usd": Number(0.1), "cost_basis": String("synthetic"), "input_tokens": Number(100), "output_tokens": Number(3), "capture_complete": Bool(true), "sample": Bool(true), "answers": Array [Object {"key": String("urgent"), "kind": String("noul"), "group_id": String("g"), "definition_id": String("d"), "presentation_id": String("p"), "value": Number(0.8), "valid": Bool(true), "definition": Object {"type": String("noul"), "instructions": String("Urgent?")}}], "labels": Array [Object {"key": String("urgent"), "label": String("incorrect"), "timestamp": Number(1790076055091), "source": String("local-reviewer")}]}
+ right: Object {"schema_version": Number(1), "id": String("reviewed"), "timestamp": Number(1790076055089), "source": String("test"), "model": String("jev-test"), "status": Number(200), "duration_ms": Number(4.0), "cost_usd": Number(0.1), "cost_basis": String("synthetic"), "input_tokens": Number(100), "output_tokens": Number(3), "capture_complete": Bool(true), "sample": Bool(true), "answers": Array [Object {"key": String("urgent"), "kind": String("noul"), "group_id": String("g"), "definition_id": String("d"), "presentation_id": String("p"), "value": Number(0.8), "valid": Bool(true), "definition": Object {"type": String("noul"), "instructions": String("Urgent?")}}], "labels": Array [Object {"key": String("urgent"), "label": String("correct"), "timestamp": Number(1790076055091), "source": String("local-reviewer")}]}

@@ -1,0 +1,39 @@
+{
+  "measurement": "Bounded CSV export query microbenchmark, debug profile, quiet synthetic fixture; not service latency or throughput",
+  "command": "cargo test --locked csv_export_large_definitions_benchmark -- --ignored --nocapture",
+  "fixture": {
+    "requests": 200,
+    "answers_per_request": 10,
+    "definition_bytes": 8192,
+    "samples_after_warmup": 5
+  },
+  "baseline": {
+    "implementation": "ecad078 CSV reconstruction path, with new benchmark/filter tests only",
+    "elapsed_ms": [
+      202.43625400000002,
+      219.51845,
+      207.495861,
+      200.894726,
+      200.713334
+    ],
+    "median_ms": 202.43625400000002,
+    "test_binary_sha256": "597a0e500762441018db921d508eb72fd908718c25bdb597b18fe966742a20fb"
+  },
+  "candidate": {
+    "implementation": "Working-tree scalar parent export; same fixture and harness",
+    "elapsed_ms": [
+      20.376333,
+      20.337564999999998,
+      17.794089999999997,
+      17.774737,
+      18.226764
+    ],
+    "median_ms": 18.226764
+  },
+  "csv": {
+    "bytes": 22516,
+    "sha256": "09b88ae33cce18bf7b884c7c9d6a57d8d4dac18f24051c803b1e29df9d88d94e",
+    "identical_across_all_samples_and_both_implementations": true
+  },
+  "median_ratio": 11.10653838498156
+}

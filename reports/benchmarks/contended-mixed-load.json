@@ -1,0 +1,399 @@
+{
+  "date": "2026-09-22T07:15:40.772Z",
+  "binary": "<repo>/target/release/jev-observer",
+  "binary_sha256": "eadc2bf4eca4f8edec0710de6a0a10394dd1f4999bd0c7d72049eee7d7eec71f",
+  "database_directory": "<repo>/.jev-observer/benchmarks/run-eU8n15",
+  "node": "v22.22.1",
+  "platform": "linux 7.0.0-31-generic x64",
+  "cpu": "Intel(R) N100",
+  "logical_cpus": 4,
+  "total_memory_gib": 7.0009613037109375,
+  "settings": {
+    "demo": false,
+    "capture_state": false,
+    "retention_days": 7,
+    "max_records": 2000000,
+    "capture_limit": 262144,
+    "capture_slots": 1024,
+    "queue_capacity": 1024,
+    "upstream": "http://127.0.0.1:41299/v1/systemone",
+    "version": "0.1.0",
+    "input_price_per_million": null,
+    "output_price_per_million": null
+  },
+  "fixture": {
+    "small_bytes": 9764,
+    "large_bytes": 131744,
+    "large_fraction": 0.1,
+    "questions": [
+      3,
+      20
+    ],
+    "upstream_delay_ms": 25
+  },
+  "baseline": {
+    "label": "direct mock baseline",
+    "target_rps": 500,
+    "offered": 15000,
+    "completed": 15000,
+    "errors": 0,
+    "failure_details": [],
+    "expected_answers": 70500,
+    "load_duration_seconds": 30,
+    "warmup_seconds": 5,
+    "elapsed_seconds": 30.028694745,
+    "achieved_rps": 499.5222112508773,
+    "steady_completed": 12502,
+    "steady_rps": 500.08,
+    "latency_ms": {
+      "p50": 27.850264000000607,
+      "p95": 73.022187999999,
+      "p99": 230.2840669999996,
+      "max": 355.9310650000007
+    },
+    "first_byte_ms": {
+      "p50": 27.833047999999962,
+      "p95": 73.01747700000124,
+      "p99": 230.27044899999964
+    },
+    "scheduling_lateness_ms": {
+      "p95": 28.824580999999853,
+      "p99": 101.8850820000007
+    },
+    "dashboard": {
+      "queries": 0,
+      "errors": [],
+      "p95_ms": null
+    },
+    "collection_health_at_phase_end": null
+  },
+  "sustained": {
+    "label": "proxy with capture and dashboard",
+    "target_rps": 500,
+    "offered": 30000,
+    "completed": 30000,
+    "errors": 556,
+    "failure_details": [
+      {
+        "index": 18410,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 19510,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 19530,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 19460,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 19440,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 19410,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 19370,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 19350,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 19400,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 19430,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      }
+    ],
+    "expected_answers": 141000,
+    "load_duration_seconds": 60,
+    "warmup_seconds": 5,
+    "elapsed_seconds": 77.007506329,
+    "achieved_rps": 389.572412224734,
+    "steady_completed": 25340,
+    "steady_rps": 460.72727272727275,
+    "latency_ms": {
+      "p50": 339.47332099999767,
+      "p95": 7182.365642999997,
+      "p99": 26897.367970000007,
+      "max": 30719.719501
+    },
+    "first_byte_ms": {
+      "p50": 339.4692300000024,
+      "p95": 7182.354145999998,
+      "p99": 26897.361386000004
+    },
+    "scheduling_lateness_ms": {
+      "p95": 329.01644900000247,
+      "p99": 489.72152500000084
+    },
+    "dashboard": {
+      "queries": 38,
+      "errors": [],
+      "p95_ms": 3001.456468000004
+    },
+    "collection_health_at_phase_end": {
+      "forwarded": 30000,
+      "captured": 26829,
+      "persisted": 26829,
+      "dropped": 3171,
+      "truncated": 428,
+      "write_failures": 0,
+      "maintenance_failures": 0,
+      "maintenance_healthy": true,
+      "last_maintenance_at": 1790061297774,
+      "queue_depth": 0,
+      "queued_bytes": 0,
+      "last_persisted_at": 1790061297774,
+      "last_gap_at": 1790061297737,
+      "lag_ms": 0,
+      "last_batch_lag_ms": 36,
+      "active_captures": 0,
+      "capture_limit": 262144,
+      "capture_slots": 1024,
+      "scope": "current process",
+      "stopping": false
+    }
+  },
+  "burst": {
+    "label": "proxy burst with capture and dashboard",
+    "target_rps": 1000,
+    "offered": 10000,
+    "completed": 10000,
+    "errors": 440,
+    "failure_details": [
+      {
+        "index": 2850,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 2870,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 2910,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 3210,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 3270,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 3290,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 3980,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 4180,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 4170,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      },
+      {
+        "index": 4210,
+        "big": true,
+        "status": 502,
+        "error": "Response body mismatch",
+        "body_bytes": 58,
+        "expected_bytes": 1103
+      }
+    ],
+    "expected_answers": 47000,
+    "load_duration_seconds": 10,
+    "warmup_seconds": 5,
+    "elapsed_seconds": 36.868839984000005,
+    "achieved_rps": 271.2317502893963,
+    "steady_completed": 2389,
+    "steady_rps": 477.8,
+    "latency_ms": {
+      "p50": 9110.617652999994,
+      "p95": 18793.955375999998,
+      "p99": 30996.852046999993,
+      "max": 33698.730133000005
+    },
+    "first_byte_ms": {
+      "p50": 9110.611388999998,
+      "p95": 18793.94592,
+      "p99": 30996.84206299999
+    },
+    "scheduling_lateness_ms": {
+      "p95": 950.1413900000043,
+      "p99": 1180.2837759999966
+    },
+    "dashboard": {
+      "queries": 9,
+      "errors": [],
+      "p95_ms": 4673.857504
+    },
+    "collection_health_at_phase_end": {
+      "forwarded": 40000,
+      "captured": 33733,
+      "persisted": 33733,
+      "dropped": 6267,
+      "truncated": 671,
+      "write_failures": 0,
+      "maintenance_failures": 0,
+      "maintenance_healthy": true,
+      "last_maintenance_at": 1790061336435,
+      "queue_depth": 0,
+      "queued_bytes": 0,
+      "last_persisted_at": 1790061336435,
+      "last_gap_at": 1790061336385,
+      "lag_ms": 0,
+      "last_batch_lag_ms": 99,
+      "active_captures": 0,
+      "capture_limit": 262144,
+      "capture_slots": 1024,
+      "scope": "current process",
+      "stopping": false
+    }
+  },
+  "peak_rss_mib": 243.15625,
+  "peak_sampled_lag_ms": 2148,
+  "peak_sampled_queue_depth": 732,
+  "health_poll_errors": 0,
+  "database_bytes": 221274112,
+  "health": {
+    "forwarded": 40000,
+    "captured": 33733,
+    "persisted": 33733,
+    "dropped": 6267,
+    "truncated": 671,
+    "write_failures": 0,
+    "maintenance_failures": 0,
+    "maintenance_healthy": true,
+    "last_maintenance_at": 1790061336435,
+    "queue_depth": 0,
+    "queued_bytes": 0,
+    "last_persisted_at": 1790061336435,
+    "last_gap_at": 1790061336385,
+    "lag_ms": 0,
+    "last_batch_lag_ms": 99,
+    "active_captures": 0,
+    "capture_limit": 262144,
+    "capture_slots": 1024,
+    "scope": "current process",
+    "stopping": false
+  },
+  "summary": {
+    "request_count": 33733,
+    "answer_count": 158129,
+    "error_count": 671,
+    "input_tokens": 33062000,
+    "output_tokens": 1322480,
+    "cost_usd": null,
+    "cost_known_requests": 0,
+    "sample_count": 0,
+    "incomplete_count": 671,
+    "action_count": 0,
+    "p50_ms": 134.716278,
+    "p95_ms": 7015.201728
+  },
+  "counts_complete": false,
+  "accounting_complete": false,
+  "upstream_attempts": 54045,
+  "throughput_passed": false,
+  "complete": false,
+  "notes": [
+    "Local mock only; does not measure provider latency or paid API capacity.",
+    "Steady RPS excludes the stated warm-up and post-load drain; achieved_rps includes the drain. RSS and collection lag are sampled once per second.",
+    "Exact body/status and retained-count checks enabled.",
+    "Latency distributions are independent runs; subtracting percentiles does not produce a per-request overhead percentile.",
+    "Host was shared with build/editor workloads; report hardware and conditions with any comparison."
+  ]
+}

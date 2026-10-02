@@ -1,0 +1,457 @@
+{
+  "started_at": "2026-09-22T07:04:36.535Z",
+  "scope": "Loopback failure injection; no provider inference",
+  "binary_sha256": "eadc2bf4eca4f8edec0710de6a0a10394dd1f4999bd0c7d72049eee7d7eec71f",
+  "harness_sha256": "c09089479be2f01d64bfac97f7fdaf9480cedbd07c7c1bad64ce8c94a5ac862c",
+  "node": "v22.22.1",
+  "platform": "linux 7.0.0-31-generic x64",
+  "cpu": "Intel(R) N100",
+  "logical_cpus": 4,
+  "request_bytes": 402,
+  "response_bytes": 415,
+  "capture_state": false,
+  "rss_sampling_ms": 100,
+  "cases": [
+    {
+      "name": "capture-budget",
+      "expected_capture_loss": true,
+      "upstream_delay_ms": 100,
+      "checks": {
+        "loss_accounting_exact": true,
+        "recovery_complete": true,
+        "persisted_accounting_exact": true,
+        "responses_preserved": true,
+        "health_independent_of_writer": true
+      },
+      "passed": true,
+      "settings": {
+        "demo": false,
+        "capture_state": false,
+        "retention_days": 7,
+        "max_records": 1000000,
+        "capture_limit": 262144,
+        "capture_slots": 4,
+        "queue_capacity": 4,
+        "upstream": "http://127.0.0.1:38255/v1/systemone",
+        "version": "0.1.0",
+        "input_price_per_million": null,
+        "output_price_per_million": null
+      },
+      "warmup": {
+        "label": "warmup",
+        "target_rps": 5,
+        "duration_seconds": 1,
+        "offered": 5,
+        "completed": 5,
+        "errors": 0,
+        "failures": [],
+        "elapsed_seconds": 0.9031479619999999,
+        "completed_before_two_seconds": 5,
+        "latency_ms": {
+          "p50": 102.60718999999995,
+          "p95": 107.595674,
+          "p99": 107.595674,
+          "max": 107.595674
+        },
+        "scheduling_lateness_ms": {
+          "p95": 1.0170920000000478,
+          "p99": 1.0170920000000478
+        }
+      },
+      "pressure": {
+        "label": "pressure",
+        "target_rps": 500,
+        "duration_seconds": 3,
+        "offered": 1500,
+        "completed": 1500,
+        "errors": 0,
+        "failures": [],
+        "elapsed_seconds": 3.1004305489999995,
+        "completed_before_two_seconds": 949,
+        "latency_ms": {
+          "p50": 100.703847,
+          "p95": 101.661069,
+          "p99": 102.4389020000001,
+          "max": 109.45947000000001
+        },
+        "scheduling_lateness_ms": {
+          "p95": 1.2750479999999698,
+          "p99": 1.4667720000002191
+        }
+      },
+      "pressure_health_before_release": {
+        "forwarded": 1505,
+        "captured": 105,
+        "persisted": 105,
+        "dropped": 1400,
+        "truncated": 0,
+        "write_failures": 0,
+        "maintenance_failures": 0,
+        "maintenance_healthy": true,
+        "last_maintenance_at": 1790060680581,
+        "queue_depth": 0,
+        "queued_bytes": 0,
+        "last_persisted_at": 1790060680581,
+        "last_gap_at": 1790060680517,
+        "lag_ms": 0,
+        "last_batch_lag_ms": 21,
+        "active_captures": 0,
+        "capture_limit": 262144,
+        "capture_slots": 4,
+        "scope": "current process",
+        "stopping": false
+      },
+      "after_pressure": {
+        "forwarded": 1505,
+        "captured": 105,
+        "persisted": 105,
+        "dropped": 1400,
+        "truncated": 0,
+        "write_failures": 0,
+        "maintenance_failures": 0,
+        "maintenance_healthy": true,
+        "last_maintenance_at": 1790060680581,
+        "queue_depth": 0,
+        "queued_bytes": 0,
+        "last_persisted_at": 1790060680581,
+        "last_gap_at": 1790060680517,
+        "lag_ms": 0,
+        "last_batch_lag_ms": 21,
+        "active_captures": 0,
+        "capture_limit": 262144,
+        "capture_slots": 4,
+        "scope": "current process",
+        "stopping": false
+      },
+      "pressure_accounting": {
+        "forwarded": 1500,
+        "persisted": 100,
+        "dropped": 1400,
+        "skipped_before_queue": 1400,
+        "accepted_but_lost": 0
+      },
+      "recovery": {
+        "label": "recovery",
+        "target_rps": 10,
+        "duration_seconds": 2,
+        "offered": 20,
+        "completed": 20,
+        "errors": 0,
+        "failures": [],
+        "elapsed_seconds": 2.001738751999999,
+        "completed_before_two_seconds": 19,
+        "latency_ms": {
+          "p50": 100.7058790000001,
+          "p95": 101.19556099999954,
+          "p99": 101.3424299999997,
+          "max": 101.3424299999997
+        },
+        "scheduling_lateness_ms": {
+          "p95": 1.1968409999999494,
+          "p99": 1.207257000000027
+        }
+      },
+      "final_health": {
+        "forwarded": 1525,
+        "captured": 125,
+        "persisted": 125,
+        "dropped": 1400,
+        "truncated": 0,
+        "write_failures": 0,
+        "maintenance_failures": 0,
+        "maintenance_healthy": true,
+        "last_maintenance_at": 1790060682644,
+        "queue_depth": 0,
+        "queued_bytes": 0,
+        "last_persisted_at": 1790060682644,
+        "last_gap_at": 1790060680517,
+        "lag_ms": 0,
+        "last_batch_lag_ms": 20,
+        "active_captures": 0,
+        "capture_limit": 262144,
+        "capture_slots": 4,
+        "scope": "current process",
+        "stopping": false
+      },
+      "summary": {
+        "request_count": 125,
+        "answer_count": 375,
+        "error_count": 0,
+        "input_tokens": 12500,
+        "output_tokens": 1250,
+        "cost_usd": null,
+        "cost_known_requests": 0,
+        "sample_count": 0,
+        "incomplete_count": 0,
+        "action_count": 0,
+        "p50_ms": 100.350788,
+        "p95_ms": 101.211465
+      },
+      "upstream_attempts": 1525,
+      "health_poll_errors": 0,
+      "dashboard": {
+        "queries": 6,
+        "p95_ms": 6.479765000000043,
+        "errors": []
+      },
+      "peak_sampled_rss_mib": 19.296875,
+      "peak_sampled_queue_depth": 4,
+      "peak_sampled_active_captures": 4,
+      "peak_sampled_lag_ms": 20,
+      "shutdown_exit": 0
+    },
+    {
+      "name": "locked-writer",
+      "expected_capture_loss": true,
+      "upstream_delay_ms": 5,
+      "checks": {
+        "clients_completed_while_locked": true,
+        "loss_accounting_exact": true,
+        "recovery_complete": true,
+        "persisted_accounting_exact": true,
+        "responses_preserved": true,
+        "health_independent_of_writer": true
+      },
+      "passed": true,
+      "settings": {
+        "demo": false,
+        "capture_state": false,
+        "retention_days": 7,
+        "max_records": 1000000,
+        "capture_limit": 262144,
+        "capture_slots": 64,
+        "queue_capacity": 8,
+        "upstream": "http://127.0.0.1:41067/v1/systemone",
+        "version": "0.1.0",
+        "input_price_per_million": null,
+        "output_price_per_million": null
+      },
+      "warmup": {
+        "label": "warmup",
+        "target_rps": 5,
+        "duration_seconds": 1,
+        "offered": 5,
+        "completed": 5,
+        "errors": 0,
+        "failures": [],
+        "elapsed_seconds": 0.8069459280000001,
+        "completed_before_two_seconds": 5,
+        "latency_ms": {
+          "p50": 6.111421999999948,
+          "p95": 6.810837999999421,
+          "p99": 6.810837999999421,
+          "max": 6.810837999999421
+        },
+        "scheduling_lateness_ms": {
+          "p95": 0.8264920000001439,
+          "p99": 0.8264920000001439
+        }
+      },
+      "pressure": {
+        "label": "pressure",
+        "target_rps": 500,
+        "duration_seconds": 3,
+        "offered": 1500,
+        "completed": 1500,
+        "errors": 0,
+        "failures": [],
+        "elapsed_seconds": 3.0045825110000006,
+        "completed_before_two_seconds": 997,
+        "latency_ms": {
+          "p50": 5.673565999999482,
+          "p95": 6.3156290000006265,
+          "p99": 7.067278000000442,
+          "max": 9.066962999999305
+        },
+        "scheduling_lateness_ms": {
+          "p95": 1.284816999999748,
+          "p99": 2.0777429999998276
+        }
+      },
+      "pressure_health_before_release": {
+        "forwarded": 1505,
+        "captured": 42,
+        "persisted": 5,
+        "dropped": 1474,
+        "truncated": 0,
+        "write_failures": 1,
+        "maintenance_failures": 0,
+        "maintenance_healthy": true,
+        "last_maintenance_at": 1790060684441,
+        "queue_depth": 26,
+        "queued_bytes": 21242,
+        "last_persisted_at": 1790060684441,
+        "last_gap_at": 1790060687469,
+        "lag_ms": 2978,
+        "last_batch_lag_ms": 2023,
+        "active_captures": 26,
+        "capture_limit": 262144,
+        "capture_slots": 64,
+        "scope": "current process",
+        "stopping": false
+      },
+      "lock_held_ms": 3006.998533,
+      "after_pressure": {
+        "forwarded": 1505,
+        "captured": 42,
+        "persisted": 31,
+        "dropped": 1474,
+        "truncated": 0,
+        "write_failures": 1,
+        "maintenance_failures": 0,
+        "maintenance_healthy": true,
+        "last_maintenance_at": 1790060687569,
+        "queue_depth": 0,
+        "queued_bytes": 0,
+        "last_persisted_at": 1790060687569,
+        "last_gap_at": 1790060687469,
+        "lag_ms": 0,
+        "last_batch_lag_ms": 1053,
+        "active_captures": 0,
+        "capture_limit": 262144,
+        "capture_slots": 64,
+        "scope": "current process",
+        "stopping": false
+      },
+      "pressure_accounting": {
+        "forwarded": 1500,
+        "persisted": 26,
+        "dropped": 1474,
+        "skipped_before_queue": 1463,
+        "accepted_but_lost": 11
+      },
+      "recovery": {
+        "label": "recovery",
+        "target_rps": 10,
+        "duration_seconds": 2,
+        "offered": 20,
+        "completed": 20,
+        "errors": 0,
+        "failures": [],
+        "elapsed_seconds": 1.906971900999999,
+        "completed_before_two_seconds": 20,
+        "latency_ms": {
+          "p50": 5.07685599999968,
+          "p95": 6.376424000000043,
+          "p99": 6.4600439999994705,
+          "max": 6.4600439999994705
+        },
+        "scheduling_lateness_ms": {
+          "p95": 1.0047889999987092,
+          "p99": 1.0169259999984206
+        }
+      },
+      "final_health": {
+        "forwarded": 1525,
+        "captured": 62,
+        "persisted": 51,
+        "dropped": 1474,
+        "truncated": 0,
+        "write_failures": 1,
+        "maintenance_failures": 0,
+        "maintenance_healthy": true,
+        "last_maintenance_at": 1790060689507,
+        "queue_depth": 0,
+        "queued_bytes": 0,
+        "last_persisted_at": 1790060689507,
+        "last_gap_at": 1790060687469,
+        "lag_ms": 0,
+        "last_batch_lag_ms": 20,
+        "active_captures": 0,
+        "capture_limit": 262144,
+        "capture_slots": 64,
+        "scope": "current process",
+        "stopping": false
+      },
+      "summary": {
+        "request_count": 51,
+        "answer_count": 153,
+        "error_count": 0,
+        "input_tokens": 5100,
+        "output_tokens": 510,
+        "cost_usd": null,
+        "cost_known_requests": 0,
+        "sample_count": 0,
+        "incomplete_count": 0,
+        "action_count": 0,
+        "p50_ms": 5.349294,
+        "p95_ms": 5.897460000000001
+      },
+      "upstream_attempts": 1525,
+      "health_poll_errors": 0,
+      "dashboard": {
+        "queries": 6,
+        "p95_ms": 4.3793329999998605,
+        "errors": []
+      },
+      "peak_sampled_rss_mib": 12.70703125,
+      "peak_sampled_queue_depth": 26,
+      "peak_sampled_active_captures": 29,
+      "peak_sampled_lag_ms": 2958,
+      "shutdown_exit": 0
+    },
+    {
+      "name": "burst",
+      "expected_capture_loss": false,
+      "upstream_delay_ms": 5,
+      "checks": {},
+      "passed": false,
+      "settings": {
+        "demo": false,
+        "capture_state": false,
+        "retention_days": 7,
+        "max_records": 1000000,
+        "capture_limit": 262144,
+        "capture_slots": 1024,
+        "queue_capacity": 1024,
+        "upstream": "http://127.0.0.1:44463/v1/systemone",
+        "version": "0.1.0",
+        "input_price_per_million": null,
+        "output_price_per_million": null
+      },
+      "warmup": {
+        "label": "warmup",
+        "target_rps": 5,
+        "duration_seconds": 1,
+        "offered": 5,
+        "completed": 5,
+        "errors": 0,
+        "failures": [],
+        "elapsed_seconds": 0.806962356,
+        "completed_before_two_seconds": 5,
+        "latency_ms": {
+          "p50": 6.777137000000948,
+          "p95": 8.09598399999959,
+          "p99": 8.09598399999959,
+          "max": 8.09598399999959
+        },
+        "scheduling_lateness_ms": {
+          "p95": 0.9928970000000845,
+          "p99": 0.9928970000000845
+        }
+      },
+      "error": "AssertionError [ERR_ASSERTION]: Load generator reached its 2048-call concurrency limit\n    at load (file://<repo>/scripts/stress.mjs:115:7)\n    at runNextTicks (node:internal/process/task_queues:64:5)\n    at process.processTimers (node:internal/timers:518:9)\n    at async runCase (file://<repo>/scripts/stress.mjs:223:23)\n    at async file://<repo>/scripts/stress.mjs:302:20",
+      "upstream_attempts": 29123,
+      "health_poll_errors": 0,
+      "dashboard": {
+        "queries": 13,
+        "p95_ms": 900.3987129999987,
+        "errors": []
+      },
+      "peak_sampled_rss_mib": 164.41015625,
+      "peak_sampled_queue_depth": 704,
+      "peak_sampled_active_captures": 987,
+      "peak_sampled_lag_ms": 389,
+      "shutdown_exit": 0,
+      "proxy_log": "Observer: http://127.0.0.1:38591\n"
+    }
+  ],
+  "passed": false,
+  "notes": [
+    "Capture-budget and writer-lock losses are intentional and must be counted; burst losses are reported rather than assumed absent.",
+    "Client p99 < 1000 ms and generator p99 lateness <= 100 ms are stall-detection test bounds for this tiny local fixture, not production latency promises.",
+    "RSS is sampled for the proxy only and is null where Linux /proc sampling is unavailable.",
+    "This harness does not establish a throughput limit, high-cardinality query performance, or provider capacity."
+  ],
+  "finished_at": "2026-09-22T07:05:07.598Z"
+}

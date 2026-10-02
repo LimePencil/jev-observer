@@ -1,0 +1,27 @@
+
+running 5 tests
+test store::tests::request_keeps_parent_snapshot_during_concurrent_delete ... FAILED
+test store::tests::request_keeps_parent_snapshot_during_concurrent_label_edit ... FAILED
+test store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_delete ... ok
+test store::tests::jsonl_export_keeps_parent_snapshot_during_concurrent_label_edit ... ok
+test store::tests::csv_export_keeps_parent_snapshot_during_concurrent_delete ... ok
+
+failures:
+
+failures:
+    store::tests::request_keeps_parent_snapshot_during_concurrent_delete
+    store::tests::request_keeps_parent_snapshot_during_concurrent_label_edit
+
+test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 44 filtered out; finished in 0.06s
+
+
+thread 'store::tests::request_keeps_parent_snapshot_during_concurrent_delete' (1570263) panicked at <repo>/.jev-observer/independent-validation/test-quality/public-snapshot-regression/src/without_request_transaction.rs:1712:9:
+assertion `left == right` failed: Mixed snapshots during Delete
+  left: Object {"schema_version": Number(1), "id": String("reviewed"), "timestamp": Number(1790074587947), "source": String("test"), "model": String("jev-test"), "status": Number(200), "duration_ms": Number(4.0), "cost_usd": Number(0.1), "cost_basis": String("synthetic"), "input_tokens": Number(100), "output_tokens": Number(3), "capture_complete": Bool(true), "sample": Bool(true), "answers": Array [], "labels": Array []}
+ right: Object {"schema_version": Number(1), "id": String("reviewed"), "timestamp": Number(1790074587947), "source": String("test"), "model": String("jev-test"), "status": Number(200), "duration_ms": Number(4.0), "cost_usd": Number(0.1), "cost_basis": String("synthetic"), "input_tokens": Number(100), "output_tokens": Number(3), "capture_complete": Bool(true), "sample": Bool(true), "answers": Array [Object {"key": String("urgent"), "kind": String("noul"), "group_id": String("g"), "definition_id": String("d"), "presentation_id": String("p"), "value": Number(0.8), "valid": Bool(true), "definition": Object {"type": String("noul"), "instructions": String("Urgent?")}}], "labels": Array [Object {"key": String("urgent"), "label": String("correct"), "timestamp": Number(1790074587960), "source": String("local-reviewer")}]}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'store::tests::request_keeps_parent_snapshot_during_concurrent_label_edit' (1570264) panicked at <repo>/.jev-observer/independent-validation/test-quality/public-snapshot-regression/src/without_request_transaction.rs:1712:9:
+assertion `left == right` failed: Mixed snapshots during Relabel
+  left: Object {"schema_version": Number(1), "id": String("reviewed"), "timestamp": Number(1790074587963), "source": String("test"), "model": String("jev-test"), "status": Number(200), "duration_ms": Number(4.0), "cost_usd": Number(0.1), "cost_basis": String("synthetic"), "input_tokens": Number(100), "output_tokens": Number(3), "capture_complete": Bool(true), "sample": Bool(true), "answers": Array [Object {"key": String("urgent"), "kind": String("noul"), "group_id": String("g"), "definition_id": String("d"), "presentation_id": String("p"), "value": Number(0.8), "valid": Bool(true), "definition": Object {"type": String("noul"), "instructions": String("Urgent?")}}], "labels": Array [Object {"key": String("urgent"), "label": String("incorrect"), "timestamp": Number(1790074587974), "source": String("local-reviewer")}]}
+ right: Object {"schema_version": Number(1), "id": String("reviewed"), "timestamp": Number(1790074587963), "source": String("test"), "model": String("jev-test"), "status": Number(200), "duration_ms": Number(4.0), "cost_usd": Number(0.1), "cost_basis": String("synthetic"), "input_tokens": Number(100), "output_tokens": Number(3), "capture_complete": Bool(true), "sample": Bool(true), "answers": Array [Object {"key": String("urgent"), "kind": String("noul"), "group_id": String("g"), "definition_id": String("d"), "presentation_id": String("p"), "value": Number(0.8), "valid": Bool(true), "definition": Object {"type": String("noul"), "instructions": String("Urgent?")}}], "labels": Array [Object {"key": String("urgent"), "label": String("correct"), "timestamp": Number(1790074587974), "source": String("local-reviewer")}]}

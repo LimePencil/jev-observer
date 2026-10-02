@@ -1,0 +1,233 @@
+name: Package and publish release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      CI: "true"
+      RELEASE_TARGET: ${{ matrix.target }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            fixtures/sdk/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Check version and release tag
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, tomllib
+          from pathlib import Path
+          expected = "v" + tomllib.loads(Path("Cargo.toml").read_text())["package"]["version"]
+          if os.environ["GITHUB_REF"].startswith("refs/tags/") and os.environ["GITHUB_REF_NAME"] != expected:
+              raise SystemExit(f"Release tag must be {expected}")
+          with open(os.environ["GITHUB_ENV"], "a") as file:
+              file.write(f"RELEASE_TAG={expected}\n")
+          PY
+      - name: Verify shell installer
+        if: runner.os != 'Windows'
+        run: python scripts/test-install.py
+      - name: Install native musl compiler
+        if: runner.os == 'Linux'
+        run: |
+          bash scripts/configure-ci-apt.sh
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+      - name: Configure Windows native crypto build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $perl = 'C:\Strawberry\perl\bin\perl.exe'
+          if (-not (Test-Path $perl)) {
+            $perl = (Get-Command perl.exe -All | Where-Object { $_.Source -notmatch '\\Git\\' } | Select-Object -First 1).Source
+          }
+          if (-not $perl) { throw 'A native Windows Perl is required to build bundled OpenSSL.' }
+          "OPENSSL_SRC_PERL=$perl" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $nasm = 'C:\Program Files\NASM'
+          if (Test-Path $nasm) { $nasm | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append }
+      - name: Install Rust checks and target
+        shell: bash
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.98.1
+          rustc --version
+          rustup target add "$RELEASE_TARGET"
+      - name: Restore native Rust dependencies and build outputs
+        id: cargo-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: native-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}-${{ github.sha }}
+          restore-keys: |
+            native-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}-
+            native-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}-
+      - name: Verify locked dependency notices
+        run: python scripts/generate-license-notices.py --check
+      - name: Build embedded dashboard
+        run: |
+          npm ci --prefix ui --no-audit --no-fund
+          npm run build --prefix ui
+      - name: Check, test and build native executable
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            export CC=musl-gcc
+            linker_target=$(printf '%s' "$RELEASE_TARGET" | tr '[:lower:]-' '[:upper:]_')
+            export "CARGO_TARGET_${linker_target}_LINKER=musl-gcc"
+          fi
+          cargo fmt --all --check
+          cargo clippy --locked --all-targets --target "$RELEASE_TARGET" -- -D warnings
+          cargo test --locked --target "$RELEASE_TARGET"
+          cargo build --release --locked --target "$RELEASE_TARGET"
+      - name: Run browser interaction and accessibility checks
+        timeout-minutes: 12
+        working-directory: ui
+        run: |
+          npx playwright install --with-deps chromium
+          npm test
+      - name: Verify pinned SDKs against loopback mock
+        shell: bash
+        run: |
+          python -m pip install -r fixtures/sdk/python-requirements.txt
+          npm ci --prefix fixtures/sdk --ignore-scripts --no-audit --no-fund
+          suffix=""
+          if [[ "$RUNNER_OS" == Windows ]]; then suffix=".exe"; fi
+          python scripts/sdk-compatibility.py \
+            --binary "target/$RELEASE_TARGET/release/jev-observer$suffix" \
+            --node-sdk "$GITHUB_WORKSPACE/fixtures/sdk/node_modules/@typesafe-ai/sdk" \
+            --output sdk-compatibility.json
+      - name: Check live startup, demo and embedded UI, then package
+        shell: bash
+        run: |
+          suffix=""
+          if [[ "$RUNNER_OS" == Windows ]]; then suffix=".exe"; fi
+          python scripts/package-release.py \
+            --binary "target/$RELEASE_TARGET/release/jev-observer$suffix" \
+            --target "$RELEASE_TARGET" --version "$RELEASE_TAG" \
+            --output-dir release-assets
+      - name: Verify Windows installation and failed upgrades
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python scripts/test-install-windows.py --assets release-assets
+      - name: Retain verified native archive and checksum
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            release-assets/*.tar.gz
+            release-assets/*.zip
+            release-assets/SHA256SUMS
+      - name: Retain native validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: validation-${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            sdk-compatibility.json
+            ui/test-results/
+      - name: Save native Rust dependencies and build outputs
+        if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: release-artifacts
+      - name: Verify all six archives and aggregate checksums
+        run: python3 scripts/verify-release-assets.py
+      - name: Stage assets in a draft release
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" --json isDraft > release-state.json; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          if not json.loads(Path("release-state.json").read_text())["isDraft"]:
+              raise SystemExit("Refusing to change an already published release")
+          PY
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft \
+              --title "Jev Observer $RELEASE_TAG" --notes-file "docs/releases/${RELEASE_TAG#v}.md"
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+      - name: Confirm complete asset set and publish
+        shell: bash
+        run: |
+          gh release view "$RELEASE_TAG" --json assets,isDraft > release-state.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path("release-state.json").read_text())
+          expected = {path.name: path.stat().st_size for path in Path("release-assets").iterdir()}
+          actual = {asset["name"]: asset["size"] for asset in release["assets"]}
+          if not release["isDraft"] or len(expected) != 7 or actual != expected:
+              raise SystemExit("Release must remain a draft until all seven assets are uploaded intact")
+          PY
+          gh release edit "$RELEASE_TAG" --draft=false --latest
