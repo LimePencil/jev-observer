@@ -74,6 +74,14 @@ The installer prints a command to add that directory to the current terminal's `
 
 Check the executable with `command -v jev-observer` on Unix or `Get-Command jev-observer` in PowerShell, then run `jev-observer --version`.
 
+### History backups and downgrades
+
+Before upgrading to 0.2.0, stop Observer cleanly and keep a copy of the database and any remaining SQLite sidecars, the workspace dashboard-token file, and access to the saved `JEV_OBSERVER_DB_KEY`. Preserve the earlier executable if you need to test a rollback. Starting the new executable upgrades supported query indexes; a rejected unsupported database is not encrypted or otherwise rewritten. Copy files back only while every Observer process using that workspace is stopped.
+
+Version 0.2.0 reads provider credentials saved by 0.1.0. After saving or rotating a persisted provider key in 0.2.0, the new credential entry layout is not readable by 0.1.0. If you downgrade, re-register the provider key and update the application's local client token. Restoring only an older SQLite backup cannot restore an operating-system credential entry removed by a later rotation. Session-only credentials always require registration after restart. The database key and provider key are separate secrets.
+
+The automated upgrade checks exercise encrypted history, labels, import identities, approval digests, backups and rollback using disposable fixtures. They do not establish native operating-system keychain compatibility. Reconnect the application and verify collection health before resuming normal traffic after a rollback.
+
 ## Supported packages
 
 | Platform | Architecture | Rust target | Archive |

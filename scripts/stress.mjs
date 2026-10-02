@@ -299,6 +299,11 @@ async function runCase(spec, directory) {
     result.checks.persisted_accounting_exact = true;
     result.checks.responses_preserved = true;
     result.checks.health_independent_of_writer = true;
+    const databaseFile = await fs.open(database, 'r');
+    const databaseHeader = Buffer.alloc(16);
+    try { await databaseFile.read(databaseHeader, 0, 16, 0); } finally { await databaseFile.close(); }
+    assert(!databaseHeader.equals(Buffer.from('SQLite format 3\0')), 'Live stress history must remain encrypted');
+    result.checks.live_database_not_plaintext = true;
     if (result.pressure_validation_error) throw new Error(result.pressure_validation_error);
     result.passed = true;
   } catch (error) {

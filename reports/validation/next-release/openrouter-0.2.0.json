@@ -1,0 +1,357 @@
+{
+  "checked_at": "2026-10-02T12:47:15.978017+00:00",
+  "scope": "Live OpenRouter, synthetic data, plain HTTP client; no SDK compatibility claim",
+  "upstream": "https://openrouter.ai/api/v1/systemone",
+  "model": "jev-1.13",
+  "platform": "Linux-6.17.0-1019-oracle-aarch64-with-glibc2.39",
+  "checks": {
+    "binary_version_command": true,
+    "observer_stays_running": true,
+    "embedded_dashboard_http": true,
+    "direct_provider_key_success": true,
+    "api_put_/api/credentials": true,
+    "session_registration": true,
+    "registered_repeat_1_success": true,
+    "registered_repeat_2_success": true,
+    "changed_definition_success": true,
+    "invalid_provider_model_is_4xx": true,
+    "api_get_/api/health": true,
+    "invalid_local_token_rejected_before_upstream": true,
+    "five_upstream_calls_persisted": true,
+    "no_capture_gaps": true,
+    "api_get_/api/dashboard": true,
+    "request_answer_error_counts": true,
+    "all_captures_complete": true,
+    "four_definition_groups": true,
+    "definition_group_valid_counts": true,
+    "api_get_/api/requests/01a0fca7-b14e-7281-8a80-e4a4e654ceba": true,
+    "api_get_/api/requests/01a0fca7-af94-72e0-bc21-00d5efd8a0ef": true,
+    "api_get_/api/requests/01a0fca7-adcb-7751-ad2f-702cde8468dc": true,
+    "api_get_/api/requests/01a0fca7-abcf-75cf-9c52-175b20d5fc16": true,
+    "api_get_/api/requests/01a0fca7-a687-749f-8af4-200a9964e27e": true,
+    "all_three_primitives_valid": true,
+    "record_capture_flags_complete": true,
+    "openrouter_provider_attribution": true,
+    "input_state_not_retained": true,
+    "provider_reports_input_tokens": true,
+    "exact_input_tokens_accounting": true,
+    "provider_reports_output_tokens": true,
+    "exact_output_tokens_accounting": true,
+    "provider_reports_valid_usd_cost": true,
+    "exact_reported_cost_accounting": true,
+    "reported_cost_basis_preserved": true,
+    "successful_record_available_for_label": true,
+    "api_post_/api/requests/01a0fca7-af94-72e0-bc21-00d5efd8a0ef/label": true,
+    "review_label_saved": true,
+    "jsonl_export_success": true,
+    "jsonl_excludes_credentials_and_input": true,
+    "csv_export_success": true,
+    "csv_excludes_credentials_and_input": true,
+    "csv_contains_five_requests": true,
+    "jsonl_contains_five_requests": true,
+    "api_post_/api/import": true,
+    "reimport_is_deduplicated": true,
+    "clean_shutdown_before_restart": true,
+    "live_database_is_encrypted": true,
+    "same_key_restart_retains_history": true,
+    "same_key_restart_retains_labels": true,
+    "clean_shutdown_same_key_restart": true
+  },
+  "calls": [
+    {
+      "name": "direct_provider_key",
+      "status": 200,
+      "duration_ms": 1323.96,
+      "response_bytes": 503,
+      "response_sha256": "f9d90fe8f2675d64bceaed327f2ae54661652468feacd07a54e88aec53e8d41b",
+      "content_encoding": "identity",
+      "response_model": "typesafe/jev-1.13-20260917",
+      "usage": {
+        "input_tokens": 408,
+        "output_tokens": 71,
+        "cost": 1.7136e-05
+      },
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "billing",
+          "confidence": 1,
+          "probabilities": {
+            "sales": 0,
+            "billing": 1,
+            "technical": 0
+          }
+        },
+        "urgency": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "frustration": {
+          "type": "score",
+          "score": 0.83,
+          "confidence": 0.74,
+          "probabilities": {
+            "0": 0.17,
+            "1": 0.83,
+            "2": 0
+          },
+          "legend": {
+            "0": "Calm",
+            "1": "Frustrated",
+            "2": "Very angry"
+          }
+        }
+      }
+    },
+    {
+      "name": "registered_repeat_1",
+      "status": 200,
+      "duration_ms": 485.89,
+      "response_bytes": 503,
+      "response_sha256": "35bfef0f52905e5eb80ea24abac5af925e270c37e4eababcd76933710706c38a",
+      "content_encoding": "identity",
+      "response_model": "typesafe/jev-1.13-20260917",
+      "usage": {
+        "input_tokens": 408,
+        "output_tokens": 71,
+        "cost": 1.7136e-05
+      },
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "billing",
+          "confidence": 1,
+          "probabilities": {
+            "billing": 1,
+            "technical": 0,
+            "sales": 0
+          }
+        },
+        "urgency": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "frustration": {
+          "type": "score",
+          "score": 0.84,
+          "confidence": 0.75,
+          "probabilities": {
+            "0": 0.16,
+            "1": 0.84,
+            "2": 0
+          },
+          "legend": {
+            "0": "Calm",
+            "1": "Frustrated",
+            "2": "Very angry"
+          }
+        }
+      }
+    },
+    {
+      "name": "registered_repeat_2",
+      "status": 200,
+      "duration_ms": 474.26,
+      "response_bytes": 503,
+      "response_sha256": "e735a94eaea3a8395c4aaeb1c9df73f23a519ed8d2cf057d0a3cd2a4a6374c8d",
+      "content_encoding": "identity",
+      "response_model": "typesafe/jev-1.13-20260917",
+      "usage": {
+        "input_tokens": 408,
+        "output_tokens": 71,
+        "cost": 1.7136e-05
+      },
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "billing",
+          "confidence": 1,
+          "probabilities": {
+            "sales": 0,
+            "billing": 1,
+            "technical": 0
+          }
+        },
+        "urgency": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "frustration": {
+          "type": "score",
+          "score": 0.86,
+          "confidence": 0.79,
+          "probabilities": {
+            "0": 0.14,
+            "1": 0.86,
+            "2": 0
+          },
+          "legend": {
+            "0": "Calm",
+            "1": "Frustrated",
+            "2": "Very angry"
+          }
+        }
+      }
+    },
+    {
+      "name": "changed_choice_definition",
+      "status": 200,
+      "duration_ms": 437.02,
+      "response_bytes": 502,
+      "response_sha256": "55da3fb9a325963b0ae6ca84a1dd1497b2970b79d1fbf0aa7b4323c2765c6c07",
+      "content_encoding": "identity",
+      "response_model": "typesafe/jev-1.13-20260917",
+      "usage": {
+        "input_tokens": 415,
+        "output_tokens": 71,
+        "cost": 1.743e-05
+      },
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "billing",
+          "confidence": 1,
+          "probabilities": {
+            "technical": 0,
+            "billing": 1,
+            "sales": 0
+          }
+        },
+        "urgency": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "frustration": {
+          "type": "score",
+          "score": 0.83,
+          "confidence": 0.74,
+          "probabilities": {
+            "0": 0.18,
+            "1": 0.82,
+            "2": 0
+          },
+          "legend": {
+            "0": "Calm",
+            "1": "Frustrated",
+            "2": "Very angry"
+          }
+        }
+      }
+    },
+    {
+      "name": "invalid_provider_model",
+      "status": 400,
+      "duration_ms": 227.86,
+      "response_bytes": 105,
+      "response_sha256": "262a0b681e3cf79b76c8bf56c058b32dbc7fb4b0a11f158d23e34f23df66d068",
+      "content_encoding": "identity",
+      "response_model": null,
+      "usage": {},
+      "answers": {}
+    },
+    {
+      "name": "invalid_local_token",
+      "status": 401,
+      "duration_ms": 15.94,
+      "response_bytes": 41,
+      "response_sha256": "ddc8131de408eb3f557d63efcfd1c307355b4d13d50f8e3257bad569ff15ac8b",
+      "content_encoding": "identity",
+      "response_model": null,
+      "usage": {},
+      "answers": {}
+    }
+  ],
+  "errors": [],
+  "passed": true,
+  "binary_sha256": "f7ebfccc30edcf3f629da5891b27b794fbb43ec847144ab9b9c48de4b78202d7",
+  "binary_version": "jev-observer 0.2.0",
+  "health": {
+    "process_id": "ff36579d-2978-42dd-8509-32e89ed746b9",
+    "sample_sequence": 4,
+    "forwarded": 5,
+    "captured": 5,
+    "persisted": 5,
+    "dropped": 0,
+    "truncated": 0,
+    "write_failures": 0,
+    "maintenance_failures": 0,
+    "maintenance_healthy": true,
+    "last_maintenance_at": 1790945243727,
+    "queue_depth": 0,
+    "queued_bytes": 0,
+    "last_persisted_at": 1790945243727,
+    "last_gap_at": null,
+    "lag_ms": 0,
+    "last_batch_lag_ms": 40,
+    "active_captures": 0,
+    "capture_limit": 262144,
+    "capture_slots": 1024,
+    "scope": "current process",
+    "stopping": false,
+    "last_error": null
+  },
+  "summary": {
+    "request_count": 5,
+    "answer_count": 15,
+    "error_count": 1,
+    "input_tokens": 1639,
+    "output_tokens": 284,
+    "cost_usd": 6.8838e-05,
+    "cost_known_requests": 4,
+    "sample_count": 0,
+    "incomplete_count": 0,
+    "action_count": 0,
+    "p50_ms": 454.40275099999997,
+    "p95_ms": 1313.550355
+  },
+  "group_count": 4,
+  "answer_warnings": [
+    {
+      "key": "frustration",
+      "warnings": [
+        "Reported Score differs from the weighted displayed probabilities; original values are preserved"
+      ]
+    }
+  ],
+  "normalization_errors": [],
+  "cost_observation": {
+    "provider_usage_cost": [
+      1.7136e-05,
+      1.7136e-05,
+      1.7136e-05,
+      1.743e-05
+    ],
+    "observer_cost_usd": [
+      1.743e-05,
+      1.7136e-05,
+      1.7136e-05,
+      1.7136e-05
+    ],
+    "observer_usage_extra_cost": [
+      1.743e-05,
+      1.7136e-05,
+      1.7136e-05,
+      1.7136e-05
+    ],
+    "note": "No configured price rates; records are not ordered to match calls. OpenRouter-reported USD cost is checked for exact accounting, not invoice reconciliation."
+  },
+  "reimport": {
+    "imported": 0,
+    "duplicates": 5
+  },
+  "restart_summary": {
+    "request_count": 5,
+    "answer_count": 15,
+    "error_count": 1,
+    "input_tokens": 1639,
+    "output_tokens": 284,
+    "cost_usd": 6.8838e-05,
+    "cost_known_requests": 4,
+    "sample_count": 0,
+    "incomplete_count": 0,
+    "action_count": 0,
+    "p50_ms": 454.40275099999997,
+    "p95_ms": 1313.550355
+  },
+  "finished_at": "2026-10-02T12:47:25.242204+00:00"
+}

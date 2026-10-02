@@ -1,0 +1,29 @@
+{
+  "recorded_at": "2026-10-02T12:07:30.975098+00:00",
+  "binary_version": "jev-observer 0.1.0",
+  "binary_sha256": "ccda9320ea79dbf9398be762da09e70f3c10b14ef366ce5cee8b93a4321043c5",
+  "platform": "Linux",
+  "architecture": "aarch64",
+  "provider_calls": 0,
+  "observations": [
+    {
+      "case": "unsupported_plaintext_schema",
+      "exit_code": 1,
+      "rejected_schema": true,
+      "bytes_changed": true,
+      "before_plaintext": true,
+      "after_plaintext": false,
+      "stderr": "Encrypting existing Observer history: <temporary-workspace>/future.sqlite\nObserver history encryption completed\nError: Unsupported database schema [999]; use a compatible Observer version\n"
+    },
+    {
+      "case": "200_response_body_abort",
+      "client_failed": true,
+      "stored_status": 200,
+      "transport_error": "Upstream response transfer failed",
+      "capture_complete": false,
+      "total_request_count": 1,
+      "failure_count": 0,
+      "failure_filter_request_count": 0
+    }
+  ]
+}

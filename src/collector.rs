@@ -44,6 +44,7 @@ struct Counters {
     last_gap_at: AtomicI64,
     lag_ms: AtomicU64,
     pending_times: Mutex<VecDeque<Instant>>,
+    last_error: Mutex<Option<Value>>,
 }
 
 struct Inner {
@@ -188,7 +189,8 @@ impl Collector {
             "capture_limit":self.inner.capture_limit,
             "capture_slots":self.inner.capture_slots,
             "scope":"current process",
-            "stopping":self.inner.stopped.load(Ordering::Relaxed)
+            "stopping":self.inner.stopped.load(Ordering::Relaxed),
+            "last_error":c.last_error.lock().unwrap_or_else(|error| error.into_inner()).clone()
         });
         drop(sequence);
         sample
@@ -217,6 +219,60 @@ fn gap(c: &Counters, count: u64) {
         .store(chrono::Utc::now().timestamp_millis(), Ordering::Relaxed);
 }
 
+fn error_category(error: &anyhow::Error) -> &'static str {
+    for cause in error.chain() {
+        if let Some(rusqlite::Error::SqliteFailure(code, _)) =
+            cause.downcast_ref::<rusqlite::Error>()
+        {
+            use rusqlite::ErrorCode;
+            return match code.code {
+                ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked => "database_busy",
+                ErrorCode::DiskFull => "storage_full",
+                ErrorCode::PermissionDenied | ErrorCode::ReadOnly => "permission_denied",
+                ErrorCode::DatabaseCorrupt | ErrorCode::NotADatabase => "database_unreadable",
+                ErrorCode::CannotOpen | ErrorCode::SystemIoFailure => "storage_io",
+                _ => "database_error",
+            };
+        }
+        if let Some(error) = cause.downcast_ref::<std::io::Error>() {
+            return match error.kind() {
+                std::io::ErrorKind::PermissionDenied => "permission_denied",
+                std::io::ErrorKind::StorageFull => "storage_full",
+                _ => "storage_io",
+            };
+        }
+    }
+    "database_error"
+}
+
+fn diagnostic(c: &Counters, operation: &'static str, error: &anyhow::Error) {
+    let category = error_category(error);
+    let mut last = c
+        .last_error
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    // Never expose error strings: SQLite messages can contain SQL or values.
+    if last
+        .as_ref()
+        .is_none_or(|last| last["operation"] != operation || last["category"] != category)
+    {
+        eprintln!("Observer storage failure: operation={operation}, category={category}");
+    }
+    *last = Some(
+        json!({"operation":operation,"category":category,"at":chrono::Utc::now().timestamp_millis()}),
+    );
+}
+
+fn open_writer(store: &Store, c: &Counters) -> Option<rusqlite::Connection> {
+    match store.writer_connection() {
+        Ok(connection) => Some(connection),
+        Err(error) => {
+            diagnostic(c, "open", &error);
+            None
+        }
+    }
+}
+
 fn writer(
     store: Store,
     options: NormalizeOptions,
@@ -224,7 +280,7 @@ fn writer(
     c: Arc<Counters>,
     stopped: Arc<AtomicBool>,
 ) {
-    let mut connection = store.writer_connection().ok();
+    let mut connection = open_writer(&store, &c);
     let mut last_maintenance = Instant::now();
     loop {
         let first = match receiver.recv_timeout(Duration::from_millis(25)) {
@@ -237,11 +293,18 @@ fn writer(
                 if last_maintenance.elapsed() >= IDLE_MAINTENANCE_INTERVAL {
                     last_maintenance = Instant::now();
                     if connection.is_none() {
-                        connection = store.writer_connection().ok();
+                        connection = open_writer(&store, &c);
                     }
-                    let result = connection
-                        .as_mut()
-                        .and_then(|conn| store.maintenance(conn, false).ok());
+                    let result =
+                        connection
+                            .as_mut()
+                            .and_then(|conn| match store.maintenance(conn, false) {
+                                Ok(ran) => Some(ran),
+                                Err(error) => {
+                                    diagnostic(&c, "retention", &error);
+                                    None
+                                }
+                            });
                     if result.is_some() {
                         c.maintenance_failed.store(false, Ordering::Relaxed);
                         c.last_maintenance_at
@@ -278,11 +341,18 @@ fn writer(
             }
         }
         if connection.is_none() {
-            connection = store.writer_connection().ok();
+            connection = open_writer(&store, &c);
         }
-        let written = connection
-            .as_mut()
-            .and_then(|conn| store.write_batch(conn, &records).ok());
+        let written =
+            connection
+                .as_mut()
+                .and_then(|conn| match store.write_batch(conn, &records) {
+                    Ok(written) => Some(written),
+                    Err(error) => {
+                        diagnostic(&c, "write", &error);
+                        None
+                    }
+                });
         match written {
             Some(count) => {
                 // write_batch checks retention in the same successful
@@ -322,6 +392,24 @@ fn writer(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn storage_diagnostics_expose_categories_without_sql_or_sensitive_values() {
+        let counters = Counters::default();
+        let error = anyhow::Error::from(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_FULL),
+            Some("SQL INSERT included provider-secret and request-state".into()),
+        ))
+        .context("private workspace filename");
+        diagnostic(&counters, "write", &error);
+        let saved = counters.last_error.lock().unwrap().clone().unwrap();
+        assert_eq!(saved["category"], "storage_full");
+        assert_eq!(saved["operation"], "write");
+        assert!(saved["at"].as_i64().unwrap() > 0);
+        for sensitive in ["provider-secret", "request-state", "filename", "INSERT"] {
+            assert!(!saved.to_string().contains(sensitive));
+        }
+    }
 
     #[tokio::test]
     async fn health_samples_order_shared_clones_and_identify_restarts() {

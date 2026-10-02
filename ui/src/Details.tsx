@@ -2,27 +2,28 @@ import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, ArrowRight, Check, ClipboardText, Database, DownloadSimple, FileArrowUp, Fingerprint, GearSix, Info, ShieldCheck, Trash, WarningCircle, X } from '@phosphor-icons/react';
 import type { ChangeEvent, ReactNode } from 'react';
-import type { Answer, CredentialStatus, Filters, GroupDetail, Label, RequestRecord, Settings } from './types';
+import type { Answer, CredentialStatus, Filters, Group, GroupDetail, Health, Label, RequestRecord, Settings } from './types';
 import { api, query, useResource } from './api';
-import { answerValue, bytes, dateTime, money, ms, number, percent, shortId } from './format';
+import { connectionSnippet } from './connection';
+import { answerValue, bytes, costBasis, dateTime, money, ms, number, percent, shortId } from './format';
 import { Definition, Distribution, Empty, ErrorNotice, KindBadge, Loading, RequestTable, StatusBadge, Timeline } from './components';
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect' } | null;
-type Props = { panel: Panel; setPanel: (value: Panel) => void; filters: Filters; changed: () => void; historyChanged: () => void; filterGroup: (id: string) => void; notify: (message: string) => void };
+type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; changed: () => void; historyChanged: () => void; filterGroup: (id: string) => void; notify: (message: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
   return <div className="drawer-heading"><div className="eyebrow">{icon}{eyebrow}</div><Dialog.Title>{title}</Dialog.Title><Dialog.Description>{description}</Dialog.Description></div>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="detail-field"><dt>{label}</dt><dd>{children}</dd></div>; }
 
-export default function Details({ panel, setPanel, filters, changed, historyChanged, filterGroup, notify }: Props) {
+export default function Details({ health, panel, setPanel, filters, changed, historyChanged, filterGroup, notify }: Props) {
   return <Dialog.Root open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className={`drawer ${panel?.type === 'import' || panel?.type === 'connect' ? 'drawer-small' : ''}`}>
     <Dialog.Close className="icon-button drawer-close" aria-label="Close detail panel"><X size={20} weight="bold" /></Dialog.Close>
     {panel?.type === 'request' && <RequestDetails id={panel.id} setPanel={setPanel} changed={changed} />}
     {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} />}
     {panel?.type === 'settings' && <SettingsDetails changed={historyChanged} notify={notify} close={() => setPanel(null)} />}
     {panel?.type === 'import' && <ImportDetails changed={historyChanged} />}
-    {panel?.type === 'connect' && <ConnectDetails />}
+    {panel?.type === 'connect' && <ConnectDetails health={health} />}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
 
@@ -35,11 +36,11 @@ function RequestDetails({ id, setPanel, changed }: { id: string; setPanel: Props
   return <>
     <DetailHeading eyebrow="Request details" title={record?.source ?? 'Request'} description="Inspect the captured response and its individual decisions." icon={<Fingerprint size={15} />} />
     {error ? <ErrorNotice message={error} retry={reload} /> : !record ? <Loading label="Loading request" /> : <div className="drawer-body">
-      <div className="request-detail-id"><code>{record.id}</code><StatusBadge status={record.status} /></div>
+      <div className="request-detail-id"><code>{record.id}</code><StatusBadge status={record.status} failed={record.failed} /></div>
       {record.sample && <div className="inline-notice"><Info size={16} />Synthetic sample. No provider was called.</div>}
       {!record.capture_complete && <div className="warning-notice"><WarningCircle size={18} />This capture is incomplete. Missing fields are unknown; the forwarded request was not truncated.</div>}
       {record.transport_error && <ErrorNotice message={record.transport_error} />}
-      <dl className="detail-grid"><Field label={record.timestamp == null ? "Imported at" : "Recorded"}>{dateTime(record.timestamp ?? record.imported_at)}{record.timestamp == null && <span className="table-subline">Original event time unknown</span>}</Field><Field label="Latency">{ms(record.duration_ms)}</Field><Field label="Model">{record.model || 'Unknown'}</Field><Field label="Requested model">{record.requested_model ?? 'Unknown'}</Field><Field label="Input tokens">{number(record.input_tokens)}</Field><Field label="Output tokens">{number(record.output_tokens)}</Field><Field label="Request cost">{money(record.cost_usd)}</Field><Field label="Cost basis">{record.cost_basis || 'Unknown'}</Field></dl>
+      <dl className="detail-grid"><Field label={record.timestamp == null ? "Imported at" : "Recorded"}>{dateTime(record.timestamp ?? record.imported_at)}{record.timestamp == null && <span className="table-subline">Original event time unknown</span>}</Field><Field label="Latency">{ms(record.duration_ms)}</Field><Field label="Provider">{record.provider || 'Unknown'}</Field><Field label="Model">{record.model || 'Unknown'}</Field><Field label="Requested model">{record.requested_model ?? 'Unknown'}</Field><Field label="Input tokens">{number(record.input_tokens)}</Field><Field label="Output tokens">{number(record.output_tokens)}</Field><Field label="Request cost">{money(record.cost_usd)}</Field><Field label="Cost basis">{costBasis(record.cost_basis)}</Field></dl>
       <div className="detail-section-title"><h3>Decisions</h3><span className="count-badge">{record.answers.length}</span></div>
       <p className="caption">Usage and cost belong to this request, across all its answers.</p>
       {!record.answers.length ? <Empty title="No captured answers">The provider response did not include a supported answer, or the capture was incomplete.</Empty> : record.answers.map(answer => <AnswerDetail key={`${record.id}-${answer.key}`} answer={answer} record={record} onGroup={() => setPanel({ type: 'group', id: answer.group_id })} changed={label => updateLabel(answer.key, label)} />)}
@@ -66,6 +67,7 @@ function AnswerDetail({ answer, record, onGroup, changed }: { answer: Answer; re
   return <section className="answer-card"><div className="answer-heading"><h4>{answer.key}</h4><KindBadge kind={answer.kind} /></div>
     <div className="answer-value">{answer.valid ? answerValue(answer.value, answer.kind) : 'Invalid or missing answer'}{answer.kind === 'noul' && answer.valid && <span className="caption">yes-probability</span>}</div>
     {!answer.valid && <p className="error-text">{answer.error ?? 'Excluded from answer distributions.'}</p>}
+    {answer.warnings?.map(warning => <div className="warning-notice" key={warning}><WarningCircle size={17} /><span>{warning}</span></div>)}
     {answer.confidence != null && <p className="caption">Reported confidence {percent(answer.confidence)} · not measured accuracy</p>}
     {probabilities.length > 0 && <div className="probability-list" aria-label="Reported probabilities">{probabilities.map(([key, value]) => <div key={key} className="probability-row"><span title={key}>{key}</span><div className="probability-track"><span style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></div><span className="mono">{percent(value)}</span></div>)}</div>}
     <div className="answer-actions"><button className="text-button" onClick={onGroup}>View recurring group <ArrowRight size={14} /></button><div className="review-control"><span className="review-status" role="status">{pending ? 'Saving…' : saved ? 'Saved' : ''}</span><label className="label-control"><span>Review</span><select aria-label={`Review ${answer.key}`} value={pending ?? currentLabel ?? ''} aria-disabled={pending !== null} onPointerDown={event => { if (pending) event.preventDefault(); }} onKeyDown={event => { if (pending && ['ArrowUp', 'ArrowDown', 'Home', 'End', ' ', 'Enter'].includes(event.key)) event.preventDefault(); }} onChange={event => void label(event.target.value)}><option value="" disabled>Not labeled</option><option value="correct">Correct</option><option value="incorrect">Incorrect</option><option value="unknown">Unknown</option></select></label></div></div>
@@ -83,10 +85,10 @@ function GroupDetails({ id, filters, setPanel, filterGroup }: { id: string; filt
       <dl className="detail-grid"><Field label="Valid answers">{number(group.valid_count)} / {number(group.answer_count)}</Field><Field label="Distinct requests">{number(group.request_count)}</Field><Field label="Task context">{group.task_version ?? 'Unverified'}</Field><Field label="Presentation">{shortId(group.presentation_id)}</Field></dl>
       <div className="inline-notice"><Info size={17} />{group.task_version ? 'Grouped by source, key, definition, presentation and supplied task version.' : 'This is a definition-based group. Rules carried in input state may change without a supplied task version.'}</div>
       <section className="detail-section"><div className="detail-section-title"><h3>Answer distribution</h3><span className="caption">{number(group.valid_count)} valid answers</span></div><Distribution group={group} />{group.kind !== 'choice' && <p className="caption">Mean {group.kind === 'noul' ? 'yes-probability' : 'score'}: {answerValue(group.mean_value, group.kind)}{group.kind === 'score' ? ' · within this rubric only' : ''}</p>}</section>
-      <section className="detail-section"><h3>Associated request activity</h3><Timeline data={data.timeline} compact /><p className="caption">Request-level usage and cost can overlap with other groups. They must not be added into a global total.</p></section>
+      <section className="detail-section"><h3>Associated request activity</h3><Timeline data={data.timeline} meta={data.timeline_meta} compact /><p className="caption">Request-level usage and cost can overlap with other groups. They must not be added into a global total.</p></section>
       <section className="detail-section"><h3>{group.is_family ? 'Original definitions' : 'Definition versions'} <span className="count-badge">{data.versions.length}</span></h3><p className="caption">{group.is_family ? 'This adapter links original instance definitions. Instance differences do not imply a changed rule.' : 'Different definitions and presentations keep separate statistics.'} Showing {data.versions.length} of {number(group.version_count)} {group.is_family ? 'original definitions' : 'versions'}.</p><div className="version-list">{data.versions.map((version, index) => <button key={version.id} className={`version-item ${version.id === group.id ? 'selected' : ''}`} onClick={() => { setCompare(''); setPanel({ type: 'group', id: version.id }); }}><span><strong>Definition {shortId(version.definition_id)}</strong><small>Presentation {shortId(version.presentation_id)} · {version.task_version ?? 'Unverified task context'}</small></span><span>{number(version.answer_count)} answers {version.id === group.id ? <Check size={15} /> : <ArrowRight size={14} />}</span><span className="sr-only">Version {index + 1}</span></button>)}</div>
         {data.versions.length > 1 && <label className="field-label comparison-select">Compare with<select value={compare} onChange={event => setCompare(event.target.value)}><option value="">Choose a separate version</option>{data.versions.filter(version => version.id !== group.id).map(version => <option value={version.id} key={version.id}>{shortId(version.definition_id)} / {shortId(version.presentation_id)} · {version.task_version ?? 'unverified'}</option>)}</select></label>}
-        {other && <div className="comparison"><div><h4>Current definition</h4><Definition value={group.definition} /></div><div><h4>Selected version</h4><Definition value={other.definition} /><p className="caption">Task: {other.task_version ?? 'Unverified'} · Presentation: {shortId(other.presentation_id)}</p></div></div>}
+        {other && <VersionComparison current={group} other={other} />}
         {!other && <details><summary>Inspect definition</summary><Definition value={group.definition} /></details>}
       </section>
       {group.family_id && <section className="detail-section"><h3>Indexed family</h3><div className="family-note"><strong>{group.family_name ?? group.family_id}</strong><p>Mapped by {group.adapter ?? 'a local adapter'}. Original definitions and individual instances remain distinct.</p></div></section>}
@@ -94,6 +96,36 @@ function GroupDetails({ id, filters, setPanel, filterGroup }: { id: string; filt
       <section className="detail-section"><h3>Answer observations</h3><p className="caption">Showing {data.answers.length} of {number(data.total_answers ?? group.answer_count)} answers; latest {data.detail_limit ?? 100} maximum.</p><div className="table-scroll"><table><thead><tr><th>Answer</th><th>Value</th><th>Confidence</th><th>Review</th></tr></thead><tbody>{data.answers.map((answer, index) => <tr key={`${answer.request_id}-${answer.key}-${index}`}><td><button className="text-button" onClick={() => setPanel({ type: 'request', id: answer.request_id })}>{answer.key}</button></td><td>{answer.valid ? answerValue(answer.value, group.kind) : 'Invalid'}</td><td>{percent(answer.confidence)}</td><td>{answer.label ?? 'Not labeled'}</td></tr>)}</tbody></table></div></section>
     </div>}
   </>;
+}
+
+function VersionComparison({ current, other }: { current: Group; other: Group }) {
+  const reviewed = (group: Group) => group.review_counts ? group.review_counts.correct + group.review_counts.incorrect : null;
+  const reviewedAccuracy = (group: Group) => {
+    const count = reviewed(group);
+    return count ? `${percent(group.review_counts!.correct / count)} (${number(group.review_counts!.correct)} / ${number(count)})` : 'No correct/incorrect reviews';
+  };
+  return <section className="version-comparison" aria-label="Version outcome comparison">
+    <h4>Outcomes in the selected scope</h4>
+    <p className="caption">These are separate observed samples, not a matched replay. Different traffic and model choices can explain differences. Human reviews cover only the labeled sample.</p>
+    <div className="table-scroll"><table><thead><tr><th>Measure</th><th>Current version</th><th>Selected version</th></tr></thead><tbody>
+      <tr><th>Distinct requests</th><td>{number(current.request_count)}</td><td>{number(other.request_count)}</td></tr>
+      <tr><th>Valid answers / all answers</th><td>{number(current.valid_count)} / {number(current.answer_count)}</td><td>{number(other.valid_count)} / {number(other.answer_count)}</td></tr>
+      <tr><th>Invalid answers</th><td>{number(current.answer_count - current.valid_count)}</td><td>{number(other.answer_count - other.valid_count)}</td></tr>
+      <tr><th>Answers with warnings</th><td>{number(current.warning_count)}</td><td>{number(other.warning_count)}</td></tr>
+      <tr><th>Failed requests</th><td>{number(current.error_count)} / {number(current.request_count)}</td><td>{number(other.error_count)} / {number(other.request_count)}</td></tr>
+      <tr><th>Mean request latency</th><td>{ms(current.mean_latency_ms)}</td><td>{ms(other.mean_latency_ms)}</td></tr>
+      <tr><th>Known request cost</th><td>{money(current.cost_usd)}<span className="table-subline">{number(current.cost_known_requests)} / {number(current.request_count)} requests covered</span></td><td>{money(other.cost_usd)}<span className="table-subline">{number(other.cost_known_requests)} / {number(other.request_count)} requests covered</span></td></tr>
+      <tr><th>Reported input / output tokens</th><td>{number(current.input_tokens)} / {number(current.output_tokens)}</td><td>{number(other.input_tokens)} / {number(other.output_tokens)}</td></tr>
+      {current.kind === other.kind && current.kind !== 'choice' && <tr><th>Mean {current.kind === 'noul' ? 'yes-probability' : 'score'}</th><td>{answerValue(current.mean_value, current.kind)}</td><td>{answerValue(other.mean_value, other.kind)}</td></tr>}
+      <tr><th>Correct among judged answers</th><td>{reviewedAccuracy(current)}</td><td>{reviewedAccuracy(other)}</td></tr>
+      <tr><th>Unknown reviews</th><td>{number(current.review_counts?.unknown)}</td><td>{number(other.review_counts?.unknown)}</td></tr>
+      <tr><th>Not labeled</th><td>{number(current.review_counts?.unlabeled)}</td><td>{number(other.review_counts?.unlabeled)}</td></tr>
+    </tbody></table></div>
+    <p className="caption">Requests may contribute to both versions. Usage and cost must not be added across columns. Known costs can include provider-reported charges and configured estimates; inspect requests for their basis.</p>
+    {current.kind === 'score' && <p className="caption">Score means use each definition’s own rubric; changed rubrics are not directly comparable.</p>}
+    <div className="comparison"><div><h4>Current outcomes</h4><Distribution group={current} /></div><div><h4>Selected outcomes</h4><Distribution group={other} /></div></div>
+    <details><summary>Compare definitions and context</summary><div className="comparison"><div><h4>Current definition</h4><Definition value={current.definition} /><p className="caption">Task: {current.task_version ?? 'Unverified'} · Presentation: {shortId(current.presentation_id)}</p></div><div><h4>Selected version</h4><Definition value={other.definition} /><p className="caption">Task: {other.task_version ?? 'Unverified'} · Presentation: {shortId(other.presentation_id)}</p></div></div></details>
+  </section>;
 }
 
 function SettingsDetails({ changed, notify, close }: { changed: () => void; notify: Props['notify']; close: () => void }) {
@@ -160,9 +192,11 @@ function ImportDetails({ changed }: { changed: () => void }) {
   </div></>;
 }
 
-function ConnectDetails() {
+function ConnectDetails({ health }: { health?: Health }) {
   const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:8765' : window.location.origin;
   const [copyStatus, setCopyStatus] = useState('');
+  const [language, setLanguage] = useState<'python' | 'javascript'>('python');
+  const [model, setModel] = useState('');
   const { data: credential, error: credentialError, reload } = useResource<CredentialStatus>('/api/credentials');
   const { data: settings, error: settingsError, reload: reloadSettings } = useResource<Settings>('/api/settings');
   const [providerKey, setProviderKey] = useState('');
@@ -171,6 +205,8 @@ function ConnectDetails() {
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [credentialMessage, setCredentialMessage] = useState('');
+  const local = settings?.upstream_auth === 'none';
+  const snippet = connectionSnippet(language, baseUrl, local, model);
   const keyValid = providerKey.length > 0 && providerKey.length <= 4096 && /^[\x21-\x7e]+$/.test(providerKey);
   useEffect(() => { if (credential) setPersist(credential.storage === 'system'); }, [credential?.storage]);
   async function copyUrl() {
@@ -208,19 +244,23 @@ function ConnectDetails() {
     {settings?.demo && <div className="inline-notice"><Info size={19} /><span>Stop this sample instance. Generate and save a 64-character database key with <code>openssl rand -hex 32</code>, then set <code>JEV_OBSERVER_DB_KEY</code> to that key. Run <code>jev-observer</code> without <code>--demo</code> and connect your app from the live dashboard.</span></div>}
     {settings && !settings.demo && <><label className="field-label">Local base URL<div className="copy-field"><code>{baseUrl}</code><button className="icon-button" aria-label="Copy local base URL" onClick={() => void copyUrl()}><ClipboardText size={18} /></button></div></label>
     <p className="caption">Use this origin for your SDK’s <code>base_url</code> or <code>baseURL</code>. The SDK appends <code>/v1/systemone</code>.</p>
-    <p className="caption" role="status">{copyStatus}</p>
-    <section className="detail-section"><h3>Provider key</h3><p>Register a key here to use a separate local client token in your SDK. The provider key is never shown again or saved in history.</p>
+    <p className="caption" role="status" aria-label="Copy status">{copyStatus}</p>
+    <dl className="detail-grid"><Field label="Configured provider">{settings.provider ?? 'typesafe'}</Field><Field label="Upstream endpoint"><code className="wrap-anywhere">{settings.upstream}</code></Field><Field label="Provider authentication">{local ? 'None · local server' : 'Bearer key'}</Field></dl>
+    {local && <div className="inline-notice"><ShieldCheck size={18} /><span>Your local model server receives no provider credentials. Set <code>JEV_OBSERVER_ACCESS_TOKEN</code> to the workspace token from the file printed at startup. This token authenticates your application to Observer.</span></div>}
+    {!local && <section className="detail-section"><h3>Provider key</h3><p>Register a key here to use a separate local client token in your SDK. The provider key is never shown again or saved in history.</p>
       {credentialError && <ErrorNotice message={credentialError} retry={reload} />}
       {credential && <p className="caption">{credential.configured ? `Registered key: ${credential.storage === 'system' ? 'saved in system credential store' : 'this session only'}` : 'No key registered in Observer.'}</p>}
-        <label className="field-label">TypeSafe API key<input type="password" value={providerKey} onChange={event => setProviderKey(event.target.value)} autoComplete="off" spellCheck={false} disabled={busy} maxLength={4096} /></label>
+        <label className="field-label">{settings.provider && settings.provider !== 'typesafe' ? `${settings.provider} API key` : 'TypeSafe API key'}<input type="password" value={providerKey} onChange={event => setProviderKey(event.target.value)} autoComplete="off" spellCheck={false} disabled={busy} maxLength={4096} /></label>
         {providerKey && !keyValid && <p className="error-text" role="status">Use a key with printable ASCII characters and no spaces.</p>}
         <label className="credential-choice"><input type="checkbox" checked={persist} onChange={event => setPersist(event.target.checked)} disabled={busy} /> Save in this computer’s credential store</label>
         <p className="caption">Leave unchecked to keep the key only until Observer stops. System saving needs an unlocked desktop credential store. Replacing a key rotates its local token, so connected applications need the new token.</p>
         <div className="button-row"><button className="button primary" disabled={!keyValid || busy} onClick={() => void registerKey()}>{busy ? 'Working…' : credential?.configured ? 'Replace registered key' : 'Register key'}</button>{credential?.configured && (!confirmRemove ? <button className="button" disabled={busy} onClick={() => setConfirmRemove(true)}>Remove key</button> : <><button className="button" disabled={busy} onClick={() => setConfirmRemove(false)}>Keep key</button><button className="button danger-button" disabled={busy} onClick={() => void removeKey()}>Confirm removal</button></>)}</div>
       {credentialMessage && <p className="caption" role="status">{credentialMessage}</p>}
       {clientToken && <div className="credential-token" role="status"><strong>Copy this local client token now.</strong><p>Set your SDK’s <code>api_key</code> or <code>apiKey</code> to this token. It is shown once and is required to use the registered provider key.</p><div className="copy-field"><code>{clientToken}</code><button className="icon-button" aria-label="Copy local client token" onClick={() => void copyToken()}><ClipboardText size={18} /></button></div></div>}
-    </section>
-    <section className="detail-section"><h3>Native endpoint</h3><code className="endpoint">POST /v1/systemone</code><p>Your SDK can also send its provider key directly when it includes <code>x-observer-access</code> with the workspace dashboard token. Registered keys are used only when the SDK sends the local client token.</p></section>
+    </section>}
+    <section className="detail-section"><h3>Connect your SDK</h3><p className="caption">Use the model name served by your configured upstream. This example sends one request when you run it; remote inference may incur charges.</p><label className="field-label">Model name<input value={model} onChange={event => setModel(event.target.value)} placeholder="Your upstream’s model name" /></label><div className="snippet-actions"><div className="segmented" aria-label="SDK language"><button className={language === 'python' ? 'selected' : ''} aria-pressed={language === 'python'} onClick={() => setLanguage('python')}>Python</button><button className={language === 'javascript' ? 'selected' : ''} aria-pressed={language === 'javascript'} onClick={() => setLanguage('javascript')}>JavaScript</button></div><button className="text-button" onClick={async () => { try { await navigator.clipboard.writeText(snippet); setCopyStatus('SDK example copied.'); } catch { setCopyStatus('Could not copy. Select the example to copy it manually.'); } }}>Copy example<ClipboardText size={15} /></button></div><pre className="json-view sdk-snippet" aria-label="SDK connection example">{snippet}</pre><p className="caption">{language === 'python' ? 'typesafe-sdk 0.7.1' : '@typesafe-ai/sdk 0.6.0'} · <code>Accept-Encoding: identity</code> keeps typed answers inspectable. {local ? 'Use the saved workspace access token.' : 'Set JEV_OBSERVER_CLIENT_TOKEN to the local client token shown after registration.'}</p></section>
+    <section className="detail-section" aria-label="Connection verification"><h3>First request check</h3><p role="status">{!health ? 'Waiting for collection health…' : health.persisted > 0 ? `${number(health.persisted)} captures saved in this Observer session.` : health.forwarded > 0 ? 'A request reached Observer. Waiting for its capture to be saved…' : 'Waiting for your application’s first request.'}</p>{Boolean(health?.truncated) && <p className="error-text">{number(health?.truncated)} captures are incomplete. Check identity encoding and capture limits.</p>}<p className="caption">After running your application, inspect its request in the workspace to confirm the model, answers and any capture warnings.</p></section>
+    <section className="detail-section"><h3>Native endpoint</h3><code className="endpoint">POST /v1/systemone</code>{!local && <p>Your SDK can also send its provider key directly when it includes <code>x-observer-access</code> with the workspace dashboard token. Registered keys are used only when the SDK sends the local client token.</p>}</section>
     <section className="detail-section"><h3>Keep sources recognizable</h3><p>Optionally add <code>x-observer-source</code> to name your application and <code>x-observer-task-version</code> when rules carried in state change.</p></section>
     <div className="inline-notice"><ShieldCheck size={19} /><span>The proxy is local. A hosted application cannot reach this machine’s loopback address. Import its exported records instead.</span></div>
     <p className="caption">Collection pressure does not intentionally hold up forwarding. Any missing captures are shown in collection health.</p>

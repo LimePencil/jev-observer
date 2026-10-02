@@ -23,6 +23,31 @@ export function query(filters: Partial<Filters>): string {
   return params.toString();
 }
 
+export function parentScope(search: string): string {
+  const params = new URLSearchParams(search);
+  for (const field of ['request_cursor', 'group_cursor', 'group_search']) params.delete(field);
+  params.sort();
+  return params.toString();
+}
+
+export const defaultFilters: Filters = { source: '', model: '', window: '24h', status: '', search: '', group: '' };
+export function readFilters(search = window.location.search): Filters {
+  const params = new URLSearchParams(search);
+  const filters: Filters = { ...defaultFilters };
+  for (const key of ['source', 'model', 'status', 'search', 'group', 'request_cursor', 'group_cursor', 'group_search'] as const) {
+    if (params.has(key)) filters[key] = params.get(key) ?? '';
+  }
+  if (filters.status !== 'error') filters.status = '';
+  const windowValue = params.get('window');
+  if (windowValue && ['1h', '24h', '7d', 'all'].includes(windowValue)) filters.window = windowValue;
+  for (const key of ['from', 'to'] as const) {
+    const value = params.get(key);
+    if (value && /^-?\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number.isFinite(new Date(Number(value)).getTime())) filters[key] = value;
+  }
+  if (filters.from || filters.to) filters.window = 'all';
+  return filters;
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, { ...init, headers: { ...((init.method && init.method !== 'GET') ? { 'Content-Type': 'application/json', 'X-Observer-Request': '1' } : {}), ...init.headers } });
   if (!response.ok) {

@@ -9,7 +9,7 @@ const now = Date.now();
 const group: Group = { id: 'group_v1_1111111111', name: 'department', key: 'department', kind: 'choice', source: 'Test inbox', definition_id: 'def_v1_1111111111', presentation_id: 'presentation_v1_1111111111', definition: { type: 'choice', instructions: 'Choose a department', criteria: { technical: 'Bugs', billing: 'Invoices' } }, task_version: null, family_id: null, family_name: null, adapter: null, answer_count: 2, valid_count: 1, request_count: 2, last_seen: now, version_count: 2, distribution: [{ label: 'technical', count: 1 }], mean_value: null, mean_confidence: null };
 const record: RequestRecord = { id: 'request-one', timestamp: now, source: 'Test inbox', provider: 'typesafe', model: 'test-model', requested_model: 'test-model', status: 200, duration_ms: 124, input_tokens: 100, output_tokens: 20, cost_usd: null, cost_basis: null, answer_count: 1, capture_complete: true, sample: false, state_retained: false, state: null, transport_error: null, source_event_id: null, import_format: null, actions: [], labels: [], answers: [{ key: 'department', kind: 'choice', group_id: group.id, definition_id: group.definition_id, presentation_id: group.presentation_id, candidate_id: null, task_version: null, definition: group.definition, value: 'technical', probabilities: { technical: .8, billing: .2 }, confidence: null, valid: true, error: null, family_id: null, family_name: null, adapter: null, instance_ref: null, mapping_reason: null, raw_answer: {} }] };
 
-async function harness(page: Page, options: { demo?: boolean } = {}) {
+async function harness(page: Page, options: { demo?: boolean; settings?: Partial<Settings>; path?: string } = {}) {
   const state = {
     record: structuredClone(record),
     dashboard: { generated_at: now, sample: false, sources: ['Test inbox'], models: ['test-model'], summary: { request_count: 2, answer_count: 2, error_count: 1, p50_ms: 124, p95_ms: 124, input_tokens: 100, output_tokens: 20, cost_usd: null, cost_known_requests: 0 }, timeline: [{ timestamp: now, requests: 2, errors: 1, mean_latency_ms: 124, cost_usd: null }], groups: [structuredClone(group)], requests: [structuredClone(record), { ...structuredClone(record), id: 'request-failed', status: 500, model: null, input_tokens: null, output_tokens: null, cost_usd: null }], health: { forwarded: 2, captured: 2, persisted: 2, dropped: 0, truncated: 0, write_failures: 0, queue_depth: 0, queued_bytes: 0, last_persisted_at: now, last_gap_at: null, lag_ms: 0, capture_limit: 262144, capture_slots: 256 } } as Dashboard,
@@ -17,6 +17,9 @@ async function harness(page: Page, options: { demo?: boolean } = {}) {
     labelPending: null as Promise<void> | null, labelHeaders: null as Record<string, string> | null,
     dashboardPending: null as Promise<void> | null, deletePending: null as Promise<void> | null, importDashboard: null as Dashboard | null,
     historicalDashboard: null as Dashboard | null,
+    olderDashboard: null as Dashboard | null,
+    groupCatalog: [structuredClone(group)],
+    dashboardQueries: [] as string[],
     credentials: { configured: false, storage: 'none' } as CredentialStatus,
     providerKey: '', clientToken: '',
   };
@@ -25,12 +28,14 @@ async function harness(page: Page, options: { demo?: boolean } = {}) {
     const request = route.request(), url = new URL(request.url());
     let body: unknown;
     if (url.pathname === '/api/dashboard') {
+      state.dashboardQueries.push(url.search);
       await state.dashboardPending;
       if (state.dashboardError) return route.fulfill({ status: 503, json: { error: 'Storage unavailable' } });
-      body = structuredClone(url.searchParams.get('window') === 'all' && state.historicalDashboard ? state.historicalDashboard : state.dashboard);
-      if (url.searchParams.get('status') === 'error') { const data = body as Dashboard; data.requests = data.requests.filter(item => item.status != null && item.status >= 400); }
+      body = structuredClone(url.searchParams.get('request_cursor') && state.olderDashboard ? state.olderDashboard : url.searchParams.get('window') === 'all' && state.historicalDashboard ? state.historicalDashboard : state.dashboard);
+      if (url.searchParams.get('group_search')) (body as Dashboard).groups = state.groupCatalog.filter(item => item.name.toLowerCase().includes(url.searchParams.get('group_search')!.toLowerCase()));
+      if (url.searchParams.get('status') === 'error') { const data = body as Dashboard; data.requests = data.requests.filter(item => item.failed || item.status != null && item.status >= 400); }
     } else if (url.pathname === '/api/health') body = state.dashboard.health;
-    else if (url.pathname === '/api/settings') body = { demo: options.demo ?? false, capture_state: false, retention_days: 7, max_records: 1000000, capture_limit: 262144, upstream: 'https://api.typesafe.ai/v1/systemone', version: 'test' } satisfies Settings;
+    else if (url.pathname === '/api/settings') body = { demo: options.demo ?? false, capture_state: false, retention_days: 7, max_records: 1000000, capture_limit: 262144, upstream: 'https://api.typesafe.ai/v1/systemone', version: 'test', ...options.settings } satisfies Settings;
     else if (url.pathname === '/api/credentials') {
       if (request.method() === 'PUT') {
         const payload = request.postDataJSON();
@@ -53,7 +58,7 @@ async function harness(page: Page, options: { demo?: boolean } = {}) {
     else return route.fulfill({ status: 404, json: { error: 'Unknown test endpoint' } });
     return route.fulfill({ json: body });
   });
-  await page.goto('/');
+  await page.goto(options.path ?? '/');
   await expect(page.getByRole('heading', { name: 'Request stream' })).toBeVisible();
   return state;
 }
@@ -208,6 +213,7 @@ test('request labels persist through API and versions remain separate', async ({
   await expect(page.getByText('Not collected. An API response')).toBeVisible();
   await page.getByRole('button', { name: 'View recurring group' }).click();
   await page.getByLabel('Compare with').selectOption('group_v1_2222222222');
+  await page.getByText('Compare definitions and context', { exact: true }).click();
   await expect(page.getByText('Changed department rules')).toBeVisible();
   await expect(page.getByText('Presentation: 2222222222')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -354,8 +360,8 @@ for (const unavailable of ['missing', 'denied'] as const) {
     }, unavailable);
     await page.getByRole('button', { name: 'Connect an application', exact: true }).click();
     await page.getByRole('button', { name: 'Copy local base URL' }).click();
-    await expect(page.getByRole('status')).toContainText('Select the URL to copy it manually');
-    await expect(page.getByRole('dialog').locator('.copy-field code')).toHaveText('http://127.0.0.1:8765');
+    await expect(page.getByRole('status', { name: 'Copy status' })).toContainText('Select the URL to copy it manually');
+    await expect(page.getByRole('dialog').locator('.copy-field code')).toHaveText(process.env.OBSERVER_UI_PREVIEW === '1' ? new URL(page.url()).origin : 'http://127.0.0.1:8765');
     expect(errors).toEqual([]);
   });
 }
@@ -552,4 +558,124 @@ test('late file reads cannot overwrite a newer file or pasted import text', asyn
   await page.evaluate(() => (window as unknown as { finishImportRead: (name: string, text: string) => void }).finishImportRead('pending.jsonl', '{"stale":true}'));
   await expect(text).toHaveValue('{"manual":true}');
   await expect(submit).toBeEnabled();
+});
+
+test('local model onboarding uses workspace authentication and identity SDK examples', async ({ page }) => {
+  await harness(page, { settings: { provider: 'laya', upstream_auth: 'none', upstream: 'http://127.0.0.1:8080/v1/systemone' } });
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('http://127.0.0.1:8080/v1/systemone');
+  await expect(dialog).toContainText('None · local server');
+  await expect(page.getByRole('button', { name: 'Register key' })).toHaveCount(0);
+  await page.getByLabel('Model name', { exact: true }).fill('my-local-laya');
+  const snippet = page.getByLabel('SDK connection example');
+  await expect(snippet).toContainText('JEV_OBSERVER_ACCESS_TOKEN');
+  await expect(snippet).toContainText('"Accept-Encoding": "identity"');
+  await expect(snippet).toContainText('model="my-local-laya"');
+  await page.getByRole('button', { name: 'JavaScript', exact: true }).click();
+  await expect(snippet).toContainText('apiKey: process.env.JEV_OBSERVER_ACCESS_TOKEN');
+  await expect(snippet).toContainText('model: "my-local-laya"');
+  await expect(dialog).toContainText('2 captures saved in this Observer session.');
+});
+
+test('older request pages survive reloading a bookmarked view', async ({ page }) => {
+  const state = await harness(page);
+  state.dashboard.feed_next_cursor = 'older-page';
+  state.olderDashboard = { ...structuredClone(state.dashboard), requests: [{ ...structuredClone(record), id: 'old-request' }], feed_next_cursor: null };
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+  await expect(page.getByLabel('Inspect request old-request')).toBeVisible();
+  await expect(page).toHaveURL(/request_cursor=older-page/);
+  await page.reload();
+  await expect(page.getByLabel('Inspect request old-request')).toBeVisible();
+  await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+  await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeVisible();
+});
+
+test('custom date filters survive reloading a bookmarked view', async ({ page }) => {
+  await harness(page);
+  await page.getByRole('button', { name: 'Custom date range' }).click();
+  await page.getByLabel('From date').fill('2026-10-01T09:00');
+  await page.getByLabel('To date').fill('2026-10-02T09:00');
+  await expect(page).toHaveURL(/from=\d+/);
+  await expect(page).toHaveURL(/to=\d+/);
+  await page.reload();
+  await expect(page.getByLabel('From date')).toHaveValue('2026-10-01T09:00');
+  await expect(page.getByLabel('To date')).toHaveValue('2026-10-02T09:00');
+  await expect(page.getByLabel('Time window')).toHaveValue('all');
+  await page.getByLabel('Time window').selectOption('24h');
+  await expect(page.getByLabel('From date')).toHaveValue('');
+  await expect(page).not.toHaveURL(/request_cursor|from=|to=/);
+});
+
+test('question search reaches server history and stays editable after no matches', async ({ page }) => {
+  const state = await harness(page);
+  state.groupCatalog.push({ ...structuredClone(group), id: 'older-question', name: 'historical-routing' });
+  const search = page.getByLabel('Find a question group');
+  await search.fill('historical');
+  await expect(page.locator('.group-row')).toContainText('historical-routing');
+  await expect(search).toBeFocused();
+  expect(state.dashboardQueries.some(value => new URLSearchParams(value).get('group_search') === 'historical')).toBe(true);
+  await search.fill('no-matching-question');
+  await expect(page.getByRole('heading', { name: 'No questions match this search' })).toBeVisible();
+  await expect(search).toBeFocused();
+  await search.fill('department');
+  await expect(page.locator('.group-row')).toContainText('department');
+});
+
+test('timeline spacing preserves quiet periods and shows calendar dates', async ({ page }) => {
+  const state = await harness(page);
+  const hour = 3_600_000, start = Date.UTC(2026, 9, 1);
+  state.dashboard.timeline = [0, 1, 24].map(offset => ({ timestamp: start + offset * hour, requests: 1, errors: 0, mean_latency_ms: 10, cost_usd: 0 }));
+  state.dashboard.timeline_meta = { start, end: start + 48 * hour, bucket_width: hour, truncated: false };
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(page.locator('.activity-panel .chart-bar')).toHaveCount(3);
+  const positions = await page.locator('.activity-panel .chart-bar').evaluateAll(nodes => nodes.map(node => Number(node.getAttribute('x'))));
+  expect((positions[2] - positions[1]) / (positions[1] - positions[0])).toBeCloseTo(23);
+  await expect(page.locator('.activity-panel .chart-axis').last()).toContainText('Oct 3');
+  await page.locator('.activity-panel').getByText('View chart data', { exact: true }).click();
+  await expect(page.locator('.activity-panel .chart-accessible')).toContainText('Oct 2');
+});
+
+test('a partial timeline bucket keeps the selected exclusive range end', async ({ page }) => {
+  const state = await harness(page);
+  const start = Date.UTC(2026, 9, 1);
+  state.dashboard.timeline = [{ timestamp: start, requests: 1, errors: 0, mean_latency_ms: 10, cost_usd: null }];
+  state.dashboard.timeline_meta = { start, end: start + 30_000, bucket_width: 60_000, truncated: false };
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  const expectedEnd = await page.evaluate(value => new Date(value).toLocaleString([], { hour: '2-digit', minute: '2-digit', hour12: false }), start + 30_000);
+  await expect(page.locator('.activity-panel .chart-axis').last()).toHaveText(expectedEnd);
+});
+
+test('transport failures, provider charges and Score warnings remain visible', async ({ page }) => {
+  const state = await harness(page);
+  state.record = { ...state.record, failed: true, status: 200, cost_usd: .003, cost_basis: 'provider_reported', transport_error: 'Connection closed before the response finished.' };
+  state.record.answers[0] = { ...state.record.answers[0], kind: 'score', value: 1.7, warnings: ['Score outside the supplied rubric range.'] };
+  state.dashboard.requests[0] = state.record;
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(page.locator('.request-table')).toContainText('Transport failed');
+  await expect(page.locator('.request-table')).toContainText('Provider-reported charge');
+  await page.getByRole('button', { name: 'Failures', exact: true }).click();
+  await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeVisible();
+  await page.getByLabel('Inspect request request-one', { exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('Score outside the supplied rubric range.');
+  await expect(page.locator('.answer-value')).toContainText('1.7');
+  await expect(page.getByRole('dialog')).toContainText('Provider-reported charge');
+});
+
+test('version comparisons show observed outcomes and judged review coverage', async ({ page }) => {
+  await harness(page);
+  await page.route('**/api/groups/**', route => route.fulfill({ json: {
+    group: { ...group, review_counts: { correct: 1, incorrect: 0, unknown: 0, unlabeled: 1 } },
+    versions: [group, { ...group, id: 'other', review_counts: { correct: 0, incorrect: 1, unknown: 1, unlabeled: 0 }, distribution: [{ label: 'billing', count: 1 }] }],
+    timeline: [], requests: [], answers: [],
+  } }));
+  await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+  await page.getByLabel('Compare with').selectOption('other');
+  const comparison = page.getByLabel('Version outcome comparison');
+  await expect(comparison).toContainText('100.0% (1 / 1)');
+  await expect(comparison).toContainText('0.0% (0 / 1)');
+  await expect(comparison).toContainText('not a matched replay');
+  await expect(comparison).toContainText('technical');
+  await expect(comparison).toContainText('billing');
 });

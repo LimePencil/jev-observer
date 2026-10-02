@@ -31,10 +31,12 @@ pub struct Capture {
     pub transport_error: Option<String>,
     pub secret: Option<String>,
     pub local_token: Option<String>,
+    pub access_token: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct NormalizeOptions {
+    pub provider: Option<String>,
     pub capture_state: bool,
     pub redact_keys: Vec<String>,
     pub input_price_per_million: Option<f64>,
@@ -264,6 +266,7 @@ fn validate_distribution(
     raw: &Value,
     expected: &[String],
     errors: &mut Vec<String>,
+    provider: &str,
 ) -> Option<Vec<f64>> {
     let Some(map) = raw.get("probabilities").and_then(Value::as_object) else {
         errors.push("Missing probability distribution".into());
@@ -281,14 +284,28 @@ fn validate_distribution(
         errors.push("Probabilities must be finite numbers between zero and one".into());
         return None;
     };
-    if (values.iter().sum::<f64>() - 1.0).abs() > PROBABILITY_TOLERANCE {
+    // Laya rounds each probability independently to four decimal places.
+    // Its worst-case total rounding error grows with the number of options.
+    // Source: NandhaKishorM/laya 4aa6761, laya/agent.py _decode_answers.
+    let tolerance = if provider == "laya" {
+        PROBABILITY_TOLERANCE.max(0.00005 * values.len() as f64) + 1e-12
+    } else {
+        PROBABILITY_TOLERANCE
+    };
+    if (values.iter().sum::<f64>() - 1.0).abs() > tolerance {
         errors.push("Probabilities do not sum to one".into());
         return None;
     }
     Some(values)
 }
 
-fn validate_answer(definition: &Value, raw: &Value, kind: &str) -> Vec<String> {
+fn validate_answer(
+    definition: &Value,
+    raw: &Value,
+    kind: &str,
+    provider: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<String> {
     let mut errors = Vec::new();
     if !definition.is_object() {
         errors.push("Original question definition unavailable".into());
@@ -327,7 +344,20 @@ fn validate_answer(definition: &Value, raw: &Value, kind: &str) -> Vec<String> {
             }
         }
         "choice" => {
-            let criteria = definition["criteria"].as_object();
+            let list_criteria: Option<Map<String, Value>> = if provider == "laya" {
+                definition["criteria"].as_array().and_then(|values| {
+                    let entries = values
+                        .iter()
+                        .map(|value| value.as_str().map(|key| (key.to_owned(), Value::Null)))
+                        .collect::<Option<Map<_, _>>>()?;
+                    (entries.len() == values.len()).then_some(entries)
+                })
+            } else {
+                None
+            };
+            let criteria = definition["criteria"]
+                .as_object()
+                .or(list_criteria.as_ref());
             if !criteria.is_some_and(|map| {
                 !map.is_empty()
                     && map.len() <= 255
@@ -342,7 +372,8 @@ fn validate_answer(definition: &Value, raw: &Value, kind: &str) -> Vec<String> {
             if !choice.is_some_and(|c| expected.iter().any(|key| key == c)) {
                 errors.push("Selected option is absent from the question criteria".into());
             }
-            if let Some(probabilities) = validate_distribution(raw, &expected, &mut errors)
+            if let Some(probabilities) =
+                validate_distribution(raw, &expected, &mut errors, provider)
                 && let Some(selected) = choice.and_then(|c| expected.iter().position(|k| k == c))
                 && probabilities
                     .iter()
@@ -356,16 +387,27 @@ fn validate_answer(definition: &Value, raw: &Value, kind: &str) -> Vec<String> {
         }
         "score" => {
             let levels = definition["criteria"].as_array();
-            if !levels.is_some_and(|v| (2..=10).contains(&v.len()) && v.iter().all(text_shape)) {
-                errors.push("Score requires two to ten ordered levels".into());
+            let range = if provider == "laya" { 1..=32 } else { 2..=10 };
+            if !levels.is_some_and(|v| range.contains(&v.len()) && v.iter().all(text_shape)) {
+                errors.push(
+                    if provider == "laya" {
+                        "Laya Score requires one to 32 ordered levels"
+                    } else {
+                        "Score requires two to ten ordered levels"
+                    }
+                    .into(),
+                );
             }
             let n = levels.map_or(0, Vec::len);
             let score = finite(&raw["score"]);
-            if !score.is_some_and(|s| n >= 2 && s >= 0.0 && s <= (n - 1) as f64) {
+            if !score
+                .is_some_and(|s| range.contains(&n) && s >= 0.0 && s <= n.saturating_sub(1) as f64)
+            {
                 errors.push("Score must be between level zero and the last level index".into());
             }
             let expected: Vec<String> = (0..n).map(|n| n.to_string()).collect();
-            if let Some(probabilities) = validate_distribution(raw, &expected, &mut errors)
+            if let Some(probabilities) =
+                validate_distribution(raw, &expected, &mut errors, provider)
                 && let Some(score) = score
             {
                 let weighted: f64 = probabilities
@@ -374,7 +416,7 @@ fn validate_answer(definition: &Value, raw: &Value, kind: &str) -> Vec<String> {
                     .map(|(index, p)| index as f64 * p)
                     .sum();
                 if (weighted - score).abs() > 0.001 {
-                    errors.push("Score does not match the weighted level probabilities".into());
+                    warnings.push("Reported Score differs from the weighted displayed probabilities; original values are preserved".into());
                 }
             }
             if !raw["legend"].as_object().is_some_and(|map| {
@@ -436,10 +478,14 @@ fn jgrep_family(
 pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
     let raw_request: Value = serde_json::from_slice(&capture.request).unwrap_or(Value::Null);
     let response: Value = serde_json::from_slice(&capture.response).unwrap_or(Value::Null);
-    let explicit_secrets: Vec<&str> = [capture.secret.as_deref(), capture.local_token.as_deref()]
-        .into_iter()
-        .flatten()
-        .collect();
+    let explicit_secrets: Vec<&str> = [
+        capture.secret.as_deref(),
+        capture.local_token.as_deref(),
+        capture.access_token.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     let mut safe = privacy(
         &json!({
             "request": raw_request, "response": response, "id": capture.id,
@@ -495,7 +541,8 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
         let candidate_id = if matches!(kind, "choice" | "score") && !definition["criteria"].is_null() {
             json!(fingerprint("candidates_v1", &definition["criteria"]))
         } else { Value::Null };
-        let mut errors = validate_answer(definition, raw, kind);
+        let mut warnings = Vec::new();
+        let mut errors = validate_answer(definition, raw, kind, options.provider.as_deref().unwrap_or("typesafe"), &mut warnings);
         if !(200..300).contains(&capture.status) { errors.push("Request did not complete with a successful HTTP status".into()); }
         if capture.transport_error.is_some() { errors.push("Request had a transport error".into()); }
         if !capture.capture_complete { errors.push("Capture is incomplete".into()); }
@@ -513,7 +560,7 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
             "definition": definition, "definition_redacted": definition_redacted, "value": value,
             "probabilities": raw.get("probabilities").filter(|v| v.is_object()),
             "confidence": if matches!(kind, "choice" | "score") { probability(&raw["confidence"]) } else { None },
-            "valid": errors.is_empty(), "error": if errors.is_empty() { None } else { Some(errors.join("; ")) },
+            "valid": errors.is_empty(), "warnings": warnings, "error": if errors.is_empty() { None } else { Some(errors.join("; ")) },
             "family_id": family["id"], "family_name": family["name"],
             "adapter": if family.is_null() { Value::Null } else { json!("jgrep-v1") },
             "instance_ref": family["instance_ref"],
@@ -523,7 +570,7 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
     }).collect();
     let input_tokens = token_count(&response["usage"]["input_tokens"]);
     let output_tokens = token_count(&response["usage"]["output_tokens"]);
-    let cost = match (
+    let estimated_cost = match (
         input_tokens,
         output_tokens,
         options.input_price_per_million,
@@ -536,6 +583,17 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
             value.is_finite().then_some(value)
         }
         _ => None,
+    };
+    // Only this adapter has a verified USD meaning for `usage.cost`.
+    // Custom upstreams can use the same field name for credits or other units.
+    let reported_cost = (options.provider.as_deref() == Some("openrouter"))
+        .then(|| finite(&response["usage"]["cost"]).filter(|value| *value >= 0.0))
+        .flatten();
+    let cost = reported_cost.or(estimated_cost);
+    let cost_basis = if reported_cost.is_some() {
+        Some("provider_reported")
+    } else {
+        estimated_cost.map(|_| "configured_estimate")
     };
     let normalization_error = if !request.is_object() {
         Some("Request body is not a complete JSON object")
@@ -550,14 +608,14 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
     };
     json!({
         "schema_version": 1, "event_kind": "request", "id": safe["id"], "timestamp": capture.timestamp,
-        "source": source, "provider": "typesafe",
+        "source": source, "provider": options.provider.as_deref().unwrap_or("typesafe"),
         "model": response.get("model").filter(|v| v.is_string()),
         "requested_model": request.get("model").filter(|v| v.is_string()),
         "status": if capture.status == 0 { None } else { Some(capture.status) },
         "duration_ms": if capture.duration_ms.is_finite() && capture.duration_ms >= 0.0 { Some(capture.duration_ms) } else { None },
         "input_tokens": input_tokens, "output_tokens": output_tokens,
-        "cost_usd": cost, "cost_basis": cost.map(|_| "configured_estimate"),
-        "price": if cost.is_some() { json!({"input_per_million": options.input_price_per_million, "output_per_million": options.output_price_per_million}) } else { Value::Null },
+        "cost_usd": cost, "cost_basis": cost_basis,
+        "price": if cost_basis == Some("configured_estimate") { json!({"input_per_million": options.input_price_per_million, "output_per_million": options.output_price_per_million}) } else { Value::Null },
         "source_event_id": Value::Null, "import_format": Value::Null,
         "capture_complete": capture.capture_complete,
         "state_retained": options.capture_state && request.get("state").is_some_and(|v| !v.is_null()),
@@ -808,8 +866,11 @@ fn import_observer(record: &Value, options: &NormalizeOptions) -> Result<Value> 
         transport_error: record["transport_error"].as_str().map(str::to_owned),
         secret: None,
         local_token: None,
+        access_token: None,
     };
-    let mut out = normalize(&capture, options);
+    let mut imported_options = options.clone();
+    imported_options.provider = record["provider"].as_str().map(str::to_owned);
+    let mut out = normalize(&capture, &imported_options);
     for derived in out["answers"].as_array_mut().expect("normalized answers") {
         let original = answers
             .iter()
@@ -1137,6 +1198,155 @@ pub fn sample_records() -> Vec<Value> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn provider_score_discrepancy_is_preserved_with_a_warning() {
+        // Captured from OpenRouter's Jev response on 2026-10-02.
+        let request = json!({"questions":{"q":{"type":"score","instructions":"Rate","criteria":["Calm","Frustrated","Very angry"]}}});
+        let answer = json!({"type":"score","score":0.87,"confidence":0.79,"probabilities":{"0":0.14,"1":0.86,"2":0.0},"legend":{"0":"Calm","1":"Frustrated","2":"Very angry"}});
+        let record = normalized(&capture(
+            request.clone(),
+            json!({"answers":{"q":answer.clone()}}),
+        ));
+        assert_eq!(record["answers"][0]["valid"], true);
+        assert_eq!(record["answers"][0]["value"], 0.87);
+        assert_eq!(record["answers"][0]["raw_answer"], answer);
+        assert_eq!(
+            record["answers"][0]["warnings"].as_array().unwrap().len(),
+            1
+        );
+        let imported = import_records(
+            &record.to_string(),
+            "observer-jsonl",
+            &NormalizeOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            imported[0]["answers"][0]["warnings"],
+            record["answers"][0]["warnings"]
+        );
+        for invalid in [json!(-0.01), json!(3.0), json!("0.87")] {
+            let mut bad = answer.clone();
+            bad["score"] = invalid;
+            assert_eq!(
+                normalized(&capture(request.clone(), json!({"answers":{"q":bad}})))["answers"][0]["valid"],
+                false
+            );
+        }
+    }
+
+    #[test]
+    fn reported_cost_takes_precedence_and_keeps_its_basis_across_import() {
+        let options = NormalizeOptions {
+            provider: Some("openrouter".into()),
+            input_price_per_million: Some(100.0),
+            output_price_per_million: Some(100.0),
+            ..Default::default()
+        };
+        let mut c = noul();
+        let mut response: Value = serde_json::from_slice(&c.response).unwrap();
+        response["usage"] = json!({"input_tokens":408,"output_tokens":71,"cost":0.000017136});
+        c.response = serde_json::to_vec(&response).unwrap();
+        let record = normalize(&c, &options);
+        assert_eq!(record["provider"], "openrouter");
+        assert_eq!(record["cost_usd"], 0.000017136);
+        assert_eq!(record["cost_basis"], "provider_reported");
+        assert!(record["price"].is_null());
+        let imported = import_records(
+            &record.to_string(),
+            "observer-jsonl",
+            &NormalizeOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(imported[0]["cost_usd"], record["cost_usd"]);
+        assert_eq!(imported[0]["cost_basis"], record["cost_basis"]);
+        for bad in [json!(-1.0), json!("0.1"), json!(true), Value::Null] {
+            response["usage"]["cost"] = bad;
+            c.response = serde_json::to_vec(&response).unwrap();
+            assert_eq!(normalize(&c, &options)["cost_basis"], "configured_estimate");
+            assert!(normalize(&c, &NormalizeOptions::default())["cost_usd"].is_null());
+        }
+        response["usage"] = json!({"cost":0.0});
+        c.response = serde_json::to_vec(&response).unwrap();
+        let free = normalize(&c, &options);
+        assert_eq!(free["cost_usd"], 0.0);
+        assert_eq!(free["cost_basis"], "provider_reported");
+        assert!(free["input_tokens"].is_null());
+    }
+
+    #[test]
+    fn unrecognized_cost_units_stay_extra_and_do_not_replace_configured_usd_estimates() {
+        let mut c = noul();
+        let mut response: Value = serde_json::from_slice(&c.response).unwrap();
+        response["usage"] = json!({"input_tokens":100,"output_tokens":10,"cost":17.0});
+        c.response = serde_json::to_vec(&response).unwrap();
+        for provider in [None, Some("typesafe"), Some("laya"), Some("custom")] {
+            let mut options = NormalizeOptions {
+                provider: provider.map(str::to_owned),
+                ..Default::default()
+            };
+            let unknown = normalize(&c, &options);
+            assert!(unknown["cost_usd"].is_null());
+            assert!(unknown["cost_basis"].is_null());
+            assert_eq!(unknown["usage_extra"]["cost"], 17.0);
+            options.input_price_per_million = Some(10.0);
+            options.output_price_per_million = Some(20.0);
+            let estimated = normalize(&c, &options);
+            assert_eq!(estimated["cost_usd"], 0.0012);
+            assert_eq!(estimated["cost_basis"], "configured_estimate");
+            assert_eq!(estimated["usage_extra"]["cost"], 17.0);
+        }
+    }
+
+    #[test]
+    fn laya_rounded_distributions_and_extended_levels_roundtrip() {
+        let options = NormalizeOptions {
+            provider: Some("laya".into()),
+            ..Default::default()
+        };
+        let levels: Vec<String> = (0..16).map(|n| format!("Level {n}")).collect();
+        let probabilities: Map<String, Value> = (0..16)
+            .map(|n| (n.to_string(), json!(if n == 0 { 0.0624 } else { 0.0625 })))
+            .collect();
+        let legend: Map<String, Value> = levels
+            .iter()
+            .enumerate()
+            .map(|(n, label)| (n.to_string(), json!(label)))
+            .collect();
+        let c = capture(
+            json!({"model":"english","questions":{"q":{"type":"score","instructions":"Rate","criteria":levels},"tag":{"type":"choice","instructions":"Choose","criteria":["a","b"]}}}),
+            json!({"model":"laya-rl-agent","answers":{"q":{"type":"score","score":7.5,"confidence":0.0,"probabilities":probabilities,"legend":legend},"tag":{"type":"choice","choice":"a","probabilities":{"a":0.8,"b":0.2},"confidence":0.3,"answer_confidence":0.8}},"usage":{"input_tokens":42,"output_tokens":0,"truncated":false}}),
+        );
+        let record = normalize(&c, &options);
+        assert!(
+            record["answers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|answer| answer["valid"] == true)
+        );
+        assert_eq!(record["provider"], "laya");
+        assert_eq!(record["output_tokens"], 0);
+        assert!(record["cost_usd"].is_null());
+        assert_eq!(record["usage_extra"]["truncated"], false);
+        let imported = import_records(
+            &record.to_string(),
+            "observer-jsonl",
+            &NormalizeOptions::default(),
+        )
+        .unwrap();
+        assert!(
+            imported[0]["answers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|answer| answer["valid"] == true)
+        );
+        assert_eq!(
+            imported[0]["answers"][1]["raw_answer"]["answer_confidence"],
+            0.8
+        );
+    }
+
     fn capture(request: Value, response: Value) -> Capture {
         Capture {
             id: "request-1".into(),
@@ -1272,7 +1482,6 @@ mod tests {
         let valid = json!({"type":"score","score":1.0,"probabilities":{"0":0.0,"1":1.0,"2":0.0},"legend":{"0":"Low","1":"Medium","2":"High"},"confidence":1.0});
         for (field, bad) in [
             ("score", json!(3.0)),
-            ("score", json!(0.4)),
             ("confidence", json!(-0.1)),
             ("legend", json!({"1":"Low","2":"Medium","3":"High"})),
             ("probabilities", json!({"0":0.2,"1":0.2,"2":0.2})),

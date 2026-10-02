@@ -1,12 +1,21 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::{credentials::validate_key, model::NormalizeOptions};
 
-/// A local observer for native TypeSafe requests. Credentials remain in memory.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum UpstreamAuth {
+    #[default]
+    Bearer,
+    None,
+}
+
+/// A local observer for System One requests. Credentials remain in memory.
 #[derive(Clone, Parser)]
 #[command(version, about)]
 pub struct Config {
@@ -22,6 +31,13 @@ pub struct Config {
     /// Fixed provider endpoint; request headers cannot override this URL.
     #[arg(long, default_value = "https://api.typesafe.ai/v1/systemone")]
     pub upstream: String,
+    /// Provider credential policy. None is limited to a loopback model server;
+    /// Observer access authentication is still required.
+    #[arg(long, value_enum, default_value_t = UpstreamAuth::Bearer)]
+    pub upstream_auth: UpstreamAuth,
+    /// Provider name saved with observations (for example laya).
+    #[arg(long)]
+    pub provider: Option<String>,
     /// Optional fallback credential. Read from the environment so it cannot
     /// appear in process arguments.
     #[arg(skip)]
@@ -57,15 +73,28 @@ impl Config {
         if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
             bail!("Upstream must be an absolute HTTP or HTTPS URL");
         }
-        if url.scheme() == "http" {
-            let host = url.host_str().unwrap_or_default().trim_matches(['[', ']']);
-            let loopback = host.eq_ignore_ascii_case("localhost")
-                || host
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|address| address.is_loopback());
-            if !loopback {
-                bail!("HTTP upstream is allowed only on loopback; use HTTPS for remote providers");
-            }
+        let host = url.host_str().unwrap_or_default().trim_matches(['[', ']']);
+        let loopback = host.eq_ignore_ascii_case("localhost")
+            || host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback());
+        if url.scheme() == "http" && !loopback {
+            bail!("HTTP upstream is allowed only on loopback; use HTTPS for remote providers");
+        }
+        if self.upstream_auth == UpstreamAuth::None && !loopback {
+            bail!("--upstream-auth none requires a loopback model endpoint");
+        }
+        if self.provider.as_ref().is_some_and(|provider| {
+            provider.is_empty()
+                || provider.len() > 64
+                || !provider
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.'))
+        }) {
+            bail!("--provider must contain 1 to 64 letters, digits, dots, hyphens or underscores");
+        }
+        if let Some(provider) = &mut self.provider {
+            provider.make_ascii_lowercase();
         }
         if !url.username().is_empty()
             || url.password().is_some()
@@ -80,7 +109,7 @@ impl Config {
             url.set_path("/v1/systemone");
         }
         self.upstream = url.to_string();
-        if self.demo {
+        if self.demo || self.upstream_auth == UpstreamAuth::None {
             self.api_key = None;
         } else if self.api_key.is_none() {
             self.api_key = std::env::var("TYPESAFE_API_KEY").ok();
@@ -134,11 +163,26 @@ impl Config {
 
     pub fn normalize_options(&self) -> NormalizeOptions {
         NormalizeOptions {
+            provider: Some(self.provider_name().to_owned()),
             capture_state: self.capture_state,
             redact_keys: self.redact_keys.clone(),
             input_price_per_million: self.input_price_per_million,
             output_price_per_million: self.output_price_per_million,
         }
+    }
+
+    pub fn provider_name(&self) -> &str {
+        self.provider.as_deref().unwrap_or_else(|| {
+            match reqwest::Url::parse(&self.upstream)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_owned))
+                .as_deref()
+            {
+                Some("api.typesafe.ai") => "typesafe",
+                Some("openrouter.ai") => "openrouter",
+                _ => "custom",
+            }
+        })
     }
 
     pub fn public_settings(&self) -> Value {
@@ -147,6 +191,7 @@ impl Config {
             "retention_days": self.retention_days, "max_records": self.max_records,
             "capture_limit": self.capture_limit, "capture_slots": self.capture_slots,
             "queue_capacity": self.queue_capacity, "upstream": self.upstream,
+            "upstream_auth": self.upstream_auth, "provider": self.provider_name(),
             "version": env!("CARGO_PKG_VERSION"),
             "input_price_per_million": self.input_price_per_million,
             "output_price_per_million": self.output_price_per_million,
@@ -157,6 +202,49 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_models_need_explicit_loopback_auth_policy() {
+        let mut local = Config::try_parse_from([
+            "observer",
+            "--upstream",
+            "http://127.0.0.1:8000",
+            "--upstream-auth",
+            "none",
+            "--provider",
+            "Laya",
+        ])
+        .unwrap();
+        local.api_key = Some("must-not-be-used".into());
+        local.validate().unwrap();
+        assert_eq!(local.upstream, "http://127.0.0.1:8000/v1/systemone");
+        assert_eq!(local.public_settings()["upstream_auth"], "none");
+        assert_eq!(local.normalize_options().provider.as_deref(), Some("laya"));
+        assert!(local.api_key.is_none());
+        for endpoint in [
+            "https://api.typesafe.ai/v1/systemone",
+            "http://192.168.1.3:8000/v1/systemone",
+        ] {
+            let mut remote = Config::try_parse_from([
+                "observer",
+                "--upstream",
+                endpoint,
+                "--upstream-auth",
+                "none",
+            ])
+            .unwrap();
+            assert!(remote.validate().is_err());
+        }
+        let mut remote = Config::try_parse_from([
+            "observer",
+            "--upstream",
+            "https://openrouter.ai/api/v1/systemone",
+        ])
+        .unwrap();
+        remote.validate().unwrap();
+        assert_eq!(remote.public_settings()["provider"], "openrouter");
+        assert_eq!(remote.public_settings()["upstream_auth"], "bearer");
+    }
 
     #[test]
     fn rejects_unbounded_capture_and_credential_urls() {

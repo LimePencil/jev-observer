@@ -339,6 +339,24 @@
   .comparison h4 { font-size: 11px; }
   .comparison .json-view { max-height: none; }
   .comparison .caption { margin-top: 8px; }
+  .version-comparison { margin-top: 20px; }
+  .version-comparison > .caption { margin: 8px 0 14px; }
+  .version-comparison th { text-align: left; white-space: normal; }
+  .version-comparison .distribution { margin-top: 14px; }
+  .version-comparison details { margin-top: 18px; }
+  .wrap-anywhere { overflow-wrap: anywhere; }
+  .snippet-actions, .history-pagination, .date-range-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .snippet-actions { margin: 14px 0 0; }
+  .sdk-snippet { max-height: 430px; white-space: pre; overflow: auto; }
+  .history-pagination { border-top: 1px solid var(--border); padding: 14px 20px; font-size: 10px; color: var(--text-secondary); flex-wrap: wrap; }
+  .date-range-toggle { margin: -8px 0 14px; flex-wrap: wrap; }
+  .date-range { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; padding: 12px 14px 0; margin-bottom: 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+  .date-range .field-label { flex: 1 1 210px; }
+  .date-range input { width: 100%; }
+  .cost-basis { max-width: 130px; white-space: normal; font-size: 9px; font-family: 'Geist Variable', sans-serif; }
+  .group-loading { padding: 0 20px 12px; }
+  .health-error-detail { display: grid; gap: 5px; margin-top: 12px; font-size: 10px; color: var(--text-secondary); }
+  .health-error-detail strong { color: var(--warning); font-weight: 550; }
   .field-label { display: flex; flex-direction: column; gap: 7px; font-size: 11px; font-weight: 550; margin-bottom: 17px; }
   .field-label select, .field-label input, .field-label textarea { font-weight: 400; font-size: 12px; }
   .field-label textarea { font-family: 'Geist Mono Variable', monospace; font-size: 10px; line-height: 1.6; }

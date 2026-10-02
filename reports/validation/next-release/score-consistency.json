@@ -1,0 +1,121 @@
+{
+  "scope": "Offline exact-decimal check of captured values; does not execute the production validator",
+  "source_report": "openrouter-live.json",
+  "source_sha256": "6d34871ef417e31878434240a6a81319659714d9e13a42eb4a9d4ba09910f355",
+  "source_binary_sha256": "ccda9320ea79dbf9398be762da09e70f3c10b14ef366ce5cee8b93a4321043c5",
+  "provider_calls": 0,
+  "successful_answer_count": 12,
+  "score_answer_count": 4,
+  "weighted_check_mismatches": 1,
+  "cases": [
+    {
+      "call": "direct_provider_key",
+      "answer_key": "frustration",
+      "captured_answer": {
+        "type": "score",
+        "score": "0.85",
+        "confidence": "0.77",
+        "probabilities": {
+          "0": "0.15",
+          "1": "0.85",
+          "2": "0"
+        },
+        "legend": {
+          "0": "Calm",
+          "1": "Frustrated",
+          "2": "Very angry"
+        }
+      },
+      "displayed_probability_sum": "1.00",
+      "displayed_weighted_score": "0.85",
+      "absolute_difference": "0.00",
+      "matches_current_weighted_check": true
+    },
+    {
+      "call": "registered_repeat_1",
+      "answer_key": "frustration",
+      "captured_answer": {
+        "type": "score",
+        "score": "0.85",
+        "confidence": "0.78",
+        "probabilities": {
+          "0": "0.15",
+          "1": "0.85",
+          "2": "0"
+        },
+        "legend": {
+          "0": "Calm",
+          "1": "Frustrated",
+          "2": "Very angry"
+        }
+      },
+      "displayed_probability_sum": "1.00",
+      "displayed_weighted_score": "0.85",
+      "absolute_difference": "0.00",
+      "matches_current_weighted_check": true
+    },
+    {
+      "call": "registered_repeat_2",
+      "answer_key": "frustration",
+      "captured_answer": {
+        "type": "score",
+        "score": "0.82",
+        "confidence": "0.73",
+        "probabilities": {
+          "0": "0.18",
+          "1": "0.82",
+          "2": "0"
+        },
+        "legend": {
+          "0": "Calm",
+          "1": "Frustrated",
+          "2": "Very angry"
+        }
+      },
+      "displayed_probability_sum": "1.00",
+      "displayed_weighted_score": "0.82",
+      "absolute_difference": "0.00",
+      "matches_current_weighted_check": true
+    },
+    {
+      "call": "changed_choice_definition",
+      "answer_key": "frustration",
+      "captured_answer": {
+        "type": "score",
+        "score": "0.87",
+        "confidence": "0.79",
+        "probabilities": {
+          "0": "0.14",
+          "1": "0.86",
+          "2": "0"
+        },
+        "legend": {
+          "0": "Calm",
+          "1": "Frustrated",
+          "2": "Very angry"
+        }
+      },
+      "displayed_probability_sum": "1.00",
+      "displayed_weighted_score": "0.86",
+      "absolute_difference": "0.01",
+      "matches_current_weighted_check": false
+    }
+  ],
+  "hypothetical_rounding_witness": {
+    "status": "Synthetic possibility only; provider rounding is not established",
+    "assumption": "All probabilities and the expected score are independently rounded to the nearest hundredth",
+    "latent_probabilities": [
+      "0.1375",
+      "0.858",
+      "0.0045"
+    ],
+    "latent_expected_score": "0.8670",
+    "rounded_probabilities": [
+      "0.14",
+      "0.86",
+      "0.00"
+    ],
+    "rounded_score": "0.87"
+  },
+  "number_encoding": "Decimal strings preserve the arithmetic exactly"
+}

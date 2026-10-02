@@ -1,0 +1,29 @@
+{
+  "command": "OBSERVER_UI_PREVIEW=1 npm test --prefix ui -- --timeout=90000",
+  "result": "passed",
+  "passed": 42,
+  "failed": 0,
+  "elapsed_reported": "7.0m",
+  "scope": "Production-bundle browser, accessibility, health, formatting, bookmark and SDK example tests. A subsequent one-line short-range timeline correction is verified separately in next-release-chart.log.",
+  "final_chart_checks": {
+    "passed": 2,
+    "failed": 0,
+    "unique_ui_tests_total": 43,
+    "command": "OBSERVER_UI_PREVIEW=1 npm test --prefix ui -- --timeout=90000 --grep \"timeline spacing|partial timeline bucket\""
+  },
+  "final_assets": [
+    "index-WxkIQsdc.js",
+    "Details-BdotNVFy.js"
+  ],
+  "build_and_typecheck": "passed",
+  "real_backend_checks": {
+    "passed": 2,
+    "failed": 0,
+    "binary_sha256": "527654941a5c62b242963178bd9781f21612639f96250b4095e4d8f572d72053",
+    "runs": [
+      "demo history, pagination, reviews, imports, JSONL/CSV exports",
+      "live encrypted workspace, UI key registration, synthetic capture, review/export, process restart"
+    ],
+    "note": "The first live harness run had an ambiguous selector; after narrowing it, the live journey passed. Demo journey passed separately."
+  }
+}

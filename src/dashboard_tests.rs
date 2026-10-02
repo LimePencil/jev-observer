@@ -1,5 +1,186 @@
 use super::*;
 
+#[test]
+fn empty_and_extreme_timeline_ranges_are_bounded_without_overflow() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("empty-range.sqlite"), 7, 100).unwrap();
+    for (from, to) in [(0, 0), (0, 1), (i64::MIN, i64::MAX), (i64::MAX, i64::MAX)] {
+        let filter = Filter {
+            window: Some("all".into()),
+            from: Some(from),
+            to: Some(to),
+            ..Default::default()
+        };
+        let result = store.dashboard(&filter).unwrap();
+        let bins = result["timeline"].as_array().unwrap();
+        assert!(!bins.is_empty() && bins.len() <= 168);
+        assert!(bins.iter().all(|bin| bin["requests"] == 0));
+        assert_eq!(result["timeline_meta"]["start"], from);
+        assert_eq!(result["timeline_meta"]["end"], to.saturating_add(1));
+    }
+}
+
+#[test]
+fn transfer_failures_dates_and_empty_timeline_bins_preserve_the_complete_range() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("outcomes.sqlite"), 30, 1000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut failed = dashboard_record("body-aborted", now - 1_000);
+    failed["transport_error"] = json!("Upstream response transfer failed");
+    failed["capture_complete"] = json!(false);
+    let healthy = dashboard_record("healthy", now - 200 * 3_600_000);
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &[healthy, failed])
+        .unwrap();
+    let filter = Filter {
+        window: Some("all".into()),
+        from: Some(now - 240 * 3_600_000),
+        to: Some(now),
+        ..Default::default()
+    };
+    let dashboard = store.dashboard(&filter).unwrap();
+    assert_eq!(dashboard["summary"]["request_count"], 2);
+    assert_eq!(dashboard["summary"]["error_count"], 1);
+    assert_eq!(dashboard["requests"][0]["status"], 200);
+    assert_eq!(dashboard["requests"][0]["failed"], true);
+    let timeline = dashboard["timeline"].as_array().unwrap();
+    assert!(timeline.len() <= 168);
+    assert!(timeline.iter().any(|bin| bin["requests"] == 0));
+    assert_eq!(
+        timeline
+            .iter()
+            .map(|bin| bin["requests"].as_i64().unwrap())
+            .sum::<i64>(),
+        2
+    );
+    assert_eq!(
+        timeline
+            .iter()
+            .map(|bin| bin["errors"].as_i64().unwrap())
+            .sum::<i64>(),
+        1
+    );
+    let errors = Filter {
+        status: Some("error".into()),
+        ..filter.clone()
+    };
+    assert_eq!(
+        store.dashboard(&errors).unwrap()["requests"][0]["id"],
+        "body-aborted"
+    );
+    let detail = store.group("dashboard-group", &filter).unwrap().unwrap();
+    assert_eq!(detail["group"]["error_count"], 1);
+    assert_eq!(
+        detail["timeline"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|bin| bin["errors"].as_i64().unwrap())
+            .sum::<i64>(),
+        1
+    );
+    let before = Filter {
+        to: Some(now - 2_000),
+        ..filter
+    };
+    assert_eq!(
+        store.dashboard(&before).unwrap()["summary"]["request_count"],
+        1
+    );
+}
+
+#[test]
+fn list_cursors_cover_tied_requests_and_groups_and_search_beyond_the_first_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("pages.sqlite"), 7, 1000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records: Vec<_> = (0..235)
+        .map(|index| {
+            let mut record = dashboard_record(&format!("request-{index:03}"), now - index % 3);
+            record["answers"][0]["group_id"] = json!(format!("group-{index:03}"));
+            record["answers"][0]["key"] = json!(format!("question-{index:03}"));
+            record
+        })
+        .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+    let mut filter = Filter {
+        window: Some("all".into()),
+        ..Default::default()
+    };
+    let mut requests = std::collections::HashSet::new();
+    loop {
+        let page = store.dashboard(&filter).unwrap();
+        assert_eq!(page["summary"]["request_count"], 235);
+        for request in page["requests"].as_array().unwrap() {
+            assert!(requests.insert(text(request, "id")));
+        }
+        filter.request_cursor = page["feed_next_cursor"].as_str().map(str::to_owned);
+        if filter.request_cursor.is_none() {
+            break;
+        }
+    }
+    assert_eq!(requests.len(), 235);
+    let mut groups = std::collections::HashSet::new();
+    loop {
+        let page = store.dashboard(&filter).unwrap();
+        for group in page["groups"].as_array().unwrap() {
+            assert!(groups.insert(text(group, "id")));
+        }
+        filter.group_cursor = page["group_next_cursor"].as_str().map(str::to_owned);
+        if filter.group_cursor.is_none() {
+            break;
+        }
+    }
+    assert_eq!(groups.len(), 235);
+    filter.group_search = Some("question-233".into());
+    let found = store.dashboard(&filter).unwrap();
+    assert_eq!(found["groups"].as_array().unwrap().len(), 1);
+    assert_eq!(found["groups"][0]["id"], "group-233");
+    assert_eq!(found["summary"]["request_count"], 235);
+}
+
+#[test]
+fn version_metrics_count_parent_cost_once_and_keep_reviews_in_the_parent_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("reviews.sqlite"), 7, 100).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut record = dashboard_record("reviewed", now);
+    let mut second = record["answers"][0].clone();
+    second["key"] = json!("second");
+    second["warnings"] = json!(["Reported score differs from displayed probabilities"]);
+    record["answers"].as_array_mut().unwrap().push(second);
+    let mut other = dashboard_record("other-source", now);
+    other["source"] = json!("outside-filter");
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &[record, other])
+        .unwrap();
+    store.add_label("reviewed", "urgent", "correct").unwrap();
+    store.add_label("reviewed", "second", "unknown").unwrap();
+    store
+        .add_label("other-source", "urgent", "incorrect")
+        .unwrap();
+    let filter = Filter {
+        window: Some("all".into()),
+        source: Some("dashboard-test".into()),
+        ..Default::default()
+    };
+    let detail = store.group("dashboard-group", &filter).unwrap().unwrap();
+    for group in [&detail["group"], &detail["versions"][0]] {
+        assert_eq!(
+            group["review_counts"],
+            json!({"correct":1,"incorrect":0,"unknown":1,"unlabeled":0})
+        );
+        assert_eq!(group["request_count"], 1);
+        assert_eq!(group["cost_usd"], 0.25);
+        assert_eq!(group["cost_known_requests"], 1);
+        assert_eq!(group["input_tokens"], 100);
+        assert_eq!(group["mean_latency_ms"], 4.0);
+        assert_eq!(group["warning_count"], 1);
+    }
+}
+
 fn dashboard_record(id: &str, timestamp: i64) -> Value {
     json!({
         "schema_version": 1,
@@ -198,7 +379,11 @@ fn dashboard_snapshots_follow_imports_retention_and_deletion() {
     assert_snapshot_counts(&store.dashboard(&filter).unwrap(), 1);
 }
 
-fn sql_request_aggregates(store: &Store, filter: &Filter) -> (Value, Vec<Value>) {
+fn sql_request_aggregates(
+    store: &Store,
+    filter: &Filter,
+    timeline_meta: &Value,
+) -> (Value, Vec<Value>) {
     let connection = store.reader().unwrap();
     let (predicate, args) = Store::predicate(filter).unwrap();
     let mut summary = connection.query_row(
@@ -234,21 +419,28 @@ fn sql_request_aggregates(store: &Store, filter: &Filter) -> (Value, Vec<Value>)
             json!(durations[(durations.len() * numerator).div_ceil(100) - 1])
         };
     }
-    let width = match filter.window.as_deref().unwrap_or("24h") {
-        "1h" => 60_000,
-        "24h" => 1_800_000,
-        _ => 3_600_000,
-    };
-    let mut timeline: Vec<Value> = connection.prepare(
-        &format!("SELECT (timestamp/{width})*{width},count(*),coalesce(sum(status>=400),0),avg(duration_ms),sum(cost_usd) FROM requests r WHERE {predicate} AND event_kind='request' AND json_extract(data,'$.timestamp') IS NOT NULL GROUP BY 1 ORDER BY 1 DESC LIMIT 168"),
-    ).unwrap().query_map(params_from_iter(&args), |row| Ok(json!({
+    // SQL independently aggregates every record into the response's declared
+    // bins. Separate tests assert full-range coverage, empty bins and bounds.
+    let width = timeline_meta["bucket_width"].as_i64().unwrap();
+    let start = timeline_meta["start"].as_i64().unwrap();
+    let end = timeline_meta["end"].as_i64().unwrap() - 1;
+    let mut timeline: BTreeMap<i64, Value> = connection.prepare(
+        &format!("SELECT ((timestamp-{start})/{width})*{width}+{start},count(*),coalesce(sum({FAILED}),0),avg(duration_ms),sum(cost_usd) FROM requests r WHERE {predicate} AND event_kind='request' AND json_extract(data,'$.timestamp') IS NOT NULL GROUP BY 1 ORDER BY 1"),
+    ).unwrap().query_map(params_from_iter(&args), |row| Ok((row.get::<_, i64>(0)?, json!({
         "timestamp": row.get::<_, i64>(0)?,
         "requests": row.get::<_, i64>(1)?,
         "errors": row.get::<_, i64>(2)?,
         "mean_latency_ms": row.get::<_, Option<f64>>(3)?,
         "cost_usd": row.get::<_, Option<f64>>(4)?
-    }))).unwrap().collect::<rusqlite::Result<_>>().unwrap();
-    timeline.reverse();
+    })))).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+    let timeline = (start..=end)
+        .step_by(width as usize)
+        .map(|timestamp| {
+            timeline.remove(&timestamp).unwrap_or_else(|| json!({
+        "timestamp":timestamp,"requests":0,"errors":0,"mean_latency_ms":null,"cost_usd":null
+    }))
+        })
+        .collect();
     (summary, timeline)
 }
 
@@ -381,7 +573,8 @@ fn request_aggregates_match_sql_across_filters_unknowns_and_long_timelines() {
         let mut filter: Filter = serde_json::from_value(case.clone()).unwrap();
         filter.as_of = Some(as_of);
         let snapshot = store.dashboard(&filter).unwrap();
-        let (summary, timeline) = sql_request_aggregates(&store, &filter);
+        let (summary, timeline) =
+            sql_request_aggregates(&store, &filter, &snapshot["timeline_meta"]);
         assert_eq!(snapshot["summary"], summary, "summary for {case}");
         assert_eq!(snapshot["timeline"], json!(timeline), "timeline for {case}");
         let (predicate, args) = Store::predicate(&filter).unwrap();
@@ -410,9 +603,10 @@ fn request_aggregates_match_sql_across_filters_unknowns_and_long_timelines() {
             assert_eq!(snapshot["requests"][2]["id"], "source-match");
         }
         if case == json!({"window": "all"}) {
-            assert_eq!(snapshot["timeline"].as_array().unwrap().len(), 168);
-            assert_eq!(snapshot["timeline"][0]["timestamp"], anchor - 167 * hour);
-            assert_eq!(snapshot["timeline"][167]["timestamp"], anchor);
+            assert!(snapshot["timeline"].as_array().unwrap().len() <= 168);
+            assert_eq!(snapshot["timeline_meta"]["start"], anchor - 192 * hour);
+            assert_eq!(snapshot["timeline_meta"]["end"], as_of + 2);
+            assert_eq!(snapshot["timeline_meta"]["truncated"], false);
         }
     }
 }
@@ -438,7 +632,7 @@ fn request_aggregates_preserve_small_fractional_charges_next_to_large_values() {
         ..Default::default()
     };
     let snapshot = store.dashboard(&filter).unwrap();
-    let (summary, timeline) = sql_request_aggregates(&store, &filter);
+    let (summary, timeline) = sql_request_aggregates(&store, &filter, &snapshot["timeline_meta"]);
     assert_eq!(snapshot["summary"], summary);
     assert_eq!(snapshot["timeline"], json!(timeline));
     // An ordinary left-to-right floating sum loses about 0.024 here.
