@@ -38,4 +38,4 @@ To exercise the embedded UI and real authenticated backend, build both UI and Ru
 OBSERVER_BINARY="$PWD/../target/debug/jev-observer" npm run test:integration
 ```
 
-Run this command from `ui/` (or supply an absolute executable path). Integration tests create and remove their own temporary demo workspace. They make no provider calls.
+Run this command from `ui/` (or supply an absolute executable path). Integration tests create and remove their own temporary demo and live encrypted workspaces. They make no provider calls.

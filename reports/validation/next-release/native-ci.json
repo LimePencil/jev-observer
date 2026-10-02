@@ -1,0 +1,380 @@
+{
+  "captured_at": "2026-10-02T14:30:47.536582+00:00",
+  "workflow_url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671",
+  "run_id": 37016320671,
+  "head_sha": "fb8f35d726d4dea1ad2960945f0001a4bd794699",
+  "status": "completed",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "preflight",
+      "status": "completed",
+      "conclusion": "success",
+      "job_id": 110867959118,
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671/job/110867959118"
+    },
+    {
+      "name": "build (x86_64-pc-windows-msvc, windows-2025)",
+      "status": "completed",
+      "conclusion": "success",
+      "job_id": 110868018237,
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671/job/110868018237",
+      "ui_tests": {
+        "passed": 45,
+        "failed": 0,
+        "elapsed_reported": "1.3m"
+      },
+      "real_backend_browser_journeys": {
+        "passed": 2,
+        "failed": 0,
+        "elapsed_reported": "22.0s"
+      },
+      "validation_steps": [
+        {
+          "name": "Check, test and build native executable",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run browser interaction and accessibility checks",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise the packaged backend in the browser",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upgrade from published 0.1.0",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pinned SDKs against loopback mock",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Windows installation and failed upgrades",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "build (aarch64-apple-darwin, macos-15)",
+      "status": "completed",
+      "conclusion": "success",
+      "job_id": 110868018253,
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671/job/110868018253",
+      "ui_tests": {
+        "passed": 45,
+        "failed": 0,
+        "elapsed_reported": "2.1m"
+      },
+      "real_backend_browser_journeys": {
+        "passed": 2,
+        "failed": 0,
+        "elapsed_reported": "9.7s"
+      },
+      "validation_steps": [
+        {
+          "name": "Check, test and build native executable",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run browser interaction and accessibility checks",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise the packaged backend in the browser",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upgrade from published 0.1.0",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pinned SDKs against loopback mock",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Windows installation and failed upgrades",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "name": "build (x86_64-unknown-linux-musl, ubuntu-24.04)",
+      "status": "completed",
+      "conclusion": "success",
+      "job_id": 110868018259,
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671/job/110868018259",
+      "ui_tests": {
+        "passed": 45,
+        "failed": 0,
+        "elapsed_reported": "1.1m"
+      },
+      "real_backend_browser_journeys": {
+        "passed": 2,
+        "failed": 0,
+        "elapsed_reported": "8.2s"
+      },
+      "validation_steps": [
+        {
+          "name": "Check, test and build native executable",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run browser interaction and accessibility checks",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise the packaged backend in the browser",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upgrade from published 0.1.0",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pinned SDKs against loopback mock",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Windows installation and failed upgrades",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "name": "build (aarch64-unknown-linux-musl, ubuntu-24.04-arm)",
+      "status": "completed",
+      "conclusion": "success",
+      "job_id": 110868018288,
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671/job/110868018288",
+      "ui_tests": {
+        "passed": 45,
+        "failed": 0,
+        "elapsed_reported": "1.0m"
+      },
+      "real_backend_browser_journeys": {
+        "passed": 2,
+        "failed": 0,
+        "elapsed_reported": "9.2s"
+      },
+      "validation_steps": [
+        {
+          "name": "Check, test and build native executable",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run browser interaction and accessibility checks",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise the packaged backend in the browser",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upgrade from published 0.1.0",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pinned SDKs against loopback mock",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Windows installation and failed upgrades",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "name": "build (aarch64-pc-windows-msvc, windows-11-arm)",
+      "status": "completed",
+      "conclusion": "success",
+      "job_id": 110868018323,
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671/job/110868018323",
+      "ui_tests": {
+        "passed": 45,
+        "failed": 0,
+        "elapsed_reported": "2.5m"
+      },
+      "real_backend_browser_journeys": {
+        "passed": 2,
+        "failed": 0,
+        "elapsed_reported": "20.7s"
+      },
+      "validation_steps": [
+        {
+          "name": "Check, test and build native executable",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run browser interaction and accessibility checks",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise the packaged backend in the browser",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upgrade from published 0.1.0",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pinned SDKs against loopback mock",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Windows installation and failed upgrades",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "build (x86_64-apple-darwin, macos-15-intel)",
+      "status": "completed",
+      "conclusion": "success",
+      "job_id": 110868018333,
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671/job/110868018333",
+      "ui_tests": {
+        "passed": 45,
+        "failed": 0,
+        "elapsed_reported": "2.1m"
+      },
+      "real_backend_browser_journeys": {
+        "passed": 2,
+        "failed": 0,
+        "elapsed_reported": "18.4s"
+      },
+      "validation_steps": [
+        {
+          "name": "Check, test and build native executable",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run browser interaction and accessibility checks",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise the packaged backend in the browser",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify upgrade from published 0.1.0",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify pinned SDKs against loopback mock",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Windows installation and failed upgrades",
+          "conclusion": "skipped"
+        }
+      ]
+    },
+    {
+      "name": "aggregate",
+      "status": "completed",
+      "conclusion": "success",
+      "job_id": 110880861119,
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671/job/110880861119"
+    },
+    {
+      "name": "publish",
+      "status": "completed",
+      "conclusion": "skipped",
+      "job_id": 110880959814,
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/37016320671/job/110880959814"
+    }
+  ],
+  "validation_artifact_names": [
+    "validation-aarch64-apple-darwin",
+    "validation-aarch64-pc-windows-msvc",
+    "validation-aarch64-unknown-linux-musl",
+    "validation-x86_64-apple-darwin",
+    "validation-x86_64-pc-windows-msvc",
+    "validation-x86_64-unknown-linux-musl"
+  ],
+  "release_artifact_names": [
+    "release-aarch64-apple-darwin",
+    "release-aarch64-pc-windows-msvc",
+    "release-aarch64-unknown-linux-musl",
+    "release-x86_64-apple-darwin",
+    "release-x86_64-pc-windows-msvc",
+    "release-x86_64-unknown-linux-musl"
+  ],
+  "artifact_summary": [
+    {
+      "name": "release-aarch64-apple-darwin",
+      "id": 11230386814,
+      "expired": false
+    },
+    {
+      "name": "release-aarch64-pc-windows-msvc",
+      "id": 11232803565,
+      "expired": false
+    },
+    {
+      "name": "release-aarch64-unknown-linux-musl",
+      "id": 11229809637,
+      "expired": false
+    },
+    {
+      "name": "release-x86_64-apple-darwin",
+      "id": 11230551698,
+      "expired": false
+    },
+    {
+      "name": "release-x86_64-pc-windows-msvc",
+      "id": 11230706032,
+      "expired": false
+    },
+    {
+      "name": "release-x86_64-unknown-linux-musl",
+      "id": 11229578868,
+      "expired": false
+    },
+    {
+      "name": "validation-aarch64-apple-darwin",
+      "id": 11230198394,
+      "expired": false
+    },
+    {
+      "name": "validation-aarch64-pc-windows-msvc",
+      "id": 11232358867,
+      "expired": false
+    },
+    {
+      "name": "validation-aarch64-unknown-linux-musl",
+      "id": 11230192878,
+      "expired": false
+    },
+    {
+      "name": "validation-x86_64-apple-darwin",
+      "id": 11230144603,
+      "expired": false
+    },
+    {
+      "name": "validation-x86_64-pc-windows-msvc",
+      "id": 11230815769,
+      "expired": false
+    },
+    {
+      "name": "validation-x86_64-unknown-linux-musl",
+      "id": 11229419117,
+      "expired": false
+    },
+    {
+      "name": "verified-release-assets",
+      "id": 11231499454,
+      "expired": false
+    }
+  ],
+  "pr_ci": {
+    "workflow_url": "https://github.com/LimePencil/jev-observer/actions/runs/37016301292",
+    "run_id": 37016301292,
+    "head_sha": "fb8f35d726d4dea1ad2960945f0001a4bd794699",
+    "status": "completed",
+    "conclusion": "success"
+  },
+  "scope": "Manual release validation at the exact application source commit: all six native platforms passed 45 UI tests and two real-backend browser journeys each; native packaging and aggregate validation passed. Publication was skipped; this run did not publish a release."
+}

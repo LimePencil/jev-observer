@@ -1,7 +1,7 @@
 {
-  "checked_at": "2026-10-02T12:56:23.685072+00:00",
+  "checked_at": "2026-10-02T14:03:37.051991+00:00",
   "scope": "Local mock only; no provider inference",
-  "binary_sha256": "f7ebfccc30edcf3f629da5891b27b794fbb43ec847144ab9b9c48de4b78202d7",
+  "binary_sha256": "363d87275d67802772404f0c239b66bcb00831a93ab82942d31da8df03b37a5f",
   "platform": "Linux-6.17.0-1019-oracle-aarch64-with-glibc2.39",
   "python": {
     "sdk": "typesafe-sdk",
@@ -53,8 +53,8 @@
     "sample_count": 0,
     "incomplete_count": 0,
     "action_count": 0,
-    "p50_ms": 59.100666000000004,
-    "p95_ms": 480.08150700000004
+    "p50_ms": 41.293105,
+    "p95_ms": 45.090642
   },
   "groups": 8,
   "valid_answers": 36,
