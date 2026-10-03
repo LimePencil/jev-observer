@@ -1058,7 +1058,10 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
             if body.text.len() > MAX_IMPORT_BYTES {
                 return Err(StatusCode::PAYLOAD_TOO_LARGE);
             }
-            if !matches!(body.format.as_str(), "observer-jsonl" | "jevrouter-receipt") {
+            if !matches!(
+                body.format.as_str(),
+                "observer-jsonl" | "jevrouter-receipt" | "systemone-capture"
+            ) {
                 return Err(StatusCode::BAD_REQUEST);
             }
             let records = model::import_records(&body.text, &body.format, &options)

@@ -95,6 +95,54 @@ test('packaged dashboard authenticates, saves reviews, imports, and exports real
         if (extension === 'jsonl') expect(contents.trim().split('\n')).toHaveLength(721);
         else expect(contents).toMatch(/^id,timestamp,source,model,status,/);
       }
+      const settings = await (await context.request.get(origin + '/api/settings')).json();
+      expect(settings.model_catalog.models.length).toBe(38);
+      await page.getByRole('button', { name: 'Connect an application', exact: true }).click();
+      await expect(page.getByLabel('Model integration')).toBeVisible();
+      await page.getByLabel('Model integration').selectOption('vercel');
+      await expect(page.getByLabel('Observer startup command')).toContainText('/typesafe/v1/systemone');
+      await page.getByLabel('Model integration').selectOption('kev');
+      await expect(page.getByLabel('Observer startup command')).toContainText('--provider kev --upstream-auth none');
+      await page.getByLabel('Model integration').selectOption('nanojev');
+      await expect(page.getByLabel('Observer startup command')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Import mapped decisions' }).click();
+      await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
+      const captured = {
+        id: 'nanojev-browser-call', timestamp: Date.now(), source: 'NanoJev integration', provider: 'nanojev',
+        status: 200, duration_ms: null, capture_complete: true, sample: true,
+        request: { model: 'requested-checkpoint', state: 'omitted-private-state', images: ['omitted-private-image'], questions: {
+          route: { type: 'choice', instructions: 'Route', criteria: { a: 'A', b: 'B' } },
+          check: { type: 'noul', instructions: 'Check' },
+        } },
+        response: { model: 'nanojev-revision', answers: {
+          route: { type: 'choice', choice: 'b', probabilities: { a: .2, b: .8 } },
+          check: { type: 'noul', noul: .7 },
+        } },
+      };
+      await page.getByLabel('Or paste records').fill(JSON.stringify(captured));
+      await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+      await expect(page.getByRole('dialog').getByRole('status')).toContainText('1 records imported');
+      await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+      await expect(page.getByRole('dialog').getByRole('status')).toContainText('1 duplicates skipped');
+      await page.keyboard.press('Escape');
+      await page.getByLabel('Filter by model').selectOption('nanojev-revision');
+      await expect(page.locator('.request-link')).toHaveCount(1);
+      await page.locator('.request-link').click();
+      await expect(page.getByRole('dialog')).toContainText('Confidence was not reported; it remains unknown');
+      const scoped = await (await context.request.get(origin + '/api/dashboard?window=all&model=nanojev-revision')).json();
+      expect(scoped.summary.request_count).toBe(1);
+      expect(scoped.summary.answer_count).toBe(2);
+      expect(scoped.summary.cost_usd).toBeNull();
+      const mappedDetail = await (await context.request.get(origin + '/api/requests/' + scoped.requests[0].id)).json();
+      expect(mappedDetail.answers.every((answer: { valid: boolean }) => answer.valid)).toBe(true);
+      expect(mappedDetail.provider).toBe('nanojev');
+      expect(mappedDetail.requested_model).toBe('requested-checkpoint');
+      expect(mappedDetail.sample).toBe(true);
+      expect(JSON.stringify(mappedDetail)).not.toContain('omitted-private');
+      const mappedExport = await (await context.request.get(origin + '/api/export?format=jsonl&window=all&model=nanojev-revision')).text();
+      const mappedReimport = await context.request.post(origin + '/api/import', { headers: { 'X-Observer-Request': '1' }, data: { text: mappedExport, format: 'observer-jsonl' } });
+      expect(mappedReimport.status()).toBe(200);
+      expect((await mappedReimport.json()).duplicates).toBe(1);
       expect((await (await context.request.get(origin + '/api/health')).json()).forwarded).toBe(0);
       expect(errors).toEqual([]);
       completed = true;

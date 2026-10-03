@@ -1,0 +1,1708 @@
+{
+  "checked_at": "2026-10-03",
+  "repositories": [
+    {
+      "repo": "TheoLeeCJ/SemIf-OpenJev",
+      "commit": "23cf1f39fc9534fe81437200959b6dfc7106e45a",
+      "stars": 4663,
+      "pushed_at": "2026-09-23T18:48:22Z",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "89f00284285ea0dac7b0e10ff04ebe643e37fb1a3165ab7dbd13686e97d65f62",
+          "url": "https://github.com/TheoLeeCJ/SemIf-OpenJev/blob/23cf1f39fc9534fe81437200959b6dfc7106e45a/README.md"
+        },
+        {
+          "path": "src/semif_phase1/core.py",
+          "sha256": "2ed5702373242f62928dbe5339fa8b3eebe716cea94816519b6c1baa27e56da5",
+          "url": "https://github.com/TheoLeeCJ/SemIf-OpenJev/blob/23cf1f39fc9534fe81437200959b6dfc7106e45a/src/semif_phase1/core.py"
+        },
+        {
+          "path": "src/semif_phase1/cli.py",
+          "sha256": "f25acb0dc0c4ac76e20f1b442892aaea5f8f6c0f715f5366d8bc9be921d1c9f1",
+          "url": "https://github.com/TheoLeeCJ/SemIf-OpenJev/blob/23cf1f39fc9534fe81437200959b6dfc7106e45a/src/semif_phase1/cli.py"
+        },
+        {
+          "path": "src/semif_phase1/direct.py",
+          "sha256": "e42b91281b6fa16de3cabaf98b452dc026c0ee77869e5c1b10f44b962f3222cc",
+          "url": "https://github.com/TheoLeeCJ/SemIf-OpenJev/blob/23cf1f39fc9534fe81437200959b6dfc7106e45a/src/semif_phase1/direct.py"
+        }
+      ]
+    },
+    {
+      "repo": "yzfly/edgejev",
+      "commit": "dce469472e0e6eea396256e9bf866082dcb9490b",
+      "stars": 15,
+      "pushed_at": "2026-09-21T11:47:04Z",
+      "license": "NOASSERTION",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "70fbbc7c67dd12d997d479a0fea8564e630eaf709070520333a8604e71525c3b",
+          "url": "https://github.com/yzfly/edgejev/blob/dce469472e0e6eea396256e9bf866082dcb9490b/README.md"
+        },
+        {
+          "path": "edgejev/serve.py",
+          "sha256": "6c71a4487c0dfcd8807e18bee1e29971fd6de15fab6829c5140f61a04345745a",
+          "url": "https://github.com/yzfly/edgejev/blob/dce469472e0e6eea396256e9bf866082dcb9490b/edgejev/serve.py"
+        }
+      ]
+    },
+    {
+      "repo": "ekzhang/openjev-sglang",
+      "commit": "bf6a53bbb1f75040b06de39abff1230524553ab5",
+      "stars": 337,
+      "pushed_at": "2026-10-01T15:04:04Z",
+      "license": null,
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "b4e6b3c8a28691fd219d7c6cb9302af7cb2b10d6dbbe3db51fbee474ee9a2321",
+          "url": "https://github.com/ekzhang/openjev-sglang/blob/bf6a53bbb1f75040b06de39abff1230524553ab5/README.md"
+        },
+        {
+          "path": "src/openjev/api.py",
+          "sha256": "52cd46db8f5206c71b183e9f4ead96f19daa44a5014b3f69cf00aba5ec638c4f",
+          "url": "https://github.com/ekzhang/openjev-sglang/blob/bf6a53bbb1f75040b06de39abff1230524553ab5/src/openjev/api.py"
+        },
+        {
+          "path": "tests/test_api.py",
+          "sha256": "f6ee059a5105206df519bb6167f53f5069ad6b8658f4a387c62f79484942c6a7",
+          "url": "https://github.com/ekzhang/openjev-sglang/blob/bf6a53bbb1f75040b06de39abff1230524553ab5/tests/test_api.py"
+        }
+      ]
+    },
+    {
+      "repo": "logan-markewich/jeff",
+      "commit": "34b32f99a727c47b679adde33f4702a001e02979",
+      "stars": 284,
+      "pushed_at": "2026-09-20T00:59:58Z",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "a5a85a5753682bf52bc6e0df3eba1ccf61bbb360aec2e006837f14954c8b1573",
+          "url": "https://github.com/logan-markewich/jeff/blob/34b32f99a727c47b679adde33f4702a001e02979/README.md"
+        },
+        {
+          "path": "src/jeff/core/schemas.py",
+          "sha256": "8047003d5fe864f305bc95d9ce79cb38f60c36b646626c895474ac7aca815a9c",
+          "url": "https://github.com/logan-markewich/jeff/blob/34b32f99a727c47b679adde33f4702a001e02979/src/jeff/core/schemas.py"
+        },
+        {
+          "path": "src/jeff/server/__init__.py",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "url": "https://github.com/logan-markewich/jeff/blob/34b32f99a727c47b679adde33f4702a001e02979/src/jeff/server/__init__.py"
+        },
+        {
+          "path": "src/jeff/server/app.py",
+          "sha256": "c9256a6a8ed60f0130f5ffba622a34e976483b3edf4e02743907adb532901d53",
+          "url": "https://github.com/logan-markewich/jeff/blob/34b32f99a727c47b679adde33f4702a001e02979/src/jeff/server/app.py"
+        },
+        {
+          "path": "src/jeff/server/batcher.py",
+          "sha256": "df0142afcb9571f636eac3ce255d68ac1ab394df0c8291338197bf910b606f1c",
+          "url": "https://github.com/logan-markewich/jeff/blob/34b32f99a727c47b679adde33f4702a001e02979/src/jeff/server/batcher.py"
+        },
+        {
+          "path": "src/jeff/server/config.py",
+          "sha256": "99c5db77736e8c65396216ac5bfd4beefe46d690be1d8334c51b030853d25648",
+          "url": "https://github.com/logan-markewich/jeff/blob/34b32f99a727c47b679adde33f4702a001e02979/src/jeff/server/config.py"
+        },
+        {
+          "path": "src/jeff/server/main.py",
+          "sha256": "16878cd743d62fd760d4d2ef0e429637560c664f44f1f7098d35b7a10e1ab8aa",
+          "url": "https://github.com/logan-markewich/jeff/blob/34b32f99a727c47b679adde33f4702a001e02979/src/jeff/server/main.py"
+        },
+        {
+          "path": "tests/test_server.py",
+          "sha256": "fd89d18a3060a1b8c8d6245bcfd9dcb7507b31f92c66a2a48e90e713ace86190",
+          "url": "https://github.com/logan-markewich/jeff/blob/34b32f99a727c47b679adde33f4702a001e02979/tests/test_server.py"
+        }
+      ]
+    },
+    {
+      "repo": "fstandhartinger/jevbench",
+      "commit": "bb05a335bc809e61b20c0f745d25499a82b326fc",
+      "stars": 203,
+      "pushed_at": "2026-09-29T11:25:01Z",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "42992cc7110a18f2685df88fe25914e0e977569cc3070a3fce50fe35e00abcb8",
+          "url": "https://github.com/fstandhartinger/jevbench/blob/bb05a335bc809e61b20c0f745d25499a82b326fc/README.md"
+        },
+        {
+          "path": "scripts/v1.1.3/r2_serve.py",
+          "sha256": "4db7c4c7cee197bb976e1b95238ce45f05593493c1135adc6020ddde957e0852",
+          "url": "https://github.com/fstandhartinger/jevbench/blob/bb05a335bc809e61b20c0f745d25499a82b326fc/scripts/v1.1.3/r2_serve.py"
+        }
+      ]
+    },
+    {
+      "repo": "Heman10x-NGU/openJev-verdict-2.0",
+      "commit": "bff28567cff463b833bf044f351a8b7945d53e07",
+      "stars": 293,
+      "pushed_at": "2026-09-20T14:54:40Z",
+      "license": "NOASSERTION",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "4f75677f7f18cc7983e46ed15094b31fd531538ba2e014fee7fcda4907e1ab46",
+          "url": "https://github.com/Heman10x-NGU/openJev-verdict-2.0/blob/bff28567cff463b833bf044f351a8b7945d53e07/README.md"
+        },
+        {
+          "path": "core/primitives.py",
+          "sha256": "9f6757c50ca02fd05e3bda1f7b4b8f63fbd2dc8033a210f05b6c2f8525c1ded8",
+          "url": "https://github.com/Heman10x-NGU/openJev-verdict-2.0/blob/bff28567cff463b833bf044f351a8b7945d53e07/core/primitives.py"
+        },
+        {
+          "path": "openjev/__init__.py",
+          "sha256": "7bd9ab0b81ea34b63e782d7077617aa12c1682341eb5cb14bf5aa040669e4688",
+          "url": "https://github.com/Heman10x-NGU/openJev-verdict-2.0/blob/bff28567cff463b833bf044f351a8b7945d53e07/openjev/__init__.py"
+        }
+      ]
+    },
+    {
+      "repo": "ollaya-dev/ollaya",
+      "commit": "37fcfa9f8a35b6b389447ffca49e4b4242970f81",
+      "stars": 1138,
+      "pushed_at": "2026-10-02T03:42:24Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "6bcfa82ccd67b4d507771a26a14af712aecba07371488d40babb921651f2c396",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/README.md"
+        },
+        {
+          "path": "convert/ollaya_convert/families/llm_common/llama_server.py",
+          "sha256": "49b2cc6bbe975951c78d2b29dc48c298179f41b4abe5bc803d49409aec081f40",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/convert/ollaya_convert/families/llm_common/llama_server.py"
+        },
+        {
+          "path": "convert/ollaya_convert/families/schema_scorer/__init__.py",
+          "sha256": "fc8412bbcaa161b3c55e642fcbd73047e9e7611bb61fe4b232db1518b82df8f9",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/convert/ollaya_convert/families/schema_scorer/__init__.py"
+        },
+        {
+          "path": "convert/ollaya_convert/families/schema_scorer/export.py",
+          "sha256": "b078a8370457e062a89e651e492a2a222db71ad736bbaa9d00bf1262996b1c45",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/convert/ollaya_convert/families/schema_scorer/export.py"
+        },
+        {
+          "path": "convert/ollaya_convert/families/schema_scorer/goldens.py",
+          "sha256": "99ad285ca33933add6a44ed6e51397c067280e6237b5ca998275d8fbefa4db83",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/convert/ollaya_convert/families/schema_scorer/goldens.py"
+        },
+        {
+          "path": "convert/ollaya_convert/families/schema_scorer/parity.py",
+          "sha256": "5afff76908c6d7154f53ab2e921d12262dc11a5c8965b7acfcc8963025bd629f",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/convert/ollaya_convert/families/schema_scorer/parity.py"
+        },
+        {
+          "path": "convert/ollaya_convert/families/schema_scorer/ref.py",
+          "sha256": "201540545a625c8d9f1ebe1a4e212ba2981b8e7c3a2c385caddc3810346dc038",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/convert/ollaya_convert/families/schema_scorer/ref.py"
+        },
+        {
+          "path": "crates/ollaya-api/tests/typesafe_schema.rs",
+          "sha256": "9d2887232351f8b1200566f00542423bbf733be8c934d2fb1b2a717f8d47b39b",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/crates/ollaya-api/tests/typesafe_schema.rs"
+        },
+        {
+          "path": "crates/ollaya-runner/src/server.rs",
+          "sha256": "6998a664accf3215fad2a058b4e3322bff16e31da03f6ff252bfbf53d1326587",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/crates/ollaya-runner/src/server.rs"
+        },
+        {
+          "path": "crates/ollaya-server/src/config.rs",
+          "sha256": "ac893b003693d8e921eeb498727aa37385f7d71237b45197e6e62969c29a63d5",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/crates/ollaya-server/src/config.rs"
+        },
+        {
+          "path": "crates/ollaya-server/src/http.rs",
+          "sha256": "d3ac285735a66e9c916d64c80ce55be2d7a46b68ae68169e5c08475c0126c991",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/crates/ollaya-server/src/http.rs"
+        },
+        {
+          "path": "crates/ollaya-server/src/launch.rs",
+          "sha256": "0664fbbf36d1b712c76e3a2be28b59e273a7bc72c7e842eb6e63beeed97d1ba6",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/crates/ollaya-server/src/launch.rs"
+        },
+        {
+          "path": "crates/ollaya-server/src/lib.rs",
+          "sha256": "b575dd3d348cb57c0b36e9d9dd06d94ba9b46090f457261d83177bae05b04ee0",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/crates/ollaya-server/src/lib.rs"
+        },
+        {
+          "path": "crates/ollaya-api/src/decide.rs",
+          "sha256": "a99666e1cf5b766b9a849568b36422580d0a6a1cd595a3ab70216e3702727417",
+          "url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/crates/ollaya-api/src/decide.rs"
+        }
+      ]
+    },
+    {
+      "repo": "nokia-applied-research/AnyJev",
+      "commit": "e6efe1233a57ddc8b291eeb206142bcec003d10b",
+      "stars": 1018,
+      "pushed_at": "2026-10-02T02:42:49Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "588e1018c99e7426303d4194f5b31dfd62e931ac2116f60ef40bcc96e8a33e22",
+          "url": "https://github.com/nokia-applied-research/AnyJev/blob/e6efe1233a57ddc8b291eeb206142bcec003d10b/README.md"
+        },
+        {
+          "path": "anyjev/result.py",
+          "sha256": "46622fe262e1b685c776a8d1dd73c9201b82f1ff3336a63cd81d472c9f7f3746",
+          "url": "https://github.com/nokia-applied-research/AnyJev/blob/e6efe1233a57ddc8b291eeb206142bcec003d10b/anyjev/result.py"
+        },
+        {
+          "path": "anyjev/question.py",
+          "sha256": "72e61e3b846e9efa76cbe5b1f5c8fdc5ffa5e5f9eb86de17bcbae5ffdd4ac368",
+          "url": "https://github.com/nokia-applied-research/AnyJev/blob/e6efe1233a57ddc8b291eeb206142bcec003d10b/anyjev/question.py"
+        },
+        {
+          "path": "anyjev/decider.py",
+          "sha256": "e351c3b3a480ad6c0bdbde4231dd9f889f21dacc80be0fb5b66fd81184dc8ec5",
+          "url": "https://github.com/nokia-applied-research/AnyJev/blob/e6efe1233a57ddc8b291eeb206142bcec003d10b/anyjev/decider.py"
+        }
+      ]
+    },
+    {
+      "repo": "wfzyx/von",
+      "commit": "ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4",
+      "stars": 821,
+      "pushed_at": "2026-10-03T05:55:04Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "d1de2186ddfd34b0670cb05fa9e0bdb7ba9dfdc7c10f042852af296785e15f82",
+          "url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/README.md"
+        },
+        {
+          "path": "benchmarks/probe_decoder_ceiling.py",
+          "sha256": "90155ba3319107a5e06462904d25998e1b0eb6c202a380db24be117ec15c3844",
+          "url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/benchmarks/probe_decoder_ceiling.py"
+        },
+        {
+          "path": "src/von/api.py",
+          "sha256": "7c5eb61bac8bcc2f7047037aefcbcf398794e747a619f74e649c3179d9cc98b9",
+          "url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/src/von/api.py"
+        },
+        {
+          "path": "src/von/server.py",
+          "sha256": "3c5eff76736f9fa0806fdd0557113d60559a2cb6c8631ce2a4930ba376ed3e86",
+          "url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/src/von/server.py"
+        },
+        {
+          "path": "src/von/types.py",
+          "sha256": "73ced88215177d5725729939aa116e1873f225f76c3f8e8ca4ec650f5f247acb",
+          "url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/src/von/types.py"
+        },
+        {
+          "path": "tests/test_server.py",
+          "sha256": "a8e32a9a1c25ccf925e704e42434e86bcc19048549f2576df8385faca732c7b8",
+          "url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/tests/test_server.py"
+        },
+        {
+          "path": "training/eval_decoder.py",
+          "sha256": "0f44c6163e93efe496ea7eb174ea00558d6a6a37b6b62ec8de3f5712fdb0bbaa",
+          "url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/training/eval_decoder.py"
+        },
+        {
+          "path": "training/train_decoder_head.py",
+          "sha256": "221a59fcde9f17eba5bafbf4007f61e10bb30d80eea7095f1c958374e47700ef",
+          "url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/training/train_decoder_head.py"
+        },
+        {
+          "path": "src/von/engine.py",
+          "sha256": "e7f38618d7d88029d6a23e431bdc9c71eaf70f759cc30fb64fc8d995f5d5956c",
+          "url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/src/von/engine.py"
+        }
+      ]
+    },
+    {
+      "repo": "sqliteai/blink",
+      "commit": "18d6ce836cadfd14f04feef8bba952f50da660db",
+      "stars": 19,
+      "pushed_at": "2026-09-23T06:05:52Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "d38f3e24fce58d6fee4f61d80b99a65c9a9cfda77363d9a260c019614aa790d4",
+          "url": "https://github.com/sqliteai/blink/blob/18d6ce836cadfd14f04feef8bba952f50da660db/README.md"
+        }
+      ]
+    },
+    {
+      "repo": "mpnikhil/dev-0.4b",
+      "commit": "2ce2563db938e9ec22ffe69e5fb8d4706f61ed1a",
+      "stars": 44,
+      "pushed_at": "2026-09-22T02:31:48Z",
+      "license": null,
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "690cf2bb7f000d142eb0d913489e891171fd05c0d1756c321682167fbefb6b85",
+          "url": "https://github.com/mpnikhil/dev-0.4b/blob/2ce2563db938e9ec22ffe69e5fb8d4706f61ed1a/README.md"
+        }
+      ]
+    },
+    {
+      "repo": "NandhaKishorM/laya",
+      "commit": "fa9a2a7070b1789912a49ae24603bbfb1a78b001",
+      "stars": 30286,
+      "pushed_at": "2026-10-02T17:02:26Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "f819355eae040a60271292801b296678a105beac34e545d951c86ab486148a60",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/README.md"
+        },
+        {
+          "path": "examples/30_custom_schema_design.py",
+          "sha256": "09a9e16365885708ad1bbc48ada64dab81c27d7fa150471807a1d8b11d9161c1",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/examples/30_custom_schema_design.py"
+        },
+        {
+          "path": "laya/mcp/server.py",
+          "sha256": "e159bfd291f790db817c5cf4142135c89cb711d3483a28d537baad030e7eb207",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/laya/mcp/server.py"
+        },
+        {
+          "path": "laya/serve.py",
+          "sha256": "24fc8d92c4a58b987bc237e9f6c62cf2d6c1edc2d35c4ba4406841f4f8b3ec45",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/laya/serve.py"
+        },
+        {
+          "path": "sdk/typescript/src/response.ts",
+          "sha256": "ed6eb271293b8085c1aa3ad0dcb474f69d1389e756ef9a9c1edabc0f3b2f2960",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/sdk/typescript/src/response.ts"
+        },
+        {
+          "path": "tests/sdk_server_fixture.py",
+          "sha256": "ea88f0df09be771fde8765b2cbdecee3bc98b1d7a5c627f2a3874a5b969f1b57",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/tests/sdk_server_fixture.py"
+        },
+        {
+          "path": "tests/test_evals_api.py",
+          "sha256": "da11b90ee368a25c9cd1ad0cb05808c75268e407385d0fe4576b53024bbb000f",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/tests/test_evals_api.py"
+        },
+        {
+          "path": "tests/test_example_server_errors.py",
+          "sha256": "e8b1e6acd9dbf552e38d2462722b3b183a4eb7ab5251125920dd28f694accfc6",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/tests/test_example_server_errors.py"
+        },
+        {
+          "path": "tests/test_example_server_limits.py",
+          "sha256": "f48b697f02ba1e10be46b77fabe656ca2b112400e49df719f8bb954da96eb6ba",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/tests/test_example_server_limits.py"
+        },
+        {
+          "path": "tests/test_example_server_per_call_controls.py",
+          "sha256": "8842a0ff29b1c4ec1c75b8434bbe38a4b8f1e313bc2fa6fcea06651678b695be",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/tests/test_example_server_per_call_controls.py"
+        },
+        {
+          "path": "tests/test_hooks_api.py",
+          "sha256": "08014125ff0781cfa5ad2c3da02f269b641bfbf01b4d69fd766e16e2aedfe109",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/tests/test_hooks_api.py"
+        },
+        {
+          "path": "tests/test_serve.py",
+          "sha256": "8692c8efe2392958d8279a4ffe150f1f719fdd073221be51f409a209dd844b06",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/tests/test_serve.py"
+        },
+        {
+          "path": "laya/agent.py",
+          "sha256": "63160e021015e0df6ed9bc3b65957f919178b3e98a23f020c2995cffb7c381b1",
+          "url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/laya/agent.py"
+        }
+      ]
+    },
+    {
+      "repo": "malevrigns/agent-jev",
+      "commit": "1c2c1b1ae1dc427d4cc851ef7460a1112b0cb3e1",
+      "stars": 335,
+      "pushed_at": "2026-10-01T13:50:53Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "8fb3c58b4a7a97609d3d87914a9e27ff00f0bb160daf352c362021c7e8123b0f",
+          "url": "https://github.com/malevrigns/agent-jev/blob/1c2c1b1ae1dc427d4cc851ef7460a1112b0cb3e1/README.md"
+        },
+        {
+          "path": "jev_service/server.py",
+          "sha256": "38df8e0b3cf0fbbf211debc8c7bfa7cd44620a3a59d05e84ccadff1415be7f0c",
+          "url": "https://github.com/malevrigns/agent-jev/blob/1c2c1b1ae1dc427d4cc851ef7460a1112b0cb3e1/jev_service/server.py"
+        },
+        {
+          "path": "jev_service/contract.py",
+          "sha256": "5a28b220a830e816f7b4fe2bf46b314f7aa7d3cffa4d096037bddf7d566353e6",
+          "url": "https://github.com/malevrigns/agent-jev/blob/1c2c1b1ae1dc427d4cc851ef7460a1112b0cb3e1/jev_service/contract.py"
+        },
+        {
+          "path": "agentjev_client.py",
+          "sha256": "76bdd30a65a10f544bcfc5af62e8e6e489e268caac74fa742ac5bebc19fc2155",
+          "url": "https://github.com/malevrigns/agent-jev/blob/1c2c1b1ae1dc427d4cc851ef7460a1112b0cb3e1/agentjev_client.py"
+        }
+      ]
+    },
+    {
+      "repo": "togethercomputer/tev1",
+      "commit": "1dde7782382c9f49d627153759b8d1deab426ce0",
+      "stars": 205,
+      "pushed_at": "2026-09-24T00:20:18Z",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "a3086356491091f07479044e406af6d10d280572dd722c4bb8139f2834ddf715",
+          "url": "https://github.com/togethercomputer/tev1/blob/1dde7782382c9f49d627153759b8d1deab426ce0/README.md"
+        },
+        {
+          "path": "examples/decide.py",
+          "sha256": "d0bfb6add3a9b87475737568613c40f48c8f0bc927574351ce558da87db640bb",
+          "url": "https://github.com/togethercomputer/tev1/blob/1dde7782382c9f49d627153759b8d1deab426ce0/examples/decide.py"
+        }
+      ]
+    },
+    {
+      "repo": "kshetrajna12/reflex",
+      "commit": "231f896d818a62b94fec305ed553df1088486dcb",
+      "stars": 161,
+      "pushed_at": "2026-09-27T02:52:43Z",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "28403f98b193329691ec93501ed7085f3494ae6d2977e4639c87b0297739a5b4",
+          "url": "https://github.com/kshetrajna12/reflex/blob/231f896d818a62b94fec305ed553df1088486dcb/README.md"
+        },
+        {
+          "path": "src/reflex/schema.py",
+          "sha256": "2c23f6a225fdccb7569213ca0f81478d99670fc84627d543093c58834938315b",
+          "url": "https://github.com/kshetrajna12/reflex/blob/231f896d818a62b94fec305ed553df1088486dcb/src/reflex/schema.py"
+        },
+        {
+          "path": "src/reflex/server.py",
+          "sha256": "596cd3884afeee1d784109e6ba59846e7fc98b914ef350329b62bef9dc435470",
+          "url": "https://github.com/kshetrajna12/reflex/blob/231f896d818a62b94fec305ed553df1088486dcb/src/reflex/server.py"
+        },
+        {
+          "path": "tests/test_server_auth.py",
+          "sha256": "0ac7ba3c35f46c56fe0a19073fb618e4bdabdc8965016e2d19b3146999eabef1",
+          "url": "https://github.com/kshetrajna12/reflex/blob/231f896d818a62b94fec305ed553df1088486dcb/tests/test_server_auth.py"
+        }
+      ]
+    },
+    {
+      "repo": "TianyuCodings/NanoJev",
+      "commit": "76fdfc9ecdca45a9bcef17991a07d3041a87685a",
+      "stars": 2478,
+      "pushed_at": "2026-09-21T09:58:28Z",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "4536f6769de55391a83a2282632f5ad66f16966a7204cf3278242fe5d2892809",
+          "url": "https://github.com/TianyuCodings/NanoJev/blob/76fdfc9ecdca45a9bcef17991a07d3041a87685a/README.md"
+        },
+        {
+          "path": "research/web_v3_live_browser_response.json",
+          "sha256": "6955077ead25c1518187aaecf503af02898880f2e406984702f2e0edf9d59580",
+          "url": "https://github.com/TianyuCodings/NanoJev/blob/76fdfc9ecdca45a9bcef17991a07d3041a87685a/research/web_v3_live_browser_response.json"
+        },
+        {
+          "path": "scripts/check_server_contract.py",
+          "sha256": "6ad900589440c8d7de1da4d2b7b0633d542322e096328824f9b3760c2313f832",
+          "url": "https://github.com/TianyuCodings/NanoJev/blob/76fdfc9ecdca45a9bcef17991a07d3041a87685a/scripts/check_server_contract.py"
+        },
+        {
+          "path": "research/web_live_browser_response.json",
+          "sha256": "692a6cdbe73c05ced7bc5249cdb6f720eaa04b250094becf34a9683e24fe198e",
+          "url": "https://github.com/TianyuCodings/NanoJev/blob/76fdfc9ecdca45a9bcef17991a07d3041a87685a/research/web_live_browser_response.json"
+        },
+        {
+          "path": "research/server_contract_check.json",
+          "sha256": "0af5b20be754572cc969ddda79cf4d324500fc079cb830a020c9d92ea3145673",
+          "url": "https://github.com/TianyuCodings/NanoJev/blob/76fdfc9ecdca45a9bcef17991a07d3041a87685a/research/server_contract_check.json"
+        }
+      ]
+    },
+    {
+      "repo": "Rizzo-AI-Academy/rizzo-flow",
+      "commit": "b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de",
+      "stars": 798,
+      "pushed_at": "2026-09-25T21:15:27Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "45ed5fdfa5c7e32fbd99ad1c822896bf6c098a683bfaebe083c379a3c39c21f5",
+          "url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/README.md"
+        },
+        {
+          "path": "request.schema.json",
+          "sha256": "c65760675e1ed9d6dc4f3e702e1f8fc936c3e70041249929dfe2373fa2926d95",
+          "url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/request.schema.json"
+        },
+        {
+          "path": "response.schema.json",
+          "sha256": "0452148f28fa68ccd609d3e11d55716284b8f97fc6511e99163961dfb8683fd1",
+          "url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/response.schema.json"
+        },
+        {
+          "path": "results/spark-bf16-validation/source/api.py",
+          "sha256": "6db8d565d49511c3586e44c92177e58442f88498102199c953feff344fa4e662",
+          "url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/results/spark-bf16-validation/source/api.py"
+        },
+        {
+          "path": "results/spark-bf16-validation/source/schema.py",
+          "sha256": "991fd24dbadb4f6eadd808587a4c3e4bcbd98e831d032de7c15a6a792201dafe",
+          "url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/results/spark-bf16-validation/source/schema.py"
+        },
+        {
+          "path": "src/rizzo_flow/api.py",
+          "sha256": "1393595116e907857d914cbb753fdbb810b12174c82daa9be4eef6c51273597f",
+          "url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/src/rizzo_flow/api.py"
+        },
+        {
+          "path": "src/rizzo_flow/responses.py",
+          "sha256": "1e1593b22937b9b76befb2a98bdf7d96ae7b7b9f1b17aec1b38e51300b22e27a",
+          "url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/src/rizzo_flow/responses.py"
+        },
+        {
+          "path": "src/rizzo_flow/schema.py",
+          "sha256": "8c3003e9582c84ca6cb1faa9093e2715a53af27cca7bc6768c241decc7b6ac20",
+          "url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/src/rizzo_flow/schema.py"
+        },
+        {
+          "path": "src/rizzo_flow/compat.py",
+          "sha256": "f4cd42b6934be6705f041730623b8c0b5634dff5bd0fcfd9e260b9c77dd0bc0e",
+          "url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/src/rizzo_flow/compat.py"
+        }
+      ]
+    },
+    {
+      "repo": "iapp-technology/openthai-systemone",
+      "commit": "5d04bcca0c58bd10e7dac2d3d369d8f760bea6cf",
+      "stars": 65,
+      "pushed_at": "2026-09-21T17:22:11Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "241cd0a2d6e11e999e2baf0c7b88d559f6a5831fa04d6c3e0b28b2b2d35f4491",
+          "url": "https://github.com/iapp-technology/openthai-systemone/blob/5d04bcca0c58bd10e7dac2d3d369d8f760bea6cf/README.md"
+        },
+        {
+          "path": "openthai_systemone/server.py",
+          "sha256": "99ace8be09f762c0a4214eb255f8fed1d2735ca4473acc0440208004716fe724",
+          "url": "https://github.com/iapp-technology/openthai-systemone/blob/5d04bcca0c58bd10e7dac2d3d369d8f760bea6cf/openthai_systemone/server.py"
+        },
+        {
+          "path": "openthai_systemone/types.py",
+          "sha256": "1f9900a7d94aae82d3bc6351fa155d9d2b2ee1a4eb11c281e7d8d322dbaacad6",
+          "url": "https://github.com/iapp-technology/openthai-systemone/blob/5d04bcca0c58bd10e7dac2d3d369d8f760bea6cf/openthai_systemone/types.py"
+        },
+        {
+          "path": "tests/test_client_server.py",
+          "sha256": "93195baa2e9e46f9a69936cf35a29c8a35369fec8acb201711dd95a5d3abe5da",
+          "url": "https://github.com/iapp-technology/openthai-systemone/blob/5d04bcca0c58bd10e7dac2d3d369d8f760bea6cf/tests/test_client_server.py"
+        }
+      ]
+    },
+    {
+      "repo": "caiovicentino/eikos",
+      "commit": "8902fbe9e06e10da50d3ed5d27bb52fcf8ddd900",
+      "stars": 40,
+      "pushed_at": "2026-10-01T23:24:47Z",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "db89a2fedf22ae874f17a4172c863eff5c94c669e24c7e4b1bb97ce3c7c6070a",
+          "url": "https://github.com/caiovicentino/eikos/blob/8902fbe9e06e10da50d3ed5d27bb52fcf8ddd900/README.md"
+        },
+        {
+          "path": "eikos/serve.py",
+          "sha256": "afa1bbba1d341f4d006fb5cfa114776d3afad94e3e02d4c06aea5838241037b5",
+          "url": "https://github.com/caiovicentino/eikos/blob/8902fbe9e06e10da50d3ed5d27bb52fcf8ddd900/eikos/serve.py"
+        }
+      ]
+    },
+    {
+      "repo": "bespokelabsai/nimble",
+      "commit": "62076b4f2d365b5879dafcf7f6dd072a1fe76df7",
+      "stars": 2032,
+      "pushed_at": "2026-10-03T02:54:15Z",
+      "license": null,
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "c5ab93053591d52905eaa492a01e5fd75e07e94dbcb21901d3ed5dde18913c84",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/README.md"
+        },
+        {
+          "path": "examples/parallel_schema.json",
+          "sha256": "d6e347339602e236117abd387755a5463731200e116ac9d3e200f345db9c5b14",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/examples/parallel_schema.json"
+        },
+        {
+          "path": "examples/priority_defined_schema.json",
+          "sha256": "4b87ff300638d80f019752651f6e05e99806782af0ddd13af3202c820bfe0166",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/examples/priority_defined_schema.json"
+        },
+        {
+          "path": "examples/priority_schema.json",
+          "sha256": "c4ad67b6113f835eb0e4f35402ddd56817f3f02b2f2b40bb544d1381643e9558",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/examples/priority_schema.json"
+        },
+        {
+          "path": "nimble/evaluation/benchmark_schema_latency.py",
+          "sha256": "756a7143638ff69140e6af850471c3cf7dcfa07156acb98f6e864681c9940363",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/nimble/evaluation/benchmark_schema_latency.py"
+        },
+        {
+          "path": "nimble/evaluation/evaluate_schema_adapter.py",
+          "sha256": "c0ee6daa203c037cb61391faf4b1e82d8adb5a3cca5fdf7e5b41cef4b501ab2c",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/nimble/evaluation/evaluate_schema_adapter.py"
+        },
+        {
+          "path": "nimble/playground/server.py",
+          "sha256": "57336b0db4a17558d78349d7dffd55a1d26046411435b85d52d08caa4ddde815",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/nimble/playground/server.py"
+        },
+        {
+          "path": "nimble/scoring/extended_schema.py",
+          "sha256": "fb51ac3d51922bb93caa207a34493d6addaa22c9ec1c26df594ba9d46f7a2285",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/nimble/scoring/extended_schema.py"
+        },
+        {
+          "path": "nimble/scoring/parallel_schema.py",
+          "sha256": "a0a0f94d0f65e972bc20d088678ad3d595ff1c42b9c0d78f96034526303f63fc",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/nimble/scoring/parallel_schema.py"
+        },
+        {
+          "path": "nimble/scoring/serving_schema.py",
+          "sha256": "17b81d6cc3e26ec501e24f1609615f2386f974b618119b7a7102319c330c31ac",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/nimble/scoring/serving_schema.py"
+        },
+        {
+          "path": "nimble/serving/server.py",
+          "sha256": "ae9be8a8dc8247b3cf00073052e863785a3c867295255703656c1d0ba8ceb632",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/nimble/serving/server.py"
+        },
+        {
+          "path": "nimble/training/candidate_schema.py",
+          "sha256": "f695b402c473a9a50ff98c3cc5041fa337ce524f0a429f9c7f6276275fd6a7b5",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/nimble/training/candidate_schema.py"
+        },
+        {
+          "path": "nimble/training/schema_data.py",
+          "sha256": "348837c6a215590e5ee84900a7fdc6f926100a0022bc27e785258f47b00783ba",
+          "url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/nimble/training/schema_data.py"
+        }
+      ]
+    },
+    {
+      "repo": "razorback16/openjev",
+      "commit": "dcd20947b5ddad5be4a8f5aed6aa6dd245653823",
+      "stars": 591,
+      "pushed_at": "2026-09-29T16:23:32Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "51812566a912f767ee9245867790dff62dee15d1b47f820b42fb2e5a79c31d55",
+          "url": "https://github.com/razorback16/openjev/blob/dcd20947b5ddad5be4a8f5aed6aa6dd245653823/README.md"
+        },
+        {
+          "path": "openjev/api.py",
+          "sha256": "65a8b888ca1c4ba45c080ebdeabe079e15d2241827b2bd7722398aae10f99c27",
+          "url": "https://github.com/razorback16/openjev/blob/dcd20947b5ddad5be4a8f5aed6aa6dd245653823/openjev/api.py"
+        },
+        {
+          "path": "tests/test_api.py",
+          "sha256": "5ff0c3c70ef1c70b94df7d65a8e7a8d36b17f35c731164240b2a3a8a002f2ba5",
+          "url": "https://github.com/razorback16/openjev/blob/dcd20947b5ddad5be4a8f5aed6aa6dd245653823/tests/test_api.py"
+        }
+      ]
+    },
+    {
+      "repo": "Liuziyu77/Valen",
+      "commit": "33de9f9f77a00120009f1dd253cf06e32adc348f",
+      "stars": 574,
+      "pushed_at": "2026-10-02T12:16:18Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "7c43877121534c8db8b5361dabd3196f56bbfd78d88f378e6af6238867b3836b",
+          "url": "https://github.com/Liuziyu77/Valen/blob/33de9f9f77a00120009f1dd253cf06e32adc348f/README.md"
+        },
+        {
+          "path": "tests/common/test_schema.py",
+          "sha256": "226400d32780293c369875991c810dffc06f97dd39a3fc493236157ffcd77950",
+          "url": "https://github.com/Liuziyu77/Valen/blob/33de9f9f77a00120009f1dd253cf06e32adc348f/tests/common/test_schema.py"
+        },
+        {
+          "path": "valen/data/schema.py",
+          "sha256": "ec453ee0d36be374f8c5984a82f566decf1754966789ed51f884916f2f5bad82",
+          "url": "https://github.com/Liuziyu77/Valen/blob/33de9f9f77a00120009f1dd253cf06e32adc348f/valen/data/schema.py"
+        },
+        {
+          "path": "valen/data/types.py",
+          "sha256": "b06ce08081d8f7b2bf36abf302410a96086395e75a04f9e9b1c591db519b1641",
+          "url": "https://github.com/Liuziyu77/Valen/blob/33de9f9f77a00120009f1dd253cf06e32adc348f/valen/data/types.py"
+        }
+      ]
+    },
+    {
+      "repo": "jaredpalmer/kev",
+      "commit": "84847f0a883d900f7de5b7a57eaa341ca7f9a6b4",
+      "stars": 8339,
+      "pushed_at": "2026-10-02T11:29:56Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "19c9d7d30cd723b9f112f1f68d0b415a28c5ee616dbc21b358fc29bd07a66311",
+          "url": "https://github.com/jaredpalmer/kev/blob/84847f0a883d900f7de5b7a57eaa341ca7f9a6b4/README.md"
+        },
+        {
+          "path": "kev/serve.py",
+          "sha256": "4f9885ce179dcb7de743f59be4b561758f47fac09373525e2994860b3345b162",
+          "url": "https://github.com/jaredpalmer/kev/blob/84847f0a883d900f7de5b7a57eaa341ca7f9a6b4/kev/serve.py"
+        },
+        {
+          "path": "skills/kev-deploy/scripts/kev_serve.py",
+          "sha256": "65c4beb9c3c6892455970e51012a84e227f7f3b12e491bcbbc0eb980140aee33",
+          "url": "https://github.com/jaredpalmer/kev/blob/84847f0a883d900f7de5b7a57eaa341ca7f9a6b4/skills/kev-deploy/scripts/kev_serve.py"
+        },
+        {
+          "path": "tests/test_api.py",
+          "sha256": "4b604485e8d011f11edd2ec8141985953a319fe473de21d007cf9b19be376228",
+          "url": "https://github.com/jaredpalmer/kev/blob/84847f0a883d900f7de5b7a57eaa341ca7f9a6b4/tests/test_api.py"
+        },
+        {
+          "path": "kev/api.py",
+          "sha256": "a6f53af5354f8ea17915abc78360fdf291a5108ce39a53a2d9135d48c603ae58",
+          "url": "https://github.com/jaredpalmer/kev/blob/84847f0a883d900f7de5b7a57eaa341ca7f9a6b4/kev/api.py"
+        }
+      ]
+    },
+    {
+      "repo": "allebee/jevk5",
+      "commit": "f26426d16f59e8bbe1470e5b162cc89329e29b29",
+      "stars": 131,
+      "pushed_at": "2026-09-28T06:51:18Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "8a2a6379efea5c32e0fa955931bf129744b52a5ebf9a2414d00a3fbd90e41d62",
+          "url": "https://github.com/allebee/jevk5/blob/f26426d16f59e8bbe1470e5b162cc89329e29b29/README.md"
+        },
+        {
+          "path": "jevk5/server.py",
+          "sha256": "2ebde38db58a1603ee390f72eb8737d5e969003973788640fa0e1edd58d75977",
+          "url": "https://github.com/allebee/jevk5/blob/f26426d16f59e8bbe1470e5b162cc89329e29b29/jevk5/server.py"
+        },
+        {
+          "path": "jevk5/runtime.py",
+          "sha256": "b05f2816135237b36694198bb3b8ffac1abc044ad23c70caa867b3be59a81be6",
+          "url": "https://github.com/allebee/jevk5/blob/f26426d16f59e8bbe1470e5b162cc89329e29b29/jevk5/runtime.py"
+        },
+        {
+          "path": "jevk5/prompt.py",
+          "sha256": "322d69ba6abea83602f27b7a5aa0d3e6ab00847fd03ddccd35a28ae5b23acc1a",
+          "url": "https://github.com/allebee/jevk5/blob/f26426d16f59e8bbe1470e5b162cc89329e29b29/jevk5/prompt.py"
+        }
+      ]
+    },
+    {
+      "repo": "typesafe-ai/system-one-adapter-python",
+      "commit": "e1d4cc938204b22fc5a3c3aca7044072fe3f712d",
+      "stars": 377,
+      "pushed_at": "2026-09-22T12:24:32Z",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "511e16b17c0bb50586f1b8a58c3f9ea96ef6e263f91af1c71368d3f72a334ca9",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/README.md"
+        },
+        {
+          "path": "src/system_one_adapter/_response.py",
+          "sha256": "db6b9b2b4b8bda1532c25ab734d79df584d011cae572af6d68e3e3b75ab98f5f",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/src/system_one_adapter/_response.py"
+        },
+        {
+          "path": "src/system_one_adapter/_schema.py",
+          "sha256": "438ced837a21c9564f3eb17f620be5a5b0e8d3828c5e9c60263124380e2f0817",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/src/system_one_adapter/_schema.py"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-native-anthropic].json",
+          "sha256": "a7a8d8e6803521ca203e7ffafc46a58e473e34daf44c948434e52f9c9c3d0bfe",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-native-anthropic].json"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-native-gemini].json",
+          "sha256": "2377b4d56284718f90da1012d28ebdc2e89cbf34e34dded51fda7552830990a4",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-native-gemini].json"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-native-openai].json",
+          "sha256": "1447e4b8dbe07c4bc8e63ae6fc2d9da6be041c4db330389aeebf901e860795c5",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-native-openai].json"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-prompted-anthropic].json",
+          "sha256": "ebfa2912425ba14c3f29a0a12ba6da0c34846d937b155609ead138771af1264d",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-prompted-anthropic].json"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-prompted-gemini].json",
+          "sha256": "29c41043a2f0419c98269cc87254aa9059e1b86f2699b457c462c6e7ca5a6364",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-prompted-gemini].json"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-prompted-openai].json",
+          "sha256": "155fb4fca88096a797e16dc98f18bdcb34114ac7d3774e71ba2ad6920f6849db",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[discrete-prompted-openai].json"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[probabilities-native-anthropic].json",
+          "sha256": "f9714007d8a58be059d5b66c314169b62e34ffef8dda3ff65ee51111d64eca5b",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[probabilities-native-anthropic].json"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[probabilities-native-gemini].json",
+          "sha256": "8bd7ddf0b359d35dc52ccf94f5038f9d56a6b617a661b61eedce7558f4dad43c",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[probabilities-native-gemini].json"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[probabilities-native-openai].json",
+          "sha256": "0efd19d5dff56fbee3c99df58e77924865f02cea141ed06489f6c8f073645b07",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[probabilities-native-openai].json"
+        },
+        {
+          "path": "tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[probabilities-prompted-anthropic].json",
+          "sha256": "9b9b8c6eaf5eb16a1247394821f245d5e5c27fccb2b9438af27338a9b26e915b",
+          "url": "https://github.com/typesafe-ai/system-one-adapter-python/blob/e1d4cc938204b22fc5a3c3aca7044072fe3f712d/tests/cassettes/test_client_with_live_apis/test_live_responses_match_reference_shape[probabilities-prompted-anthropic].json"
+        }
+      ]
+    },
+    {
+      "repo": "Zefan-Cai/Open-Jev",
+      "commit": "7434a4a8572a603067e3355799a72e1051b83b8a",
+      "stars": 389,
+      "pushed_at": "2026-10-03T05:26:58Z",
+      "license": "MIT",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "4300ebdadd2b59d774355442edce1904f958615d1d788cecf6fcc7c294f705fc",
+          "url": "https://github.com/Zefan-Cai/Open-Jev/blob/7434a4a8572a603067e3355799a72e1051b83b8a/README.md"
+        },
+        {
+          "path": "jev/api.py",
+          "sha256": "f22aa50c00d64aa91c2d415c1973f59bdaad11d1de51308ae5454326b8cbf350",
+          "url": "https://github.com/Zefan-Cai/Open-Jev/blob/7434a4a8572a603067e3355799a72e1051b83b8a/jev/api.py"
+        },
+        {
+          "path": "jev/server.py",
+          "sha256": "b3793e9b95c89af18d00bc222c4b35adf0c365ebb8201b721669bb564092f23d",
+          "url": "https://github.com/Zefan-Cai/Open-Jev/blob/7434a4a8572a603067e3355799a72e1051b83b8a/jev/server.py"
+        },
+        {
+          "path": "reports/full-data-eval-expansion-n1-v1/pinned-source/jev/api.py",
+          "sha256": "493f1fb9c3ffccbdc5f07d555791f9d86b3db7e1a53eef278230211cb6883254",
+          "url": "https://github.com/Zefan-Cai/Open-Jev/blob/7434a4a8572a603067e3355799a72e1051b83b8a/reports/full-data-eval-expansion-n1-v1/pinned-source/jev/api.py"
+        },
+        {
+          "path": "scripts/benchmark_api.py",
+          "sha256": "73ab5b9717ce416bdcf00acc1c204c324c411b956d1e309a36ccc4be56d91c67",
+          "url": "https://github.com/Zefan-Cai/Open-Jev/blob/7434a4a8572a603067e3355799a72e1051b83b8a/scripts/benchmark_api.py"
+        },
+        {
+          "path": "scripts/benchmark_openai_api.py",
+          "sha256": "63949cd352f7bb67f1a852dbb7770b70cb8bc0657249fc2a13b0f51dfcd3e3eb",
+          "url": "https://github.com/Zefan-Cai/Open-Jev/blob/7434a4a8572a603067e3355799a72e1051b83b8a/scripts/benchmark_openai_api.py"
+        },
+        {
+          "path": "tests/test_api.py",
+          "sha256": "10329c3b1e08ba5c4fb2a8070bb2ab1830b323c6268b733ab007cade25846ebf",
+          "url": "https://github.com/Zefan-Cai/Open-Jev/blob/7434a4a8572a603067e3355799a72e1051b83b8a/tests/test_api.py"
+        }
+      ]
+    },
+    {
+      "repo": "Mapika/decider",
+      "commit": "45024082b7d4bb667bf9140b7a7c073d3b483f6b",
+      "stars": 1047,
+      "pushed_at": "2026-10-02T07:55:19Z",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "path": "README.md",
+          "sha256": "9b20c7e757868eccdf3c2256fe0828ddcece9a36eaa2e99fdcee4b09f025afed",
+          "url": "https://github.com/Mapika/decider/blob/45024082b7d4bb667bf9140b7a7c073d3b483f6b/README.md"
+        },
+        {
+          "path": "decider/bench/schema.py",
+          "sha256": "1db1e96c4f16a1de0aad0dc38a8e9a5c29193e8de111ca2d30d0f8a51ca9d37a",
+          "url": "https://github.com/Mapika/decider/blob/45024082b7d4bb667bf9140b7a7c073d3b483f6b/decider/bench/schema.py"
+        },
+        {
+          "path": "decider/schema_engine.py",
+          "sha256": "cc851660392e044fe81b806fd6288adf5860b2cb8879b7cb00526effa3ebde8b",
+          "url": "https://github.com/Mapika/decider/blob/45024082b7d4bb667bf9140b7a7c073d3b483f6b/decider/schema_engine.py"
+        },
+        {
+          "path": "decider/serve.py",
+          "sha256": "f046d1551bf7d24a16eb1e6c71fcdc5a0fa4a06da0e64b6260d337bb320a9f49",
+          "url": "https://github.com/Mapika/decider/blob/45024082b7d4bb667bf9140b7a7c073d3b483f6b/decider/serve.py"
+        },
+        {
+          "path": "decider/systemone.py",
+          "sha256": "884e4b0bae36f5e09dbd689b4390e94320cbbd77f7b8d675e50490b1d7c61d34",
+          "url": "https://github.com/Mapika/decider/blob/45024082b7d4bb667bf9140b7a7c073d3b483f6b/decider/systemone.py"
+        }
+      ]
+    }
+  ],
+  "hugging_face": [
+    {
+      "id": "akhilaaa3/Jev-Omni",
+      "revision": "5addda86ddee081a68fb067477ea100c221b8917",
+      "likes": 351,
+      "downloads": 1599,
+      "license": "apache-2.0",
+      "url": "https://huggingface.co/akhilaaa3/Jev-Omni/blob/5addda86ddee081a68fb067477ea100c221b8917/README.md",
+      "sha256": "42995cac5590c55bc79bdedd427ccfb0d717ed1d183ddf402a7e8d6ea3dc0aa9"
+    },
+    {
+      "id": "TokenRhythm/NeoHorse-Jev-4B",
+      "revision": "434cb21d3a994a953d3ae5788405fcb2c4970554",
+      "likes": 25,
+      "downloads": 2288,
+      "license": "apache-2.0",
+      "url": "https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B/blob/434cb21d3a994a953d3ae5788405fcb2c4970554/README.md",
+      "sha256": "750facb36daf818636024104884c12043f48b5885ca0af3ac0829f021731b3aa"
+    },
+    {
+      "id": "ai-forever/FRIDA-Decisions",
+      "revision": "0096b5384e821c68791cb2b3b7292c2b937dcec8",
+      "likes": 14,
+      "downloads": 0,
+      "license": "mit",
+      "url": "https://huggingface.co/ai-forever/FRIDA-Decisions/blob/0096b5384e821c68791cb2b3b7292c2b937dcec8/README.md",
+      "sha256": "9416cad91957280bc4fe3d3b7a6b5f445c4092bf9443884a4681af4b020070b3"
+    },
+    {
+      "id": "DecisionIntelligence/Aurora",
+      "revision": "c495b02c1b151be52a3c174237ed240aa66e6384",
+      "likes": 6,
+      "downloads": 7179,
+      "license": "mit",
+      "url": "https://huggingface.co/DecisionIntelligence/Aurora/blob/c495b02c1b151be52a3c174237ed240aa66e6384/README.md",
+      "sha256": "86a03b5886edfbcf04f97324c65474731a9384be2bb0502288613625b8dfea94"
+    },
+    {
+      "id": "vllm-sr/Decision-2.0-Vega-27B",
+      "revision": "477e90f537eb5bd62e90d5e5361c7b654e69cf45",
+      "likes": 11,
+      "downloads": 23,
+      "license": "apache-2.0",
+      "url": "https://huggingface.co/vllm-sr/Decision-2.0-Vega-27B/blob/477e90f537eb5bd62e90d5e5361c7b654e69cf45/README.md",
+      "sha256": "13015618463f5d79c06147e07c2b72499780450f385c6f54bb8dcd90c8d54125"
+    },
+    {
+      "id": "Maincode/matilda-jev-v1",
+      "revision": "c87f57504300588ff4270ff5ac17c38d1c7996b9",
+      "likes": 6,
+      "downloads": 180,
+      "license": "apache-2.0",
+      "url": "https://huggingface.co/Maincode/matilda-jev-v1/blob/c87f57504300588ff4270ff5ac17c38d1c7996b9/README.md",
+      "sha256": "8d4f511284b302fd4f48b560934fecd95bfe960e33b12ab6ffeca0a350dfe434"
+    },
+    {
+      "id": "chaoliangUNSW/Jev-Style-Qwen3.5-2B-Decision-GGUF",
+      "revision": "adc5656741715ddd3e40dac44c6294cb888bc655",
+      "likes": 22,
+      "downloads": 9109,
+      "license": "apache-2.0",
+      "url": "https://huggingface.co/chaoliangUNSW/Jev-Style-Qwen3.5-2B-Decision-GGUF/blob/adc5656741715ddd3e40dac44c6294cb888bc655/README.md",
+      "sha256": "c85f6369b99410f77623350fa31448b28413efe41fb569debe2bf1edde4b76d7"
+    },
+    {
+      "id": "autotrust/JEV-27B",
+      "revision": "51740a8891c2a8baefd969237fd44187b3e3a115",
+      "likes": 23,
+      "downloads": 1012,
+      "license": "apache-2.0",
+      "url": "https://huggingface.co/autotrust/JEV-27B/blob/51740a8891c2a8baefd969237fd44187b3e3a115/README.md",
+      "sha256": "5416cf74d8d28053f80e7e27df0f223cd206711ae9ad1944a6f0c718624a2a56"
+    },
+    {
+      "id": "autotrust/JEV-9B",
+      "revision": "b63f651ce8ed64481d3f5e73ecdb05f740042f01",
+      "likes": 18,
+      "downloads": 3182,
+      "license": "apache-2.0",
+      "url": "https://huggingface.co/autotrust/JEV-9B/blob/b63f651ce8ed64481d3f5e73ecdb05f740042f01/README.md",
+      "sha256": "322cf4b61346715c35647030af26665412e1ee4d4d6d3b54c497800277031b33"
+    },
+    {
+      "id": "autotrust/JEV-27B-VL",
+      "revision": "d835ee0b42460bd74890c7eab63ba0dcb4dd808a",
+      "likes": 57,
+      "downloads": 179237,
+      "license": "apache-2.0",
+      "url": "https://huggingface.co/autotrust/JEV-27B-VL/blob/d835ee0b42460bd74890c7eab63ba0dcb4dd808a/README.md",
+      "sha256": "2aeb7a4f86a6d9f8f42b588d321dcd960863f59c5a06731ab9f771a48058b01e"
+    },
+    {
+      "id": "internlm/Intern-Decision-4B",
+      "revision": "0e5e6aa7d6d750e2b1504ba11a8136cb58aeb3cd",
+      "likes": 76,
+      "downloads": 1607,
+      "license": "apache-2.0",
+      "url": "https://huggingface.co/internlm/Intern-Decision-4B/blob/0e5e6aa7d6d750e2b1504ba11a8136cb58aeb3cd/README.md",
+      "sha256": "61e1700574cbe987ce232c164ac815a638fc8ce709972e7d54c2a3422b4dccc3"
+    }
+  ],
+  "discovery": {
+    "jev": [
+      {
+        "rank": 1,
+        "id": "akhilaaa3/Jev-Omni",
+        "lastModified": "2026-09-25T17:39:18.000Z",
+        "likes": 351,
+        "trendingScore": 104,
+        "sha": "5addda86ddee081a68fb067477ea100c221b8917",
+        "downloads": 1599,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 2,
+        "id": "autotrust/JEV-27B-VL",
+        "lastModified": "2026-10-02T12:06:07.000Z",
+        "likes": 57,
+        "trendingScore": 56,
+        "sha": "d835ee0b42460bd74890c7eab63ba0dcb4dd808a",
+        "downloads": 179237,
+        "pipeline_tag": "image-text-to-text"
+      },
+      {
+        "rank": 3,
+        "id": "autotrust/JEV-27B",
+        "lastModified": "2026-10-02T12:06:06.000Z",
+        "likes": 23,
+        "trendingScore": 23,
+        "sha": "51740a8891c2a8baefd969237fd44187b3e3a115",
+        "downloads": 1012,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 4,
+        "id": "autotrust/JEV-9B",
+        "lastModified": "2026-10-03T07:05:07.000Z",
+        "likes": 18,
+        "trendingScore": 14,
+        "sha": "b63f651ce8ed64481d3f5e73ecdb05f740042f01",
+        "downloads": 3182,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 5,
+        "id": "TokenRhythm/NeoHorse-Jev-4B",
+        "lastModified": "2026-09-28T09:21:16.000Z",
+        "likes": 25,
+        "trendingScore": 10,
+        "sha": "434cb21d3a994a953d3ae5788405fcb2c4970554",
+        "downloads": 2288,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 6,
+        "id": "chaoliangUNSW/Jev-Style-Qwen3.5-2B-Decision-GGUF",
+        "lastModified": "2026-09-27T03:00:45.000Z",
+        "likes": 22,
+        "trendingScore": 9,
+        "sha": "adc5656741715ddd3e40dac44c6294cb888bc655",
+        "downloads": 9109,
+        "pipeline_tag": "text-generation"
+      },
+      {
+        "rank": 7,
+        "id": "aimeigaoshou/agent-jev",
+        "lastModified": "2026-09-26T06:56:55.000Z",
+        "likes": 38,
+        "trendingScore": 6,
+        "sha": "0e2593e6e6c0eade0700712ac13c4389aa7654cc",
+        "downloads": 979
+      },
+      {
+        "rank": 8,
+        "id": "Maincode/matilda-jev-v1",
+        "lastModified": "2026-10-02T00:01:21.000Z",
+        "likes": 6,
+        "trendingScore": 6,
+        "sha": "c87f57504300588ff4270ff5ac17c38d1c7996b9",
+        "downloads": 180,
+        "pipeline_tag": "feature-extraction"
+      },
+      {
+        "rank": 9,
+        "id": "Meanblock/JEV-CPU",
+        "lastModified": "2026-09-19T12:13:17.000Z",
+        "likes": 48,
+        "trendingScore": 5,
+        "sha": "759fa60603a0e312cda38824e63e58f18445c14a",
+        "downloads": 0,
+        "pipeline_tag": "zero-shot-classification"
+      },
+      {
+        "rank": 10,
+        "id": "ZefanCai/Open-Jev-9B",
+        "lastModified": "2026-09-20T20:22:28.000Z",
+        "likes": 48,
+        "trendingScore": 5,
+        "sha": "47e966881e489511c0c7f5633a9e1960a676a551",
+        "downloads": 0
+      },
+      {
+        "rank": 11,
+        "id": "alibiserikbay/JevK5",
+        "lastModified": "2026-09-25T06:07:03.000Z",
+        "likes": 17,
+        "trendingScore": 5,
+        "sha": "c4f7fdb3aeab5582336406e78d3bef11bf98833d",
+        "downloads": 9194,
+        "pipeline_tag": "text-generation"
+      },
+      {
+        "rank": 12,
+        "id": "chaoliangUNSW/Jev-Style-0.8B-Decision-v3-GGUF",
+        "lastModified": "2026-09-26T11:50:27.000Z",
+        "likes": 12,
+        "trendingScore": 5,
+        "sha": "edf37c26a1098f83cf4264b8adbe0dca2d2ebb0c",
+        "downloads": 3044,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 13,
+        "id": "chaoliangUNSW/Jev-Style-2B-Decision-v3-GGUF",
+        "lastModified": "2026-09-27T03:55:47.000Z",
+        "likes": 5,
+        "trendingScore": 5,
+        "sha": "78b1352e9b8132987f6f6744dc2d3f57947f5357",
+        "downloads": 1067,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 14,
+        "id": "Quazim0t0/On-Fly-Jev",
+        "lastModified": "2026-09-30T16:20:29.000Z",
+        "likes": 5,
+        "trendingScore": 5,
+        "sha": "e11d5a2a328b34aab7956ae4891b6b34b98425b5",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 15,
+        "id": "ZefanCai/Open-Jev-2B",
+        "lastModified": "2026-09-20T20:22:14.000Z",
+        "likes": 14,
+        "trendingScore": 4,
+        "sha": "0c7aa498b1627be8da4acf34c863ff0ee0a92785",
+        "downloads": 0
+      }
+    ],
+    "decision": [
+      {
+        "rank": 1,
+        "id": "internlm/Intern-Decision-4B",
+        "lastModified": "2026-09-26T07:57:03.000Z",
+        "likes": 76,
+        "trendingScore": 75,
+        "sha": "0e5e6aa7d6d750e2b1504ba11a8136cb58aeb3cd",
+        "downloads": 1607,
+        "pipeline_tag": "image-text-to-text"
+      },
+      {
+        "rank": 2,
+        "id": "convaiinnovations/laya-typed-decisions",
+        "lastModified": "2026-09-24T04:08:17.000Z",
+        "likes": 144,
+        "trendingScore": 31,
+        "sha": "1a793eb568e6718f15941d08f85432581df534e3",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 3,
+        "id": "internlm/Intern-Decision-0.8B",
+        "lastModified": "2026-09-26T08:14:02.000Z",
+        "likes": 26,
+        "trendingScore": 24,
+        "sha": "85a0cc5a99d67ea8d56dfe98115689212867171d",
+        "downloads": 1159,
+        "pipeline_tag": "image-text-to-text"
+      },
+      {
+        "rank": 4,
+        "id": "internlm/Intern-Decision-2B",
+        "lastModified": "2026-09-26T09:03:52.000Z",
+        "likes": 15,
+        "trendingScore": 14,
+        "sha": "8797836c65fc91a2435b1fb6850b5f0aabd75cc3",
+        "downloads": 575,
+        "pipeline_tag": "image-text-to-text"
+      },
+      {
+        "rank": 5,
+        "id": "ai-forever/FRIDA-Decisions",
+        "lastModified": "2026-10-02T21:56:31.000Z",
+        "likes": 14,
+        "trendingScore": 14,
+        "sha": "0096b5384e821c68791cb2b3b7292c2b937dcec8",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 6,
+        "id": "vllm-sr/Decision-2.0-Vega-27B",
+        "lastModified": "2026-10-03T06:05:46.000Z",
+        "likes": 11,
+        "trendingScore": 10,
+        "sha": "477e90f537eb5bd62e90d5e5361c7b654e69cf45",
+        "downloads": 23,
+        "pipeline_tag": "feature-extraction"
+      },
+      {
+        "rank": 7,
+        "id": "chaoliangUNSW/Jev-Style-Qwen3.5-2B-Decision-GGUF",
+        "lastModified": "2026-09-27T03:00:45.000Z",
+        "likes": 22,
+        "trendingScore": 9,
+        "sha": "adc5656741715ddd3e40dac44c6294cb888bc655",
+        "downloads": 9109,
+        "pipeline_tag": "text-generation"
+      },
+      {
+        "rank": 8,
+        "id": "vllm-sr/Decision-2.0-Sol-2B",
+        "lastModified": "2026-10-03T05:58:54.000Z",
+        "likes": 6,
+        "trendingScore": 6,
+        "sha": "23cbe9f96dde4a7e1e6a238d576128bf73c5b09e",
+        "downloads": 20,
+        "pipeline_tag": "feature-extraction"
+      },
+      {
+        "rank": 9,
+        "id": "vllm-sr/Decision-1.0-Lux-9B",
+        "lastModified": "2026-10-02T10:38:10.000Z",
+        "likes": 14,
+        "trendingScore": 5,
+        "sha": "2064c84daf599447f840719ef8e86db152a56851",
+        "downloads": 112
+      },
+      {
+        "rank": 10,
+        "id": "chaoliangUNSW/Jev-Style-0.8B-Decision-v3-GGUF",
+        "lastModified": "2026-09-26T11:50:27.000Z",
+        "likes": 12,
+        "trendingScore": 5,
+        "sha": "edf37c26a1098f83cf4264b8adbe0dca2d2ebb0c",
+        "downloads": 3044,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 11,
+        "id": "chaoliangUNSW/Jev-Style-2B-Decision-v3-GGUF",
+        "lastModified": "2026-09-27T03:55:47.000Z",
+        "likes": 5,
+        "trendingScore": 5,
+        "sha": "78b1352e9b8132987f6f6744dc2d3f57947f5357",
+        "downloads": 1067,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 12,
+        "id": "vllm-sr/Decision-2.0-Kai-0.6B",
+        "lastModified": "2026-10-03T05:58:48.000Z",
+        "likes": 5,
+        "trendingScore": 5,
+        "sha": "d06cf74b1304c6454b9de6e0adb8eaad5ac719fa",
+        "downloads": 61,
+        "pipeline_tag": "feature-extraction"
+      },
+      {
+        "rank": 13,
+        "id": "DecisionIntelligence/Aurora",
+        "lastModified": "2026-04-29T12:55:13.000Z",
+        "likes": 6,
+        "trendingScore": 4,
+        "sha": "c495b02c1b151be52a3c174237ed240aa66e6384",
+        "downloads": 7179,
+        "pipeline_tag": "time-series-forecasting"
+      },
+      {
+        "rank": 14,
+        "id": "vllm-sr/Decision-1.0-Nox-4B",
+        "lastModified": "2026-10-02T10:38:14.000Z",
+        "likes": 15,
+        "trendingScore": 4,
+        "sha": "7f65e1db2c55a11ab8b558a8027c8883752f192d",
+        "downloads": 128
+      },
+      {
+        "rank": 15,
+        "id": "DecisionIntelligence/QiYao-M",
+        "lastModified": "2026-09-29T04:14:48.000Z",
+        "likes": 4,
+        "trendingScore": 4,
+        "sha": "033073d97039cfcce3feaa7f6a2189bea0aa05d2",
+        "downloads": 0
+      }
+    ],
+    "laya": [
+      {
+        "rank": 1,
+        "id": "convaiinnovations/laya",
+        "lastModified": "2026-09-24T05:39:22.000Z",
+        "likes": 5016,
+        "trendingScore": 1013,
+        "sha": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 2,
+        "id": "convaiinnovations/laya-multilingual",
+        "lastModified": "2026-09-24T05:39:24.000Z",
+        "likes": 357,
+        "trendingScore": 70,
+        "sha": "e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 3,
+        "id": "convaiinnovations/laya-typed-decisions",
+        "lastModified": "2026-09-24T04:08:17.000Z",
+        "likes": 144,
+        "trendingScore": 31,
+        "sha": "1a793eb568e6718f15941d08f85432581df534e3",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 4,
+        "id": "aac6fef/laya-mlx",
+        "lastModified": "2026-09-19T16:38:19.000Z",
+        "likes": 116,
+        "trendingScore": 19,
+        "sha": "20aed815fc6acde75733882e7ec0e3f28aeb9717",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 5,
+        "id": "cklxx/laya-browser",
+        "lastModified": "2026-09-29T09:26:42.000Z",
+        "likes": 27,
+        "trendingScore": 15,
+        "sha": "645cf366a2ae35f1086e8c20eff48f909bb49206",
+        "downloads": 233,
+        "pipeline_tag": "feature-extraction"
+      },
+      {
+        "rank": 6,
+        "id": "ggml-org/Laya-GGUF",
+        "lastModified": "2026-10-01T21:32:59.000Z",
+        "likes": 14,
+        "trendingScore": 14,
+        "sha": "da4b4753d62197659d8c90103cd4c43bef9afea6",
+        "downloads": 501,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 7,
+        "id": "mys/laya-GGUF",
+        "lastModified": "2026-09-20T16:07:32.000Z",
+        "likes": 25,
+        "trendingScore": 10,
+        "sha": "713ae6f6e39fb54835e010485656e4484e5ec411",
+        "downloads": 11178
+      },
+      {
+        "rank": 8,
+        "id": "thaitea/laya-vision",
+        "lastModified": "2026-09-25T23:22:31.000Z",
+        "likes": 36,
+        "trendingScore": 9,
+        "sha": "f2fe3c12cb6d04c59d8a190250bf3fb40fc828dc",
+        "downloads": 0,
+        "pipeline_tag": "visual-question-answering"
+      },
+      {
+        "rank": 9,
+        "id": "tarfandoon/laya-fa-support",
+        "lastModified": "2026-09-28T22:44:03.000Z",
+        "likes": 8,
+        "trendingScore": 8,
+        "sha": "c01b8da2ef8c4be27b2251dfe26338eb8472bae0",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 10,
+        "id": "fr0stbit3/laya-gguf",
+        "lastModified": "2026-09-20T19:30:08.000Z",
+        "likes": 13,
+        "trendingScore": 7,
+        "sha": "ce2afdc0a8766af56a29a22dcf4a781e1f5c7d3c",
+        "downloads": 2767,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 11,
+        "id": "mys/laya-multilingual-GGUF",
+        "lastModified": "2026-09-20T16:16:03.000Z",
+        "likes": 13,
+        "trendingScore": 4,
+        "sha": "3b645ae5428115fa5fd1c453070d22c3ce4b987d",
+        "downloads": 9418
+      },
+      {
+        "rank": 12,
+        "id": "FluidInference/laya-coreml",
+        "lastModified": "2026-09-22T04:43:35.000Z",
+        "likes": 42,
+        "trendingScore": 4,
+        "sha": "7b8d7a2b7e28e746c6ecaad44bbcd5cf251a4fcc",
+        "downloads": 406,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 13,
+        "id": "adambloebaum/laya-blackjack",
+        "lastModified": "2026-09-24T19:30:11.000Z",
+        "likes": 5,
+        "trendingScore": 3,
+        "sha": "14af6820702b3d6eb47d5f9e395f7852af3767ec",
+        "downloads": 0
+      },
+      {
+        "rank": 14,
+        "id": "RoeiG/laya-hebrew",
+        "lastModified": "2026-09-25T14:03:10.000Z",
+        "likes": 5,
+        "trendingScore": 3,
+        "sha": "599fb9a846f11af5b00520adeadc7bd21427e577",
+        "downloads": 0,
+        "pipeline_tag": "zero-shot-classification"
+      },
+      {
+        "rank": 15,
+        "id": "Mattepiu/laya-onnx",
+        "lastModified": "2026-09-18T10:45:13.000Z",
+        "likes": 14,
+        "trendingScore": 2,
+        "sha": "a7f385bd51d35f5cbeb88e8bc4f0c7e7c0f24c44",
+        "downloads": 0
+      }
+    ],
+    "kev": [
+      {
+        "rank": 1,
+        "id": "jaredpalmer/kev-4b",
+        "lastModified": "2026-10-01T17:18:26.000Z",
+        "likes": 102,
+        "trendingScore": 44,
+        "sha": "6cfce5c2fa4b4bd64026336ab649c5ca78857d52",
+        "downloads": 15206,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 2,
+        "id": "jaredpalmer/kev-9b",
+        "lastModified": "2026-10-01T17:18:28.000Z",
+        "likes": 66,
+        "trendingScore": 23,
+        "sha": "db029f08b290afd9fee4aa4bbcd9ae48602d1eb0",
+        "downloads": 3853,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 3,
+        "id": "jaredpalmer/kev-27b",
+        "lastModified": "2026-10-01T17:18:30.000Z",
+        "likes": 28,
+        "trendingScore": 21,
+        "sha": "af0e6d551bdc2cc724f3e9d7a8bee1cd4fb8f7bf",
+        "downloads": 796,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 4,
+        "id": "jaredpalmer/kev-0.8b",
+        "lastModified": "2026-10-01T17:17:58.000Z",
+        "likes": 38,
+        "trendingScore": 17,
+        "sha": "bf75a6a8848ea6960ff2ed108d9ed44c2941174f",
+        "downloads": 11298,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 5,
+        "id": "ggml-org/Kev-4B-GGUF",
+        "lastModified": "2026-10-01T21:32:40.000Z",
+        "likes": 11,
+        "trendingScore": 11,
+        "sha": "d924f2e2c3872da8b8aaf3eb4453b4126deceb79",
+        "downloads": 245,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 6,
+        "id": "jaredpalmer/kev-0.5b",
+        "lastModified": "2026-09-20T23:49:07.000Z",
+        "likes": 63,
+        "trendingScore": 10,
+        "sha": "9ce2fd39db3a397c89733f94af948e3d1fdfffcd",
+        "downloads": 1744,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 7,
+        "id": "FluidInference/kev-0.8b-coreml",
+        "lastModified": "2026-09-26T06:49:26.000Z",
+        "likes": 4,
+        "trendingScore": 4,
+        "sha": "e9442093fdd748a7666a3da781b81066823dc484",
+        "downloads": 127,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 8,
+        "id": "jaredpalmer/kev-8b",
+        "lastModified": "2026-09-20T22:46:06.000Z",
+        "likes": 13,
+        "trendingScore": 3,
+        "sha": "c80773da7f383f93c4dbff0c0b008e0463f9145a",
+        "downloads": 582,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 9,
+        "id": "espetro/kev-9b-gguf",
+        "lastModified": "2026-10-02T08:54:29.000Z",
+        "likes": 3,
+        "trendingScore": 3,
+        "sha": "3af848daa55baeb1ec8affa825a7912d87c6f60b",
+        "downloads": 440
+      },
+      {
+        "rank": 10,
+        "id": "ggml-org/Kev-0.8B-GGUF",
+        "lastModified": "2026-10-02T13:02:30.000Z",
+        "likes": 3,
+        "trendingScore": 3,
+        "sha": "e551e319d483ff57e1ff208924b349d397cffc1c",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 11,
+        "id": "ggml-org/Kev-9B-GGUF",
+        "lastModified": "2026-10-02T13:05:29.000Z",
+        "likes": 2,
+        "trendingScore": 2,
+        "sha": "ec2bbfe6620218aee2e01cc93bb78dee2a96ed58",
+        "downloads": 0,
+        "pipeline_tag": "text-classification"
+      },
+      {
+        "rank": 12,
+        "id": "kevinwang676/GPT-SoVITS-v4",
+        "lastModified": "2025-04-20T23:03:45.000Z",
+        "likes": 14,
+        "trendingScore": 1,
+        "sha": "fd355be30ab8eda3738986ddd20300e61849d4de",
+        "downloads": 0
+      },
+      {
+        "rank": 13,
+        "id": "KevinDavidHayes/pinocchio-0.8b",
+        "lastModified": "2026-10-01T19:24:26.000Z",
+        "likes": 1,
+        "trendingScore": 1,
+        "sha": "a1410d4c3c74b1cb09c9133bb97c683db9726bf2",
+        "downloads": 23
+      },
+      {
+        "rank": 14,
+        "id": "KevinJK51/Qwen3.6-12B-IQ-Ultra-Heretic-Uncensored-Thinking-V2-Hightop-GGUF",
+        "lastModified": "2026-05-22T09:41:49.000Z",
+        "likes": 109,
+        "trendingScore": 1,
+        "sha": "0ff6f3aa78c26a2c22095111968dd738d18370a8",
+        "downloads": 17313,
+        "pipeline_tag": "text-generation"
+      },
+      {
+        "rank": 15,
+        "id": "jaredpalmer/kev-0.6b",
+        "lastModified": "2026-09-20T23:46:31.000Z",
+        "likes": 8,
+        "trendingScore": 1,
+        "sha": "dece6dba8d43f0f7ded45e9f5b9df12474d90843",
+        "downloads": 1828,
+        "pipeline_tag": "text-classification"
+      }
+    ]
+  },
+  "official_sources": [
+    {
+      "url": "https://docs.typesafe.ai/models",
+      "checked_at": "2026-10-03"
+    },
+    {
+      "url": "https://docs.milliseconds.ai/typesafe/overview",
+      "checked_at": "2026-10-03"
+    },
+    {
+      "url": "https://docs.milliseconds.ai/api/typesafe/system-one",
+      "checked_at": "2026-10-03"
+    },
+    {
+      "url": "https://vercel.com/changelog/ai-gateway-now-supports-typesafe-clients-and-http-api-for-jev",
+      "checked_at": "2026-10-03"
+    },
+    {
+      "url": "https://openrouter.ai/typesafe/jev-1.13",
+      "checked_at": "2026-10-03"
+    }
+  ]
+}

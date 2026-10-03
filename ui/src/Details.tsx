@@ -5,10 +5,11 @@ import type { ChangeEvent, ReactNode } from 'react';
 import type { Answer, CredentialStatus, Filters, Group, GroupDetail, Health, Label, RequestRecord, Settings } from './types';
 import { api, query, useResource } from './api';
 import { connectionSnippet } from './connection';
+import { ModelCatalog } from './ModelCatalog';
 import { answerValue, bytes, costBasis, dateTime, money, ms, number, percent, shortId } from './format';
 import { Definition, Distribution, Empty, ErrorNotice, KindBadge, Loading, RequestTable, StatusBadge, Timeline } from './components';
 
-export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect' } | null;
+export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
 type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; changed: () => void; historyChanged: () => void; filterGroup: (id: string) => void; notify: (message: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
@@ -22,8 +23,8 @@ export default function Details({ health, panel, setPanel, filters, changed, his
     {panel?.type === 'request' && <RequestDetails id={panel.id} setPanel={setPanel} changed={changed} />}
     {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} />}
     {panel?.type === 'settings' && <SettingsDetails changed={historyChanged} notify={notify} close={() => setPanel(null)} />}
-    {panel?.type === 'import' && <ImportDetails changed={historyChanged} />}
-    {panel?.type === 'connect' && <ConnectDetails health={health} />}
+    {panel?.type === 'import' && <ImportDetails changed={historyChanged} initialFormat={panel.format} />}
+    {panel?.type === 'connect' && <ConnectDetails health={health} importCaptures={() => setPanel({ type: 'import', format: 'systemone-capture' })} />}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
 
@@ -154,8 +155,8 @@ function SettingsDetails({ changed, notify, close }: { changed: () => void; noti
   </div>}</>;
 }
 
-function ImportDetails({ changed }: { changed: () => void }) {
-  const [format, setFormat] = useState('observer-jsonl'), [text, setText] = useState(''), [filename, setFilename] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false), [result, setResult] = useState<{ imported: number; duplicates: number } | null>(null);
+function ImportDetails({ changed, initialFormat }: { changed: () => void; initialFormat?: string }) {
+  const [format, setFormat] = useState(initialFormat ?? 'observer-jsonl'), [text, setText] = useState(''), [filename, setFilename] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false), [result, setResult] = useState<{ imported: number; duplicates: number } | null>(null);
   const [reading, setReading] = useState(false);
   const inputRevision = useRef(0);
   useEffect(() => () => { inputRevision.current += 1; }, []);
@@ -183,16 +184,16 @@ function ImportDetails({ changed }: { changed: () => void }) {
     finally { setBusy(false); }
   }
   return <><DetailHeading eyebrow="Local data" title="Bring your history." description="Import exported records into this workspace. Your file stays on this machine." icon={<FileArrowUp size={15} />} /><div className="drawer-body">
-    <label className="field-label">Source format<select value={format} disabled={busy} onChange={event => { setFormat(event.target.value); setError(''); setResult(null); }}><option value="observer-jsonl">Observer JSONL export</option><option value="jevrouter-receipt">JevRouter decision receipt</option></select></label>
-    <label className="file-input"><FileArrowUp size={28} weight="duotone" /><strong>{filename || 'Choose a local file'}</strong><span>JSONL or JSON · up to 8 MiB</span><input type="file" disabled={busy} accept=".json,.jsonl,application/json,application/x-ndjson" onChange={event => void fileSelected(event)} aria-label="Choose import file" /></label>
-    <label className="field-label">Or paste records<textarea rows={9} disabled={busy} value={text} onChange={event => { inputRevision.current += 1; setReading(false); setText(event.target.value); setFilename(''); setError(''); setResult(null); }} placeholder={format === 'observer-jsonl' ? 'One exported Observer record per line' : 'Paste a JevRouter decision receipt'} spellCheck={false} /></label>
+    <label className="field-label">Source format<select value={format} disabled={busy} onChange={event => { setFormat(event.target.value); setError(''); setResult(null); }}><option value="observer-jsonl">Observer JSONL export</option><option value="jevrouter-receipt">JevRouter decision receipt</option><option value="systemone-capture">System One request/response capture</option></select></label>
+    {format === 'systemone-capture' && <p className="caption">Keep original definitions and full reported distributions. Missing confidence stays unknown. Include id, timestamp (Unix milliseconds), source, provider, status, capture_complete, request and response in every line. Request questions and response answers use the System One shape.</p>}<label className="file-input"><FileArrowUp size={28} weight="duotone" /><strong>{filename || 'Choose a local file'}</strong><span>JSONL or JSON · up to 8 MiB</span><input type="file" disabled={busy} accept=".json,.jsonl,application/json,application/x-ndjson" onChange={event => void fileSelected(event)} aria-label="Choose import file" /></label>
+    <label className="field-label">Or paste records<textarea rows={9} disabled={busy} value={text} onChange={event => { inputRevision.current += 1; setReading(false); setText(event.target.value); setFilename(''); setError(''); setResult(null); }} placeholder={format === 'observer-jsonl' ? 'One exported Observer record per line' : format === 'systemone-capture' ? 'One call per line: id, timestamp, source, provider, status, capture_complete, request, response' : 'Paste a JevRouter decision receipt'} spellCheck={false} /></label>
     <div className="inline-notice"><Fingerprint size={18} /><span>Explicit source event IDs prevent duplicate imports. Identical payloads from separate calls remain separate observations.</span></div>
     {reading && <p className="caption" role="status">Reading {filename}…</p>}{error && <ErrorNotice message={error} />}{result && <div className="success-notice" role="status"><Check size={19} weight="bold" /><span><strong>{number(result.imported)} records imported.</strong> {number(result.duplicates)} duplicates skipped.</span></div>}
     <button className="button primary full-width" disabled={!text.trim() || busy || reading} onClick={() => void submit()}><DownloadSimple size={17} />{busy ? 'Importing records…' : 'Import records'}</button>
   </div></>;
 }
 
-function ConnectDetails({ health }: { health?: Health }) {
+function ConnectDetails({ health, importCaptures }: { health?: Health; importCaptures: () => void }) {
   const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:8765' : window.location.origin;
   const [copyStatus, setCopyStatus] = useState('');
   const [language, setLanguage] = useState<'python' | 'javascript'>('python');
@@ -206,7 +207,8 @@ function ConnectDetails({ health }: { health?: Health }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [credentialMessage, setCredentialMessage] = useState('');
   const local = settings?.upstream_auth === 'none';
-  const localModel = local || settings?.provider?.toLowerCase() === 'laya';
+  const configuredEntry = settings?.model_catalog?.models.find(entry => entry.id === settings.provider);
+  const localModel = local || settings?.upstream.startsWith('http://127.0.0.1:') || settings?.provider?.toLowerCase() === 'laya';
   const snippet = connectionSnippet(language, baseUrl, local, model, localModel);
   const keyValid = providerKey.length > 0 && providerKey.length <= 4096 && /^[\x21-\x7e]+$/.test(providerKey);
   useEffect(() => { if (credential) setPersist(credential.storage === 'system'); }, [credential?.storage]);
@@ -243,6 +245,7 @@ function ConnectDetails({ health }: { health?: Health }) {
     {settingsError && <ErrorNotice message={settingsError} retry={reloadSettings} />}
     {!settings && !settingsError && <Loading label="Loading connection settings" />}
     {settings?.demo && <div className="inline-notice"><Info size={19} /><span>Stop this sample instance. Generate and save a 64-character database key with <code>openssl rand -hex 32</code>, then set <code>JEV_OBSERVER_DB_KEY</code> to that key. Run <code>jev-observer</code> without <code>--demo</code> and connect your app from the live dashboard.</span></div>}
+    {settings?.model_catalog && <ModelCatalog catalog={settings.model_catalog} provider={settings.provider} importCaptures={importCaptures} />}
     {settings && !settings.demo && <><label className="field-label">Local base URL<div className="copy-field"><code>{baseUrl}</code><button className="icon-button" aria-label="Copy local base URL" onClick={() => void copyUrl()}><ClipboardText size={18} /></button></div></label>
     <p className="caption">Use this origin for your SDK’s <code>base_url</code> or <code>baseURL</code>. The SDK appends <code>/v1/systemone</code>.</p>
     <p className="caption" role="status" aria-label="Copy status">{copyStatus}</p>
@@ -259,7 +262,7 @@ function ConnectDetails({ health }: { health?: Health }) {
       {credentialMessage && <p className="caption" role="status">{credentialMessage}</p>}
       {clientToken && <div className="credential-token" role="status"><strong>Copy this local client token now.</strong><p>Set your SDK’s <code>api_key</code> or <code>apiKey</code> to this token. It is shown once and is required to use the registered provider key.</p><div className="copy-field"><code>{clientToken}</code><button className="icon-button" aria-label="Copy local client token" onClick={() => void copyToken()}><ClipboardText size={18} /></button></div></div>}
     </section>}
-    <section className="detail-section"><h3>Connect your SDK</h3><p className="caption">Use the model name served by your configured upstream. This example sends one request when you run it; remote inference may incur charges.</p><label className="field-label">Model name<input value={model} onChange={event => setModel(event.target.value)} placeholder="Your upstream’s model name" /></label><div className="snippet-actions"><div className="segmented" aria-label="SDK language"><button className={language === 'python' ? 'selected' : ''} aria-pressed={language === 'python'} onClick={() => setLanguage('python')}>Python</button><button className={language === 'javascript' ? 'selected' : ''} aria-pressed={language === 'javascript'} onClick={() => setLanguage('javascript')}>JavaScript</button></div><button className="text-button" onClick={async () => { try { await navigator.clipboard.writeText(snippet); setCopyStatus('SDK example copied.'); } catch { setCopyStatus('Could not copy. Select the example to copy it manually.'); } }}>Copy example<ClipboardText size={15} /></button></div><pre className="json-view sdk-snippet" aria-label="SDK connection example">{snippet}</pre><p className="caption">{language === 'python' ? 'typesafe-sdk 0.7.1' : '@typesafe-ai/sdk 0.6.0'} · <code>Accept-Encoding: identity</code> keeps typed answers inspectable. {local ? 'Use the saved workspace access token.' : 'Set JEV_OBSERVER_CLIENT_TOKEN to the local client token shown after registration.'}{localModel && ' Local model examples allow 180 seconds for startup and inference. Adjust timeout in the example for your hardware (Python: seconds; JavaScript: milliseconds).'}</p></section>
+    <section className="detail-section"><h3>Connect your SDK</h3><p className="caption">Use the model name served by your configured upstream. This example sends one request when you run it; remote inference may incur charges.</p><label className="field-label">Model name<input value={model} onChange={event => setModel(event.target.value)} placeholder="Your upstream’s model name" list="configured-model-names" /><datalist id="configured-model-names">{configuredEntry?.model_names.map(name => <option key={name} value={name} />)}</datalist></label><div className="snippet-actions"><div className="segmented" aria-label="SDK language"><button className={language === 'python' ? 'selected' : ''} aria-pressed={language === 'python'} onClick={() => setLanguage('python')}>Python</button><button className={language === 'javascript' ? 'selected' : ''} aria-pressed={language === 'javascript'} onClick={() => setLanguage('javascript')}>JavaScript</button></div><button className="text-button" onClick={async () => { try { await navigator.clipboard.writeText(snippet); setCopyStatus('SDK example copied.'); } catch { setCopyStatus('Could not copy. Select the example to copy it manually.'); } }}>Copy example<ClipboardText size={15} /></button></div><pre className="json-view sdk-snippet" tabIndex={0} aria-label="SDK connection example">{snippet}</pre><p className="caption">{language === 'python' ? 'typesafe-sdk 0.7.1' : '@typesafe-ai/sdk 0.6.0'} · <code>Accept-Encoding: identity</code> keeps typed answers inspectable. {local ? 'Use the saved workspace access token.' : 'Set JEV_OBSERVER_CLIENT_TOKEN to the local client token shown after registration.'}{localModel && ' Local model examples allow 180 seconds for startup and inference. Adjust timeout in the example for your hardware (Python: seconds; JavaScript: milliseconds).'}</p></section>
     <section className="detail-section" aria-label="Connection verification"><h3>First request check</h3><p role="status">{!health ? 'Waiting for collection health…' : health.persisted > 0 ? `${number(health.persisted)} captures saved in this Observer session.` : health.forwarded > 0 ? 'A request reached Observer. Waiting for its capture to be saved…' : 'Waiting for your application’s first request.'}</p>{Boolean(health?.truncated) && <p className="error-text">{number(health?.truncated)} captures are incomplete. Check identity encoding and capture limits.</p>}<p className="caption">After running your application, inspect its request in the workspace to confirm the model, answers and any capture warnings.</p></section>
     <section className="detail-section"><h3>Native endpoint</h3><code className="endpoint">POST /v1/systemone</code>{!local && <p>Your SDK can also send its provider key directly when it includes <code>x-observer-access</code> with the workspace dashboard token. Registered keys are used only when the SDK sends the local client token.</p>}</section>
     <section className="detail-section"><h3>Keep sources recognizable</h3><p>Optionally add <code>x-observer-source</code> to name your application and <code>x-observer-task-version</code> when rules carried in state change.</p></section>

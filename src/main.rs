@@ -1,4 +1,5 @@
 mod access;
+mod catalog;
 mod collector;
 mod config;
 mod credentials;

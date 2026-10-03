@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import type { CredentialStatus, Dashboard, Group, RequestRecord, Settings } from '../src/types';
 import AxeBuilder from '@axe-core/playwright';
+
+const catalog = JSON.parse(readFileSync(new URL('../../src/model_catalog.json', import.meta.url), 'utf8'));
 
 // These records are deliberately synthetic test fixtures. The application itself
 // always reads the real local API and never swaps in a mock data source.
@@ -703,4 +706,27 @@ test('version comparisons show observed outcomes and judged review coverage', as
   await expect(comparison).toContainText('not a matched replay');
   await expect(comparison).toContainText('technical');
   await expect(comparison).toContainText('billing');
+});
+
+
+test('the researched catalog keeps setup separate from active credentials and opens mapped capture import', async ({ page }) => {
+  await harness(page, { settings: { provider: 'kev', upstream_auth: 'none', upstream: 'http://127.0.0.1:8009/v1/systemone', model_catalog: catalog as Settings['model_catalog'] } });
+  await page.getByRole('button', { name: 'Connect an application', exact: true }).click();
+  await expect(page.getByLabel('Model integration')).toHaveValue('kev');
+  await expect(page.getByLabel('Observer startup command')).toContainText('--provider kev --upstream-auth none');
+  await page.getByLabel('Model integration').selectOption('milliseconds');
+  await expect(page.getByLabel('Observer startup command')).toContainText('https://api.milliseconds.ai/v1/systemone');
+  await expect(page.getByRole('dialog')).toContainText('None · local server');
+  await expect(page.getByLabel('SDK connection example')).toContainText('JEV_OBSERVER_ACCESS_TOKEN');
+  await page.getByLabel('Model integration').selectOption('autotrust');
+  await expect(page.getByLabel('Observer startup command')).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: 'Import mapped decisions' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations).toEqual([]);
+  await page.screenshot({ path: '/tmp/jev-model-catalog-mobile.png', fullPage: true });
+  await page.getByRole('button', { name: 'Import mapped decisions' }).click();
+  await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
+  await expect(page.getByLabel('Or paste records')).toHaveAttribute('placeholder', /id, timestamp, source, provider/);
 });

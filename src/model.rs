@@ -7,6 +7,7 @@
 //! src/types.ts RouteResult and src/store.ts saveDecision. Receipts do not
 //! contain the original complete question definitions or necessarily timings.
 
+use crate::catalog::{self, Profile};
 use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -266,7 +267,7 @@ fn validate_distribution(
     raw: &Value,
     expected: &[String],
     errors: &mut Vec<String>,
-    provider: &str,
+    profile: &Profile,
 ) -> Option<Vec<f64>> {
     let Some(map) = raw.get("probabilities").and_then(Value::as_object) else {
         errors.push("Missing probability distribution".into());
@@ -284,14 +285,13 @@ fn validate_distribution(
         errors.push("Probabilities must be finite numbers between zero and one".into());
         return None;
     };
-    // Laya rounds each probability independently to four decimal places.
-    // Its worst-case total rounding error grows with the number of options.
-    // Source: NandhaKishorM/laya 4aa6761, laya/agent.py _decode_answers.
-    let tolerance = if provider == "laya" {
-        PROBABILITY_TOLERANCE.max(0.00005 * values.len() as f64) + 1e-12
-    } else {
-        PROBABILITY_TOLERANCE
-    };
+    // Only documented serialization precision changes this bound. Original
+    // probabilities are retained; no renormalization or clipping is performed.
+    let tolerance = profile
+        .probability_decimals
+        .map_or(PROBABILITY_TOLERANCE, |digits| {
+            PROBABILITY_TOLERANCE.max(0.5 * 10_f64.powi(-digits) * values.len() as f64) + 1e-12
+        });
     if (values.iter().sum::<f64>() - 1.0).abs() > tolerance {
         errors.push("Probabilities do not sum to one".into());
         return None;
@@ -303,7 +303,7 @@ fn validate_answer(
     definition: &Value,
     raw: &Value,
     kind: &str,
-    provider: &str,
+    profile: &Profile,
     warnings: &mut Vec<String>,
 ) -> Vec<String> {
     let mut errors = Vec::new();
@@ -316,7 +316,10 @@ fn validate_answer(
         ) {
             errors.push("Question type must be noul, choice, or score".into());
         }
-        if !text_shape(&definition["instructions"]) {
+        if !(text_shape(&definition["instructions"])
+            || profile.json_text
+            || (profile.optional_instructions && definition["instructions"].is_null()))
+        {
             errors.push("Question instructions must be a string, object, or array".into());
         }
     }
@@ -335,7 +338,8 @@ fn validate_answer(
             if let Some(criteria) = definition.get("criteria") {
                 let valid = criteria.as_object().is_some_and(|map| {
                     map.iter().all(|(key, value)| {
-                        matches!(key.as_str(), "true" | "false") && text_shape(value)
+                        matches!(key.as_str(), "true" | "false")
+                            && (text_shape(value) || profile.json_text)
                     })
                 });
                 if !valid {
@@ -344,7 +348,7 @@ fn validate_answer(
             }
         }
         "choice" => {
-            let list_criteria: Option<Map<String, Value>> = if provider == "laya" {
+            let list_criteria: Option<Map<String, Value>> = if profile.list_choice {
                 definition["criteria"].as_array().and_then(|values| {
                     let entries = values
                         .iter()
@@ -360,10 +364,15 @@ fn validate_answer(
                 .or(list_criteria.as_ref());
             if !criteria.is_some_and(|map| {
                 !map.is_empty()
-                    && map.len() <= 255
-                    && map.values().all(|v| v.is_null() || text_shape(v))
+                    && map.len() <= profile.choice_max
+                    && map
+                        .values()
+                        .all(|v| v.is_null() || text_shape(v) || profile.json_text)
             }) {
-                errors.push("Choice requires one to 255 described or null options".into());
+                errors.push(format!(
+                    "Choice requires one to {} described or null options",
+                    profile.choice_max
+                ));
             }
             let expected: Vec<String> = criteria
                 .map(|map| map.keys().cloned().collect())
@@ -372,8 +381,7 @@ fn validate_answer(
             if !choice.is_some_and(|c| expected.iter().any(|key| key == c)) {
                 errors.push("Selected option is absent from the question criteria".into());
             }
-            if let Some(probabilities) =
-                validate_distribution(raw, &expected, &mut errors, provider)
+            if let Some(probabilities) = validate_distribution(raw, &expected, &mut errors, profile)
                 && let Some(selected) = choice.and_then(|c| expected.iter().position(|k| k == c))
                 && probabilities
                     .iter()
@@ -381,22 +389,23 @@ fn validate_answer(
             {
                 errors.push("Selected option is not a highest-probability option".into());
             }
-            if probability(&raw["confidence"]).is_none() {
+            if profile.optional_confidence && raw.get("confidence").is_none() {
+                warnings.push("Confidence was not reported; it remains unknown".into());
+            } else if probability(&raw["confidence"]).is_none() {
                 errors.push("Choice confidence is missing or outside zero to one".into());
             }
         }
         "score" => {
             let levels = definition["criteria"].as_array();
-            let range = if provider == "laya" { 1..=32 } else { 2..=10 };
-            if !levels.is_some_and(|v| range.contains(&v.len()) && v.iter().all(text_shape)) {
-                errors.push(
-                    if provider == "laya" {
-                        "Laya Score requires one to 32 ordered levels"
-                    } else {
-                        "Score requires two to ten ordered levels"
-                    }
-                    .into(),
-                );
+            let range = profile.score_min..=profile.score_max;
+            if !levels.is_some_and(|v| {
+                range.contains(&v.len())
+                    && v.iter().all(|value| text_shape(value) || profile.json_text)
+            }) {
+                errors.push(format!(
+                    "Score requires {} to {} ordered levels",
+                    profile.score_min, profile.score_max
+                ));
             }
             let n = levels.map_or(0, Vec::len);
             let score = finite(&raw["score"]);
@@ -406,8 +415,7 @@ fn validate_answer(
                 errors.push("Score must be between level zero and the last level index".into());
             }
             let expected: Vec<String> = (0..n).map(|n| n.to_string()).collect();
-            if let Some(probabilities) =
-                validate_distribution(raw, &expected, &mut errors, provider)
+            if let Some(probabilities) = validate_distribution(raw, &expected, &mut errors, profile)
                 && let Some(score) = score
             {
                 let weighted: f64 = probabilities
@@ -415,19 +423,37 @@ fn validate_answer(
                     .enumerate()
                     .map(|(index, p)| index as f64 * p)
                     .sum();
-                if (weighted - score).abs() > 0.001 {
+                if profile.modal_score {
+                    if score.fract() != 0.0
+                        || !(0.0..probabilities.len() as f64).contains(&score)
+                        || probabilities
+                            .iter()
+                            .any(|p| *p > probabilities[score as usize] + PROBABILITY_TOLERANCE)
+                    {
+                        errors.push(
+                            "Modal Score must be a highest-probability integer level index".into(),
+                        );
+                    }
+                    warnings.push("Score is the reported most likely level; the provider's expected value is retained in raw_answer.expected".into());
+                } else if (weighted - score).abs() > 0.001 {
                     warnings.push("Reported Score differs from the weighted displayed probabilities; original values are preserved".into());
                 }
             }
-            if !raw["legend"].as_object().is_some_and(|map| {
+            if profile.optional_legend && raw.get("legend").is_none() {
+                warnings.push("Score legend was not reported; inspect the original rubric".into());
+            } else if !raw["legend"].as_object().is_some_and(|map| {
                 map.len() == n
-                    && expected
-                        .iter()
-                        .all(|key| map.get(key).is_some_and(Value::is_string))
+                    && expected.iter().all(|key| {
+                        map.get(key).is_some_and(|value| {
+                            value.is_string() || (profile.structured_legend && text_shape(value))
+                        })
+                    })
             }) {
                 errors.push("Score legend must describe every level index".into());
             }
-            if probability(&raw["confidence"]).is_none() {
+            if profile.optional_confidence && raw.get("confidence").is_none() {
+                warnings.push("Confidence was not reported; it remains unknown".into());
+            } else if probability(&raw["confidence"]).is_none() {
                 errors.push("Score confidence is missing or outside zero to one".into());
             }
         }
@@ -476,6 +502,14 @@ fn jgrep_family(
 
 /// Normalize a bounded copy. This never mutates or reconstructs the forwarded bytes.
 pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
+    normalize_with_secrets(capture, options, &[])
+}
+
+fn normalize_with_secrets(
+    capture: &Capture,
+    options: &NormalizeOptions,
+    import_secrets: &[String],
+) -> Value {
     let raw_request: Value = serde_json::from_slice(&capture.request).unwrap_or(Value::Null);
     let response: Value = serde_json::from_slice(&capture.response).unwrap_or(Value::Null);
     let explicit_secrets: Vec<&str> = [
@@ -485,6 +519,7 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
     ]
     .into_iter()
     .flatten()
+    .chain(import_secrets.iter().map(String::as_str))
     .collect();
     let mut safe = privacy(
         &json!({
@@ -499,10 +534,12 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
     // legitimately contain a field named `state`; that is part of its rule.
     if !options.capture_state {
         for envelope in ["request", "response"] {
-            if let Some(map) = safe[envelope].as_object_mut()
-                && map.contains_key("state")
-            {
-                map.insert("state".into(), Value::Null);
+            if let Some(map) = safe[envelope].as_object_mut() {
+                for field in ["state", "images", "image", "audio", "video"] {
+                    if map.contains_key(field) {
+                        map.insert(field.into(), Value::Null);
+                    }
+                }
             }
         }
     }
@@ -512,6 +549,7 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
     let task = &safe["task_version"];
     let questions = request["questions"].as_object();
     let raw_answers = response["answers"].as_object();
+    let profile = catalog::profile(options.provider.as_deref().unwrap_or("typesafe"));
     let mut keys: Vec<String> = questions
         .map(|q| q.keys().cloned().collect())
         .unwrap_or_default();
@@ -542,7 +580,7 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
             json!(fingerprint("candidates_v1", &definition["criteria"]))
         } else { Value::Null };
         let mut warnings = Vec::new();
-        let mut errors = validate_answer(definition, raw, kind, options.provider.as_deref().unwrap_or("typesafe"), &mut warnings);
+        let mut errors = validate_answer(definition, raw, kind, &profile, &mut warnings);
         if !(200..300).contains(&capture.status) { errors.push("Request did not complete with a successful HTTP status".into()); }
         if capture.transport_error.is_some() { errors.push("Request had a transport error".into()); }
         if !capture.capture_complete { errors.push("Capture is incomplete".into()); }
@@ -1043,11 +1081,83 @@ fn import_receipt(record: &Value, options: &NormalizeOptions) -> Result<Value> {
     Ok(privacy(&out, options, &[]))
 }
 
+/// A raw, explicitly identified call, including mapped library decisions. The
+/// envelope records observations; supplied validity, cost and group IDs are ignored.
+fn import_capture(record: &Value, options: &NormalizeOptions) -> Result<Value> {
+    let event_id = required_string(record, "id")?;
+    let source = required_string(record, "source")?;
+    let provider = required_string(record, "provider")?;
+    ensure!(
+        provider.len() <= 64
+            && provider
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.')),
+        "Invalid provider name"
+    );
+    let timestamp = record["timestamp"]
+        .as_i64()
+        .context("timestamp must be Unix milliseconds")?;
+    let status = record["status"]
+        .as_u64()
+        .filter(|status| (100..=599).contains(status))
+        .context("status must be an HTTP status from 100 to 599")?;
+    let complete = record["capture_complete"]
+        .as_bool()
+        .context("capture_complete must be a boolean")?;
+    ensure!(
+        record["request"].is_object() && record["request"]["questions"].is_object(),
+        "request must contain named System One questions"
+    );
+    ensure!(record["response"].is_object(), "response must be an object");
+    for key in ["transport_error", "task_version"] {
+        ensure!(
+            record[key].is_null() || record[key].is_string(),
+            "{key} must be a string or null"
+        );
+    }
+    nullable_number(record, "duration_ms")?;
+    let id = fingerprint(
+        "capture_v1",
+        &json!([source, provider.to_ascii_lowercase(), event_id]),
+    );
+    let capture = Capture {
+        id,
+        timestamp,
+        source: source.to_owned(),
+        task_version: record["task_version"].as_str().map(str::to_owned),
+        status: status as u16,
+        duration_ms: finite(&record["duration_ms"]).unwrap_or(f64::NAN),
+        request: serde_json::to_vec(&record["request"])?,
+        response: serde_json::to_vec(&record["response"])?,
+        capture_complete: complete,
+        transport_error: record["transport_error"].as_str().map(str::to_owned),
+        ..Default::default()
+    };
+    let mut imported_options = options.clone();
+    imported_options.provider = Some(provider.to_ascii_lowercase());
+    let mut import_secrets = Vec::new();
+    collect_secrets(record, options, &mut import_secrets);
+    let mut out = normalize_with_secrets(&capture, &imported_options, &import_secrets);
+    // Use the sanitized ID for deduplication, without retaining unsanitized
+    // caller metadata. Export/reimport preserves this identity.
+    out["source_event_id"] = out["id"].clone();
+    out["import_format"] = json!("systemone-capture");
+    ensure!(
+        record["sample"].is_null() || record["sample"].is_boolean(),
+        "sample must be a boolean or null"
+    );
+    out["sample"] = json!(record["sample"] == true);
+    Ok(out)
+}
+
 /// Import is all-or-nothing validation. Storage owns deduplication by explicit
 /// source event identity; equal payloads are never presumed to be the same call.
 pub fn import_records(text: &str, format: &str, options: &NormalizeOptions) -> Result<Vec<Value>> {
     ensure!(
-        matches!(format, "observer-jsonl" | "jevrouter-receipt"),
+        matches!(
+            format,
+            "observer-jsonl" | "jevrouter-receipt" | "systemone-capture"
+        ),
         "Unsupported import format: {format}"
     );
     let mut values = Vec::new();
@@ -1099,6 +1209,12 @@ pub fn import_records(text: &str, format: &str, options: &NormalizeOptions) -> R
         .iter()
         .enumerate()
         .map(|(index, record)| {
+            if format == "systemone-capture" {
+                // normalize must see the original definition to detect redaction
+                // and isolate hidden semantic changes before fingerprints are made.
+                return import_capture(record, options)
+                    .with_context(|| format!("Invalid record {}", index + 1));
+            }
             // Scrub before normalization so all recomputed identities describe the
             // retained definition, and credential echoes cannot leak into metadata.
             let mut safe = privacy(record, options, &[]);
@@ -2205,3 +2321,7 @@ mod tests {
         assert_eq!(versions.len(), 2);
     }
 }
+
+#[cfg(test)]
+#[path = "model_compatibility_tests.rs"]
+mod compatibility_tests;

@@ -60,6 +60,8 @@ jobs:
         run: |
           npm ci --prefix ui --no-audit --no-fund
           npm run build --prefix ui
+      - name: Verify decision capture converters
+        run: python3 scripts/test-decision-capture.py
       - name: Verify shell installation and failed-upgrade handling
         run: python3 scripts/test-install.py
       - name: Check Rust formatting, lints and tests
