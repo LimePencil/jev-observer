@@ -1,6 +1,6 @@
 # Installation
 
-Jev Observer 0.1.0 runs as one executable with its dashboard, fonts and SQLite included. Installation needs no Rust, Node.js, database server or administrator access.
+Jev Observer 0.2.0 runs as one executable with its dashboard, fonts and SQLite included. Installation needs no Rust, Node.js, database server or administrator access.
 
 ## Install a release
 
@@ -10,7 +10,7 @@ These commands download the public release without authentication. If you are ac
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
-sh install.sh --version 0.1.0
+sh install.sh --version 0.2.0
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
 ```
@@ -19,7 +19,7 @@ jev-observer --demo
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version 0.1.0
+.\install.ps1 -Version 0.2.0
 $env:PATH = "$env:LOCALAPPDATA\JevObserver\bin;$env:PATH"
 jev-observer --demo
 ```
@@ -30,7 +30,7 @@ Open <http://127.0.0.1:8765> and sign in with username `observer` and the token 
 
 For live requests, [generate and save a database key](../README.md#connect-an-application), supply it on each startup, then run without `--demo` and connect your application's SDK. The live dashboard token is in `.jev-observer/observer.access-token`.
 
-**Prelaunch builds:** discard development binaries from the earlier private release history and install this fresh `v0.1.0` before collecting live traffic. Release numbers from that discarded history do not identify the current build.
+**Prelaunch builds:** discard development binaries from the earlier private release history and install the current public release before collecting live traffic. Release numbers from that discarded history do not identify the current build.
 
 ### Private repository access
 
@@ -41,7 +41,7 @@ Linux / macOS:
 ```sh
 gh api --hostname github.com repos/LimePencil/jev-observer/contents/install.sh \
   -H 'Accept: application/vnd.github.raw+json' > install.sh
-sh install.sh --version 0.1.0
+sh install.sh --version 0.2.0
 ```
 
 Windows PowerShell:
@@ -49,7 +49,7 @@ Windows PowerShell:
 ```powershell
 gh api --hostname github.com repos/LimePencil/jev-observer/contents/install.ps1 `
   -H 'Accept: application/vnd.github.raw+json' | Set-Content -Encoding UTF8 install.ps1
-.\install.ps1 -Version 0.1.0
+.\install.ps1 -Version 0.2.0
 ```
 
 Anonymous downloads require both the repository and release to be public. Private asset downloads use existing GitHub CLI authentication without printing or saving your GitHub token.
@@ -63,11 +63,11 @@ Omit the version option to install the latest published release. Rerun to upgrad
 Choose a different installation directory:
 
 ```sh
-sh install.sh --version v0.1.0 --install-dir "$HOME/bin"
+sh install.sh --version v0.2.0 --install-dir "$HOME/bin"
 ```
 
 ```powershell
-.\install.ps1 -Version v0.1.0 -InstallDir "$env:USERPROFILE\bin"
+.\install.ps1 -Version v0.2.0 -InstallDir "$env:USERPROFILE\bin"
 ```
 
 The installer prints a command to add that directory to the current terminal's `PATH`. To keep it available in new terminals, add the Unix export to your shell configuration or add the Windows directory to your user's `Path` environment variable.

@@ -1,6 +1,6 @@
 # 0.2.0 release readiness
 
-Updated October 2, 2026. Work is tracked in [issue #1](https://github.com/LimePencil/jev-observer/issues/1), on `release/local-models-and-reliability`. The source candidate is 0.2.0; the published release remains 0.1.0. No tag or release has been published by this work.
+Pre-release verification completed October 2, 2026. Work is tracked in [issue #1](https://github.com/LimePencil/jev-observer/issues/1) and [PR #2](https://github.com/LimePencil/jev-observer/pull/2). This assessment records the builds and checks used to prepare 0.2.0; the [release page](https://github.com/LimePencil/jev-observer/releases/tag/v0.2.0) records publication and downloads.
 
 ## Implemented scope
 
@@ -39,6 +39,6 @@ The matching optimized encrypted-load run retained all 8,000 requests and 37,600
 
 The [manual native verification](https://github.com/LimePencil/jev-observer/actions/runs/37016320671) passed on source commit `fb8f35d`: Linux x64/ARM64, macOS Intel/ARM64 and Windows x64/ARM64, followed by aggregate archive and checksum verification. Each platform passed all 45 UI tests and both real-backend browser journeys, plus its native Rust, published-0.1.0 upgrade, SDK and package checks. The [consolidated native evidence](../../reports/validation/next-release/native-ci.json) records job conclusions and artifact names. The source PR check also passed. The initial native run exposed a Windows ARM64 test assuming UTC; the corrected test explicitly verifies UTC and Los Angeles dates.
 
-Review and merge the PR before tagging 0.2.0. A tag triggers the required native and archive checks again; the manual run skipped publication. Subsequent evidence and documentation changes do not change the verified runtime source. Actual OS credential-store persistence remains untested; injected failure tests verify the replacement ordering, and the upgrade fixture verifies approval digests.
+Publication uses the reviewed PR merge and matching `v0.2.0` tag. The tag triggers the required native and archive checks again before publication; the earlier manual run skipped publication. Subsequent evidence and documentation changes do not change the verified runtime source. Actual OS credential-store persistence remains untested; injected failure tests verify the replacement ordering, and the upgrade fixture verifies approval digests.
 
 The two live-provider runs are small functional checks, not performance, model-accuracy or calibration evidence. Laya's batch endpoint, extended numeric Choice labels and abstention-specific semantics are outside typed capture. Browser/provider keys and encrypted test databases are temporary; sanitized evidence contains no credentials. Preserve a stopped-workspace backup and the same database key before upgrading. See [upgrade guidance](../installation.md#history-backups-and-downgrades) for the saved-credential downgrade limitation.

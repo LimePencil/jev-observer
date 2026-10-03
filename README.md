@@ -32,9 +32,9 @@ Inspect individual answers, their reported probabilities and request-level usage
 
 ## Release and platform status
 
-**0.2.0 is being prepared from source** with local-model support and the [release fixes](docs/releases/0.2.0.md). The published download remains 0.1.0 until the release is tagged.
+**0.2.0 adds local-model support**, improved history navigation and the [release fixes](docs/releases/0.2.0.md).
 
-**[Download 0.1.0](https://github.com/LimePencil/jev-observer/releases/tag/v0.1.0)** for Linux, macOS or Windows. Each release includes six native packages and `SHA256SUMS`.
+**[Download 0.2.0](https://github.com/LimePencil/jev-observer/releases/tag/v0.2.0)** for Linux, macOS or Windows. Each release includes six native packages and `SHA256SUMS`.
 
 | Platform | Architectures | Package |
 |---|---|---|
@@ -52,7 +52,7 @@ Linux / macOS:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
-sh install.sh --version 0.1.0
+sh install.sh --version 0.2.0
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
 ```
@@ -61,7 +61,7 @@ Windows PowerShell:
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version 0.1.0
+.\install.ps1 -Version 0.2.0
 & "$env:LOCALAPPDATA\JevObserver\bin\jev-observer.exe" --demo
 ```
 

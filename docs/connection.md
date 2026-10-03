@@ -69,7 +69,7 @@ OpenRouter documents this endpoint as compatible with the TypeSafe request and r
 
 ## Laya and other local System One models
 
-These options require the **0.2.0 source build or a later release**. Laya exposes the same `POST /v1/systemone` route. Start its server separately, bound to loopback; Observer does not download or host the model. This setup was tested with `laya[serve]==0.3.23` and its English checkpoint:
+These options require **Observer 0.2.0 or later**. Laya exposes the same `POST /v1/systemone` route. Start its server separately, bound to loopback; Observer does not download or host the model. This setup was tested with `laya[serve]==0.3.23` and its English checkpoint:
 
 ```sh
 # In a separate Python environment with laya[serve]==0.3.23 installed:
