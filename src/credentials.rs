@@ -110,6 +110,61 @@ fn token_hash(token: &str) -> String {
     format!("{:x}", Sha256::digest(token.as_bytes()))
 }
 
+fn scoped_account(account: &str, approval: &str) -> String {
+    format!("{account}:{approval}")
+}
+
+#[cfg(not(test))]
+fn load_approved(account: &str, approval: &str) -> Result<Option<Pair>> {
+    if let Some(pair) = load(&scoped_account(account, approval))? {
+        return Ok(Some(pair));
+    }
+    // Releases before staged rotation used one entry per workspace.
+    load(account)
+}
+
+fn forget_approved(account: &str, approval: Option<&str>) -> Result<()> {
+    let scoped = approval
+        .map(|approval| forget(&scoped_account(account, approval)))
+        .transpose();
+    let legacy = forget(account);
+    scoped?;
+    legacy
+}
+
+/// Keep the approved entry intact until SQLite commits its replacement digest.
+/// Independent entry names make a failed approval safe without depending on a
+/// second, potentially failing keychain write to restore the previous secret.
+fn stage_rotation(
+    account: &str,
+    pair: &Pair,
+    old_approval: Option<&str>,
+    save_entry: impl FnOnce(&str, &Pair) -> Result<()>,
+    approve: impl FnOnce(&str) -> Result<()>,
+    mut remove_entry: impl FnMut(&str) -> Result<()>,
+) -> Result<()> {
+    let approval = token_hash(&pair.client_token);
+    let pending = scoped_account(account, &approval);
+    save_entry(&pending, pair)?;
+    if let Err(error) = approve(&approval) {
+        if remove_entry(&pending).is_err() {
+            eprintln!(
+                "Observer could not remove an unapproved credential entry; it cannot activate on restart"
+            );
+        }
+        return Err(error).context("Approve staged provider connection");
+    }
+    if let Some(old) = old_approval {
+        if remove_entry(&scoped_account(account, old)).is_err() {
+            eprintln!("Observer could not remove the obsolete system credential entry");
+        }
+        if remove_entry(account).is_err() {
+            eprintln!("Observer could not remove the obsolete legacy credential entry");
+        }
+    }
+    Ok(())
+}
+
 impl Credentials {
     #[cfg(not(test))]
     pub fn open(path: &std::path::Path, store: Store) -> Result<Self> {
@@ -117,7 +172,7 @@ impl Credentials {
         let approval = store.credential_approval()?;
         let active = match approval
             .as_deref()
-            .map(|approved| (approved, load(&account)))
+            .map(|approved| (approved, load_approved(&account, approved)))
         {
             Some((approved, Ok(Some(pair)))) if token_hash(&pair.client_token) == approved => {
                 Active {
@@ -217,17 +272,26 @@ impl Credentials {
                 .transpose()?
                 .flatten();
             if persist {
-                save(&account, &pair)?;
-                if let Some(store) = &approval_store {
-                    store.set_credential_approval(Some(&token_hash(&token)))?;
-                }
+                stage_rotation(
+                    &account,
+                    &pair,
+                    old_approval.as_deref(),
+                    save,
+                    |hash| match &approval_store {
+                        Some(store) => store.set_credential_approval(Some(hash)),
+                        None => Ok(()),
+                    },
+                    forget,
+                )?;
             } else {
                 if let Some(store) = &approval_store {
                     // Disapprove the old entry before attempting deletion. If
                     // the OS store is locked, it cannot revive on restart.
                     store.set_credential_approval(None)?;
                 }
-                if (was_persisted || old_approval.is_some()) && forget(&account).is_err() {
+                if (was_persisted || old_approval.is_some())
+                    && forget_approved(&account, old_approval.as_deref()).is_err()
+                {
                     eprintln!("Observer could not remove the obsolete system credential entry");
                 }
             }
@@ -271,7 +335,7 @@ impl Credentials {
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = Active::default();
             if persisted || old_approval.is_some() {
-                forget(&account)?;
+                forget_approved(&account, old_approval.as_deref())?;
             }
             Ok(())
         })
@@ -283,6 +347,87 @@ impl Credentials {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_rotation_preserves_the_approved_entry_and_restart_digest() {
+        use std::{cell::RefCell, collections::HashMap};
+        let old = Pair {
+            api_key: "old-provider".into(),
+            client_token: "old-token".into(),
+        };
+        let next = Pair {
+            api_key: "new-provider".into(),
+            client_token: "new-token".into(),
+        };
+        let old_hash = token_hash(&old.client_token);
+        let entries = RefCell::new(HashMap::from([(
+            scoped_account("workspace", &old_hash),
+            old.clone(),
+        )]));
+        let approval = RefCell::new(old_hash.clone());
+        let result = stage_rotation(
+            "workspace",
+            &next,
+            Some(&old_hash),
+            |name, pair| {
+                entries.borrow_mut().insert(name.into(), pair.clone());
+                Ok(())
+            },
+            |_| anyhow::bail!("injected database failure"),
+            |name| {
+                entries.borrow_mut().remove(name);
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(*approval.borrow(), old_hash);
+        assert_eq!(entries.borrow().len(), 1);
+        assert_eq!(
+            entries.borrow()[&scoped_account("workspace", &approval.borrow())].api_key,
+            "old-provider"
+        );
+    }
+
+    #[test]
+    fn approved_rotation_replaces_legacy_and_scoped_entries_after_commit() {
+        use std::{cell::RefCell, collections::HashMap};
+        let old = Pair {
+            api_key: "old-provider".into(),
+            client_token: "old-token".into(),
+        };
+        let next = Pair {
+            api_key: "new-provider".into(),
+            client_token: "new-token".into(),
+        };
+        let old_hash = token_hash(&old.client_token);
+        let entries = RefCell::new(HashMap::from([("workspace".to_owned(), old)]));
+        let approval = RefCell::new(old_hash.clone());
+        stage_rotation(
+            "workspace",
+            &next,
+            Some(&old_hash),
+            |name, pair| {
+                entries.borrow_mut().insert(name.into(), pair.clone());
+                Ok(())
+            },
+            |hash| {
+                assert!(entries.borrow().contains_key("workspace"));
+                *approval.borrow_mut() = hash.into();
+                Ok(())
+            },
+            |name| {
+                assert_eq!(*approval.borrow(), token_hash("new-token"));
+                entries.borrow_mut().remove(name);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(entries.borrow().len(), 1);
+        assert_eq!(
+            entries.borrow()[&scoped_account("workspace", &approval.borrow())].api_key,
+            "new-provider"
+        );
+    }
 
     #[tokio::test]
     async fn session_token_replaces_key_and_rotates_without_exposing_it_in_status() {

@@ -30,6 +30,11 @@ pub struct Filter {
     pub group: Option<String>,
     pub status: Option<String>,
     pub search: Option<String>,
+    pub from: Option<i64>,
+    pub to: Option<i64>,
+    pub request_cursor: Option<String>,
+    pub group_cursor: Option<String>,
+    pub group_search: Option<String>,
 }
 
 fn text(v: &Value, key: &str) -> String {
@@ -77,6 +82,7 @@ struct DashboardRequests {
     summary: Value,
     timeline: Vec<Value>,
     parents: HashMap<String, i64>,
+    timeline_meta: Value,
 }
 
 #[derive(Default)]
@@ -88,6 +94,56 @@ struct TimelineBucket {
 }
 
 const DASHBOARD_SELECTION: &str = "r.seq IN (SELECT seq FROM temp.dashboard_request_ids)";
+const FAILED: &str = "(r.status>=400 OR json_extract(r.data,'$.transport_error') IS NOT NULL)";
+const DASHBOARD_INDEX: &str = "CREATE INDEX request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id,json_extract(data,'$.transport_error'))";
+
+fn check_schema(conn: &Connection) -> Result<()> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_version')",
+        [],
+        |row| row.get(0),
+    )?;
+    if exists {
+        let versions = conn
+            .prepare("SELECT version FROM schema_version LIMIT 2")?
+            .query_map([], |row| row.get::<_, i64>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        if !versions.is_empty() && versions != [1] {
+            bail!("Unsupported database schema {versions:?}; use a compatible Observer version");
+        }
+    }
+    Ok(())
+}
+
+struct TimelineSpec {
+    start: i64,
+    end: i64,
+    width: i64,
+    count: usize,
+}
+
+impl TimelineSpec {
+    fn bucket(&self, timestamp: i64) -> i64 {
+        let offset = (i128::from(timestamp) - i128::from(self.start)) / i128::from(self.width);
+        (i128::from(self.start) + offset * i128::from(self.width)) as i64
+    }
+
+    fn metadata(&self) -> Value {
+        json!({"start":self.start,"end":self.end.saturating_add(1),"bucket_width":self.width,"truncated":false})
+    }
+
+    fn finish(&self, mut buckets: BTreeMap<i64, TimelineBucket>) -> Vec<Value> {
+        (0..self.count)
+            .map(|index| {
+                let timestamp =
+                    (i128::from(self.start) + index as i128 * i128::from(self.width)) as i64;
+                let bucket = buckets.remove(&timestamp).unwrap_or_default();
+                json!({"timestamp":timestamp,"requests":bucket.requests,"errors":bucket.errors,
+                "mean_latency_ms":bucket.latency.value(),"cost_usd":bucket.cost.total()})
+            })
+            .collect()
+    }
+}
 
 fn plaintext_database(path: &Path) -> Result<bool> {
     let mut file = match std::fs::File::open(path) {
@@ -104,7 +160,36 @@ fn plaintext_database(path: &Path) -> Result<bool> {
     Ok(&header == b"SQLite format 3\0")
 }
 
+#[cfg(unix)]
+fn check_database_peers(path: &Path) -> Result<()> {
+    let database = std::fs::canonicalize(path)?;
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut peer = database.as_os_str().to_owned();
+        peer.push(suffix);
+        let peer = PathBuf::from(peer);
+        match std::fs::symlink_metadata(&peer) {
+            Ok(metadata) if !metadata.file_type().is_file() => {
+                bail!(
+                    "Database journal must be a regular file: {}",
+                    peer.display()
+                );
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("Inspect database journal before reading"),
+        }
+    }
+    Ok(())
+}
+
 fn migrate_plaintext(path: &Path, key: &str) -> Result<()> {
+    // Opening a future database must be a read-only operation, including the
+    // live plaintext-upgrade path. Do this before permissions, journals or files change.
+    #[cfg(unix)]
+    check_database_peers(path)?;
+    let preflight = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    check_schema(&preflight)?;
+    drop(preflight);
     eprintln!("Encrypting existing Observer history: {}", path.display());
     #[cfg(unix)]
     {
@@ -121,6 +206,7 @@ fn migrate_plaintext(path: &Path, key: &str) -> Result<()> {
         .context("Create encrypted migration file")?;
     let output = temporary.path().to_owned();
     let source = Connection::open(path).context("Open plaintext history for migration")?;
+    check_schema(&source)?;
     source.execute_batch("PRAGMA temp_store=MEMORY;")?;
     // Checkpoint every saved record before replacing the database file. A
     // second running Observer process must be stopped before this migration.
@@ -253,6 +339,20 @@ impl Store {
             retention_days,
             max_records,
         };
+        let existing = match std::fs::metadata(path) {
+            Ok(metadata) => metadata.len() > 0,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error).context("Inspect existing history before opening"),
+        };
+        if existing {
+            // Closing even an untouched READ_WRITE connection can checkpoint
+            // a crash-left WAL. Reject future schemas before any writer opens.
+            // READ_ONLY honors committed WAL state; immutable mode does not.
+            #[cfg(unix)]
+            check_database_peers(path)?;
+            let preflight = store.reader()?;
+            check_schema(&preflight)?;
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -307,23 +407,7 @@ impl Store {
             }
         }
         let mut conn = store.writer_connection()?;
-        // Reject a newer database before running any schema or journal changes.
-        // Otherwise even a failed startup could remove another version's index.
-        let version_table: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_version')",
-            [], |r| r.get(0),
-        )?;
-        if version_table {
-            let versions = conn
-                .prepare("SELECT version FROM schema_version LIMIT 2")?
-                .query_map([], |r| r.get::<_, i64>(0))?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            if !versions.is_empty() && versions != [1] {
-                bail!(
-                    "Unsupported database schema {versions:?}; use a compatible Observer version"
-                );
-            }
-        }
+        check_schema(&conn)?;
         conn.execute_batch("PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS schema_version(version INTEGER NOT NULL);
             INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
@@ -338,7 +422,7 @@ impl Store {
             CREATE INDEX IF NOT EXISTS request_source_time ON requests(source,timestamp);
             CREATE INDEX IF NOT EXISTS request_model_time ON requests(model,timestamp);
             CREATE INDEX IF NOT EXISTS request_join_scope ON requests(id,timestamp,source,model,status);
-            CREATE INDEX IF NOT EXISTS request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id);
+            CREATE INDEX IF NOT EXISTS request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id,json_extract(data,'$.transport_error'));
             CREATE TABLE IF NOT EXISTS groups(
               id TEXT PRIMARY KEY,key TEXT NOT NULL,kind TEXT NOT NULL,source TEXT NOT NULL,
               definition_id TEXT NOT NULL,presentation_id TEXT NOT NULL,definition TEXT NOT NULL,
@@ -359,6 +443,18 @@ impl Store {
             CREATE TABLE IF NOT EXISTS maintenance(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS credential_approval(
               id INTEGER PRIMARY KEY CHECK(id=1), token_hash TEXT NOT NULL);")?;
+        // Upgrade the covering index once, transactionally, for transfer outcomes.
+        let index_sql: String = conn.query_row(
+            "SELECT sql FROM sqlite_schema WHERE name='request_dashboard'",
+            [],
+            |row| row.get(0),
+        )?;
+        if !index_sql.contains("transport_error") {
+            let tx = conn.transaction()?;
+            tx.execute_batch("DROP INDEX request_dashboard;")?;
+            tx.execute_batch(DASHBOARD_INDEX)?;
+            tx.commit()?;
+        }
         // Enforce the configured policy before exposing existing history, even
         // when no new provider requests arrive after a restart.
         store.maintenance(&mut conn, true)?;
@@ -539,13 +635,28 @@ impl Store {
             "all" => None,
             _ => bail!("Unknown time window"),
         };
-        if let Some(period) = period {
+        if let Some(period) = period.filter(|_| filter.from.is_none() && filter.to.is_none()) {
             clauses.push("r.timestamp>=? AND r.timestamp<=?".into());
             let as_of = filter
                 .as_of
                 .unwrap_or_else(|| Utc::now().timestamp_millis());
             args.push((as_of - period).into());
             args.push(as_of.into());
+        }
+        if let Some(from) = filter.from {
+            clauses.push("r.timestamp>=?".into());
+            args.push(from.into());
+        }
+        if let Some(to) = filter.to {
+            clauses.push("r.timestamp<=?".into());
+            args.push(to.into());
+        }
+        if filter
+            .from
+            .zip(filter.to)
+            .is_some_and(|(from, to)| from > to)
+        {
+            bail!("Date range start must not follow its end");
         }
         for (name, value) in [("source", &filter.source), ("model", &filter.model)] {
             if let Some(value) = value.as_ref().filter(|s| !s.is_empty()) {
@@ -554,7 +665,7 @@ impl Store {
             }
         }
         if filter.status.as_deref() == Some("error") {
-            clauses.push("r.status>=400".into());
+            clauses.push(FAILED.into());
         }
         if let Some(group) = filter.group.as_ref().filter(|group| !group.is_empty()) {
             clauses.push("EXISTS(SELECT 1 FROM answers ga JOIN groups gg ON gg.id=ga.group_id WHERE ga.request_id=r.id AND (gg.id=? OR gg.family_id=?))".into());
@@ -575,7 +686,51 @@ impl Store {
         Ok((clauses.join(" AND "), args))
     }
 
+    fn request_page(
+        conn: &Connection,
+        predicate: &str,
+        args: &[SqlValue],
+        cursor: Option<&str>,
+    ) -> Result<(Vec<Value>, Option<String>)> {
+        let mut scope = predicate.to_owned();
+        let mut values = args.to_vec();
+        if let Some(cursor) = cursor {
+            let (timestamp, seq) = cursor.split_once(':').context("Invalid request cursor")?;
+            let timestamp = timestamp.parse::<i64>().context("Invalid request cursor")?;
+            let seq = seq.parse::<i64>().context("Invalid request cursor")?;
+            scope.push_str(" AND (r.timestamp,r.seq)<(?,?)");
+            values.extend([timestamp.into(), seq.into()]);
+        }
+        let mut rows = Self::request_summaries_raw(conn, &scope, &values, 101)?;
+        let more = rows.len() > 100;
+        rows.truncate(100);
+        let next = if more {
+            rows.last()
+                .and_then(|row| row["_cursor"].as_str())
+                .map(str::to_owned)
+        } else {
+            None
+        };
+        for row in &mut rows {
+            row.as_object_mut().unwrap().remove("_cursor");
+        }
+        Ok((rows, next))
+    }
+
     fn request_summaries(
+        conn: &Connection,
+        predicate: &str,
+        args: &[SqlValue],
+        limit: usize,
+    ) -> Result<Vec<Value>> {
+        let mut rows = Self::request_summaries_raw(conn, predicate, args, limit)?;
+        for row in &mut rows {
+            row.as_object_mut().unwrap().remove("_cursor");
+        }
+        Ok(rows)
+    }
+
+    fn request_summaries_raw(
         conn: &Connection,
         predicate: &str,
         args: &[SqlValue],
@@ -593,8 +748,8 @@ impl Store {
         } else {
             "requests r"
         };
-        let mut stmt = conn.prepare(&format!("SELECT id,json_extract(data,'$.timestamp'),source,NULLIF(model,''),status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,capture_complete,sample,event_kind,json_extract(data,'$.imported_at') FROM {scan} WHERE {predicate} ORDER BY timestamp DESC,seq DESC LIMIT {limit}"))?;
-        Ok(stmt.query_map(params_from_iter(args), |r| Ok(json!({"id":r.get::<_,String>(0)?,"timestamp":r.get::<_,Option<i64>>(1)?,"source":r.get::<_,String>(2)?,"model":r.get::<_,Option<String>>(3)?,"status":r.get::<_,Option<i64>>(4)?,"duration_ms":r.get::<_,Option<f64>>(5)?,"input_tokens":r.get::<_,Option<i64>>(6)?,"output_tokens":r.get::<_,Option<i64>>(7)?,"cost_usd":r.get::<_,Option<f64>>(8)?,"cost_basis":r.get::<_,String>(9)?,"answer_count":r.get::<_,i64>(10)?,"capture_complete":r.get::<_,bool>(11)?,"sample":r.get::<_,bool>(12)?,"event_kind":r.get::<_,String>(13)?,"imported_at":r.get::<_,Option<i64>>(14)?})))?.collect::<rusqlite::Result<Vec<_>>>()?)
+        let mut stmt = conn.prepare(&format!("SELECT id,json_extract(data,'$.timestamp'),source,NULLIF(model,''),status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,capture_complete,sample,event_kind,json_extract(data,'$.imported_at'),json_extract(data,'$.transport_error'),coalesce({FAILED},0),timestamp,seq FROM {scan} WHERE {predicate} ORDER BY timestamp DESC,seq DESC LIMIT {limit}"))?;
+        Ok(stmt.query_map(params_from_iter(args), |r| Ok(json!({"id":r.get::<_,String>(0)?,"timestamp":r.get::<_,Option<i64>>(1)?,"source":r.get::<_,String>(2)?,"model":r.get::<_,Option<String>>(3)?,"status":r.get::<_,Option<i64>>(4)?,"duration_ms":r.get::<_,Option<f64>>(5)?,"input_tokens":r.get::<_,Option<i64>>(6)?,"output_tokens":r.get::<_,Option<i64>>(7)?,"cost_usd":r.get::<_,Option<f64>>(8)?,"cost_basis":r.get::<_,String>(9)?,"answer_count":r.get::<_,i64>(10)?,"capture_complete":r.get::<_,bool>(11)?,"sample":r.get::<_,bool>(12)?,"event_kind":r.get::<_,String>(13)?,"imported_at":r.get::<_,Option<i64>>(14)?,"transport_error":r.get::<_,Option<String>>(15)?,"failed":r.get::<_,bool>(16)?,"_cursor":format!("{}:{}",r.get::<_,i64>(17)?,r.get::<_,i64>(18)?)})))?.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Expensive answer-key/group filters select parent requests once per
@@ -646,21 +801,78 @@ impl Store {
         Ok((DASHBOARD_SELECTION.into(), Vec::new()))
     }
 
+    fn timeline_spec(
+        conn: &Connection,
+        predicate: &str,
+        args: &[SqlValue],
+        filter: &Filter,
+    ) -> Result<TimelineSpec> {
+        let now = filter
+            .as_of
+            .unwrap_or_else(|| Utc::now().timestamp_millis());
+        let custom = filter.from.is_some() || filter.to.is_some();
+        let period = match filter.window.as_deref().unwrap_or("24h") {
+            "1h" => Some(3_600_000_i64),
+            "24h" => Some(86_400_000),
+            "7d" => Some(604_800_000),
+            _ => None,
+        };
+        let (start, end) = if let Some(period) = period.filter(|_| !custom) {
+            (now.saturating_sub(period), now)
+        } else {
+            let (first, last): (Option<i64>, Option<i64>) = conn.query_row(
+                &format!("SELECT min(timestamp),max(timestamp) FROM requests r INDEXED BY request_dashboard WHERE {predicate} AND event_kind='request' AND json_extract(data,'$.timestamp') IS NOT NULL"),
+                params_from_iter(args), |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            let end = filter.to.or(last).unwrap_or(now);
+            let start = filter
+                .from
+                .or(first)
+                .unwrap_or_else(|| end.saturating_sub(86_400_000));
+            (start, end.max(start))
+        };
+        let preferred = match (custom, filter.window.as_deref().unwrap_or("24h")) {
+            (false, "24h") => 1_800_000_i128,
+            (false, "7d") => 3_600_000,
+            _ => 60_000,
+        };
+        let span = i128::from(end) - i128::from(start) + 1;
+        let required = (span + 167) / 168;
+        let width = (((required.max(preferred) + preferred - 1) / preferred) * preferred)
+            .min(i128::from(i64::MAX)) as i64;
+        let count = ((span + i128::from(width) - 1) / i128::from(width)) as usize;
+        Ok(TimelineSpec {
+            start,
+            end,
+            width,
+            count,
+        })
+    }
+
     fn timeline(
         conn: &Connection,
         predicate: &str,
         args: &[SqlValue],
-        window: Option<&str>,
-    ) -> Result<Vec<Value>> {
-        let width = match window.unwrap_or("24h") {
-            "1h" => 60_000,
-            "24h" => 1_800_000,
-            _ => 3_600_000,
-        };
-        let mut stmt = conn.prepare(&format!("SELECT (timestamp/{width})*{width},count(*),coalesce(sum(status>=400),0),avg(duration_ms),sum(cost_usd) FROM requests r INDEXED BY request_dashboard WHERE {predicate} AND r.event_kind='request' AND json_extract(r.data,'$.timestamp') IS NOT NULL GROUP BY 1 ORDER BY 1 DESC LIMIT 168"))?;
-        let mut rows = stmt.query_map(params_from_iter(args), |r| Ok(json!({"timestamp":r.get::<_,i64>(0)?,"requests":r.get::<_,i64>(1)?,"errors":r.get::<_,i64>(2)?,"mean_latency_ms":r.get::<_,Option<f64>>(3)?,"cost_usd":r.get::<_,Option<f64>>(4)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
-        rows.reverse();
-        Ok(rows)
+        filter: &Filter,
+    ) -> Result<(Vec<Value>, Value)> {
+        let spec = Self::timeline_spec(conn, predicate, args, filter)?;
+        let mut buckets = BTreeMap::<i64, TimelineBucket>::new();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT timestamp,{FAILED},duration_ms,cost_usd FROM requests r INDEXED BY request_dashboard WHERE {predicate} AND event_kind='request' AND json_extract(data,'$.timestamp') IS NOT NULL"
+        ))?;
+        let mut rows = stmt.query(params_from_iter(args))?;
+        while let Some(row) = rows.next()? {
+            let bucket = buckets.entry(spec.bucket(row.get(0)?)).or_default();
+            bucket.requests += 1;
+            bucket.errors += i64::from(row.get::<_, Option<bool>>(1)?.unwrap_or(false));
+            if let Some(value) = row.get::<_, Option<f64>>(2)? {
+                bucket.latency.add(value);
+            }
+            if let Some(value) = row.get::<_, Option<f64>>(3)? {
+                bucket.cost.add(value);
+            }
+        }
+        Ok((spec.finish(buckets), spec.metadata()))
     }
 
     fn group_metadata(conn: &Connection, id: &str) -> Result<Option<Value>> {
@@ -700,6 +912,10 @@ impl Store {
         result["last_seen"] = json!(last);
         result["mean_value"] = json!(mean);
         result["mean_confidence"] = json!(confidence);
+        result
+            .as_object_mut()
+            .unwrap()
+            .extend(Self::group_metrics(conn, id, family, filter)?);
         let kind = text(&result, "kind");
         let expression = match kind.as_str() {
             "choice" => "a.value_text",
@@ -719,6 +935,46 @@ impl Store {
         Ok(Some(result))
     }
 
+    fn group_metrics(
+        conn: &Connection,
+        id: &str,
+        family: bool,
+        filter: &Filter,
+    ) -> Result<serde_json::Map<String, Value>> {
+        let (predicate, mut args) = Self::predicate(filter)?;
+        args.push(id.to_owned().into());
+        let selector = if family { "g.family_id=?" } else { "g.id=?" };
+        let (parent_predicate, mut parent_args) = Self::predicate(filter)?;
+        parent_args.push(id.to_owned().into());
+        let parent_selector = if family { "gg.family_id=?" } else { "gg.id=?" };
+        let parent_scope = format!(
+            "{parent_predicate} AND r.id IN (SELECT aa.request_id FROM answers aa JOIN groups gg ON gg.id=aa.group_id WHERE {parent_selector})"
+        );
+        let metrics: Value = conn.query_row(
+            &format!("SELECT avg(duration_ms),sum(cost_usd),count(cost_usd),sum(input_tokens),sum(output_tokens),coalesce(sum({FAILED}),0) FROM requests r WHERE {parent_scope}"),
+            params_from_iter(&parent_args), |row| Ok(json!({
+                "mean_latency_ms":row.get::<_,Option<f64>>(0)?, "cost_usd":row.get::<_,Option<f64>>(1)?,
+                "cost_known_requests":row.get::<_,i64>(2)?, "input_tokens":row.get::<_,Option<i64>>(3)?,
+                "output_tokens":row.get::<_,Option<i64>>(4)?, "error_count":row.get::<_,i64>(5)?
+            })),
+        )?;
+        // Labels are unique by (request_id,key), so this join preserves answer
+        // multiplicity while computing reviews and warnings in the same pass.
+        let answer_metrics: Value = conn.query_row(
+            &format!("SELECT coalesce(sum(coalesce(json_array_length(json_extract(a.data,'$.warnings')),0)>0),0),coalesce(sum(l.label='correct'),0),coalesce(sum(l.label='incorrect'),0),coalesce(sum(l.label='unknown'),0),coalesce(sum(l.label IS NULL),0) FROM answers a JOIN requests r ON r.id=a.request_id JOIN groups g ON g.id=a.group_id LEFT JOIN labels l ON l.request_id=a.request_id AND l.key=a.key WHERE {predicate} AND {selector}"),
+            params_from_iter(&args), |row| Ok(json!({
+                "warning_count":row.get::<_,i64>(0)?,
+                "review_counts":{
+                    "correct":row.get::<_,i64>(1)?,"incorrect":row.get::<_,i64>(2)?,
+                    "unknown":row.get::<_,i64>(3)?,"unlabeled":row.get::<_,i64>(4)?
+                }
+            })),
+        )?;
+        let mut result = metrics.as_object().unwrap().clone();
+        result.extend(answer_metrics.as_object().unwrap().clone());
+        Ok(result)
+    }
+
     /// Scan compact request metrics once for every overview component. The
     /// covering index avoids reading/parsing saved JSON bodies. All values and
     /// parent membership come from this transaction, including imported events.
@@ -726,15 +982,11 @@ impl Store {
         conn: &Connection,
         predicate: &str,
         args: &[SqlValue],
-        window: Option<&str>,
+        filter: &Filter,
     ) -> Result<DashboardRequests> {
-        let width = match window.unwrap_or("24h") {
-            "1h" => 60_000,
-            "24h" => 1_800_000,
-            _ => 3_600_000,
-        };
+        let spec = Self::timeline_spec(conn, predicate, args, filter)?;
         let mut stmt = conn.prepare(&format!(
-            "SELECT id,timestamp,event_kind,answer_count,status,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp') FROM requests r INDEXED BY request_dashboard WHERE {predicate}"
+            "SELECT id,timestamp,event_kind,answer_count,status,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),json_extract(data,'$.transport_error') FROM requests r INDEXED BY request_dashboard WHERE {predicate}"
         ))?;
         let mut rows = stmt.query(params_from_iter(args))?;
         let mut parents = HashMap::new();
@@ -757,7 +1009,8 @@ impl Store {
                 .context("integer overflow")?;
             let error = row
                 .get::<_, Option<i64>>(4)?
-                .is_some_and(|status| status >= 400);
+                .is_some_and(|status| status >= 400)
+                || row.get_ref(12)? != rusqlite::types::ValueRef::Null;
             errors += i64::from(error);
             add_integer_sum(&mut input, row.get(5)?)?;
             add_integer_sum(&mut output, row.get(6)?)?;
@@ -774,7 +1027,7 @@ impl Store {
             // Storage timestamp may be imported_at. It is not evidence of an
             // original event time, so unknown timestamps never enter timelines.
             if row.get_ref(11)? != rusqlite::types::ValueRef::Null {
-                let bucket = buckets.entry(timestamp / width * width).or_default();
+                let bucket = buckets.entry(spec.bucket(timestamp)).or_default();
                 bucket.requests += 1;
                 bucket.errors += i64::from(error);
                 if let Some(duration) = duration {
@@ -782,11 +1035,6 @@ impl Store {
                 }
                 if let Some(charge) = charge {
                     bucket.cost.add(charge);
-                }
-                // Only the latest 168 buckets are displayed. Older buckets can
-                // be discarded immediately, without dropping summary records.
-                if buckets.len() > 168 {
-                    buckets.pop_first();
                 }
             }
         }
@@ -806,19 +1054,12 @@ impl Store {
                 json!(*value)
             };
         }
-        let timeline = buckets
-            .into_iter()
-            .map(|(timestamp, bucket)| {
-                json!({
-                    "timestamp":timestamp,"requests":bucket.requests,"errors":bucket.errors,
-                    "mean_latency_ms":bucket.latency.value(),"cost_usd":bucket.cost.total()
-                })
-            })
-            .collect();
+        let timeline = spec.finish(buckets);
         Ok(DashboardRequests {
             summary,
             timeline,
             parents,
+            timeline_meta: spec.metadata(),
         })
     }
 
@@ -827,17 +1068,20 @@ impl Store {
     fn strict_dashboard_groups(
         conn: &Connection,
         parents: &HashMap<String, i64>,
+        filter: &Filter,
     ) -> Result<Vec<(String, Value)>> {
         if parents.is_empty() {
             return Ok(Vec::new());
         }
-        let mut ids =
-            conn.prepare("SELECT id,kind FROM groups WHERE family_id IS NULL ORDER BY id")?;
+        let mut ids = conn.prepare("SELECT id,kind FROM groups WHERE family_id IS NULL AND instr(lower(key || ' ' || source || ' ' || kind || ' ' || id || ' ' || coalesce(task_version,'')),lower(?))>0 ORDER BY id")?;
+        let after = Self::group_cursor(filter)?;
         let mut answers = conn.prepare(
             "SELECT request_id,valid,value_num,confidence,value_text FROM answers INDEXED BY answer_statistics WHERE group_id=? ORDER BY request_id",
         )?;
         let mut selected: Vec<(String, Value)> = Vec::new();
-        for row in ids.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        for row in ids.query_map([filter.group_search.as_deref().unwrap_or("")], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })? {
             let (id, kind) = row?;
             let mut rows = answers.query([&id])?;
             let (mut count, mut valid, mut requests) = (0_i64, 0_i64, 0_i64);
@@ -885,7 +1129,11 @@ impl Store {
                     *numeric_bins.entry(bin).or_default() += 1;
                 }
             }
-            if count == 0 {
+            if count == 0
+                || after.as_ref().is_some_and(|(time, cursor_id)| {
+                    last > *time || (last == *time && id <= *cursor_id)
+                })
+            {
                 continue;
             }
             let bins: Vec<_> = if kind == "choice" {
@@ -902,17 +1150,34 @@ impl Store {
                 "mean_confidence":confidence.value(),
                 "distribution":bins.into_iter().map(|(bin,count)| json!({"label":bin,"count":count})).collect::<Vec<_>>()
             });
-            // Retain only the latest 100 groups, even for high-cardinality data.
+            // Retain one page plus lookahead, even for high-cardinality data.
             let position = selected.partition_point(|(other_id, other)| {
                 other["last_seen"].as_i64().unwrap() > last
                     || (other["last_seen"] == last && other_id < &id)
             });
-            if position < 100 {
+            if position < 101 {
                 selected.insert(position, (id, stats));
-                selected.truncate(100);
+                selected.truncate(101);
             }
         }
         Ok(selected)
+    }
+
+    fn group_cursor(filter: &Filter) -> Result<Option<(i64, String)>> {
+        filter
+            .group_cursor
+            .as_deref()
+            .map(|cursor| {
+                let (timestamp, id) = cursor.split_once(':').context("Invalid group cursor")?;
+                if id.is_empty() {
+                    bail!("Invalid group cursor");
+                }
+                Ok((
+                    timestamp.parse::<i64>().context("Invalid group cursor")?,
+                    id.to_owned(),
+                ))
+            })
+            .transpose()
     }
 
     pub fn dashboard(&self, filter: &Filter) -> Result<Value> {
@@ -928,17 +1193,34 @@ impl Store {
             summary,
             timeline,
             parents,
-        } = Self::dashboard_requests(&tx, &predicate, &args, filter.window.as_deref())?;
-        let requests = Self::request_summaries(&tx, &predicate, &args, 100)?;
+            timeline_meta,
+        } = Self::dashboard_requests(&tx, &predicate, &args, filter)?;
+        let (requests, feed_next_cursor) =
+            Self::request_page(&tx, &predicate, &args, filter.request_cursor.as_deref())?;
         // Families may contain multiple keys per request. Keep their exact SQL
         // distinct counts; strict groups compute metrics and bins in one pass.
         let from = format!(
             "FROM groups g INDEXED BY sqlite_autoindex_groups_1 CROSS JOIN answers a INDEXED BY answer_statistics ON a.group_id=g.id CROSS JOIN requests r INDEXED BY request_join_scope ON r.id=a.request_id WHERE {predicate}"
         );
         let metrics = "count(*) AS answer_count,coalesce(sum(a.valid),0) AS valid_count,count(DISTINCT r.id) AS request_count,max(r.timestamp) AS last_seen,avg(CASE WHEN a.valid THEN a.value_num END) AS mean_value,avg(CASE WHEN a.valid THEN a.confidence END) AS mean_confidence";
-        let mut stats = Self::strict_dashboard_groups(&tx, &parents)?;
-        let mut stmt = tx.prepare(&format!("SELECT g.family_id AS display_id,{metrics} {from} AND g.family_id IS NOT NULL GROUP BY g.family_id ORDER BY last_seen DESC,display_id LIMIT 100"))?;
-        let family_stats = stmt.query_map(params_from_iter(&args), |r| Ok((r.get::<_,String>(0)?, json!({
+        let mut stats = Self::strict_dashboard_groups(&tx, &parents, filter)?;
+        let mut family_args = args.clone();
+        let mut family_scope = String::new();
+        if let Some(search) = filter
+            .group_search
+            .as_ref()
+            .filter(|search| !search.is_empty())
+        {
+            family_scope.push_str(" AND instr(lower(coalesce(g.family_name,'') || ' ' || g.source || ' ' || g.kind || ' ' || g.family_id),lower(?))>0");
+            family_args.push(search.clone().into());
+        }
+        let mut family_after = String::new();
+        if let Some((timestamp, id)) = Self::group_cursor(filter)? {
+            family_after.push_str(" HAVING last_seen<? OR (last_seen=? AND display_id>?)");
+            family_args.extend([timestamp.into(), timestamp.into(), id.into()]);
+        }
+        let mut stmt = tx.prepare(&format!("SELECT g.family_id AS display_id,{metrics} {from} AND g.family_id IS NOT NULL {family_scope} GROUP BY g.family_id {family_after} ORDER BY last_seen DESC,display_id LIMIT 101"))?;
+        let family_stats = stmt.query_map(params_from_iter(&family_args), |r| Ok((r.get::<_,String>(0)?, json!({
             "answer_count":r.get::<_,i64>(1)?,"valid_count":r.get::<_,i64>(2)?,"request_count":r.get::<_,i64>(3)?,
             "last_seen":r.get::<_,Option<i64>>(4)?,"mean_value":r.get::<_,Option<f64>>(5)?,"mean_confidence":r.get::<_,Option<f64>>(6)?,"distribution":[]
         }))))?.collect::<rusqlite::Result<Vec<_>>>()?;
@@ -949,7 +1231,15 @@ impl Store {
                 .cmp(&left["last_seen"].as_i64())
                 .then_with(|| left_id.cmp(right_id))
         });
+        let more_groups = stats.len() > 100;
         stats.truncate(100);
+        let group_next_cursor = if more_groups {
+            stats
+                .last()
+                .map(|(id, stats)| format!("{}:{id}", stats["last_seen"].as_i64().unwrap()))
+        } else {
+            None
+        };
         let mut groups = Vec::new();
         for (id, stats) in &stats {
             if let Some(mut group) = Self::group_metadata(&tx, id)? {
@@ -961,6 +1251,9 @@ impl Store {
                     json!({"label":distribution_label(&group, bin["label"].as_str().unwrap()),"count":bin["count"]})
                 }).collect();
                 group["distribution"] = json!(distribution);
+                // Comparison-only metrics belong to the detail endpoint. They
+                // read saved answer JSON and must not run for every group on
+                // each overview poll when the overview does not display them.
                 groups.push(group);
             }
         }
@@ -1007,7 +1300,7 @@ impl Store {
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(
-            json!({"generated_at":filter.as_of,"sample":summary["sample_count"].as_i64().unwrap_or(0)>0,"summary":summary,"timeline":timeline,"groups":groups,"requests":requests,"sources":sources,"models":models,"health":{},"feed_limit":100,"group_limit":100}),
+            json!({"generated_at":filter.as_of,"sample":summary["sample_count"].as_i64().unwrap_or(0)>0,"summary":summary,"timeline":timeline,"timeline_meta":timeline_meta,"groups":groups,"requests":requests,"sources":sources,"models":models,"health":{},"feed_limit":100,"group_limit":100,"feed_next_cursor":feed_next_cursor,"group_next_cursor":group_next_cursor}),
         )
     }
 
@@ -1046,6 +1339,12 @@ impl Store {
         )?;
         let labels=stmt.query_map([id],|r|Ok(json!({"key":r.get::<_,String>(0)?,"label":r.get::<_,String>(1)?,"timestamp":r.get::<_,i64>(2)?,"source":r.get::<_,String>(3)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
         record["labels"] = json!(labels);
+        record["failed"] = json!(
+            record["status"]
+                .as_i64()
+                .is_some_and(|status| status >= 400)
+                || !record["transport_error"].is_null()
+        );
         Ok(Some(record))
     }
 
@@ -1076,24 +1375,31 @@ impl Store {
             args.push(id.to_owned().into());
         }
         let requests = Self::request_summaries(&conn, &predicate, &args, 100)?;
-        let timeline = Self::timeline(&conn, &predicate, &args, filter.window.as_deref())?;
+        let (timeline, timeline_meta) = Self::timeline(&conn, &predicate, &args, filter)?;
         let family = group["is_family"].as_bool().unwrap_or(false);
-        let mut stmt =
-            conn.prepare("SELECT id FROM groups WHERE source=? AND ((?=1 AND family_id=?) OR (?=0 AND key=?)) ORDER BY id LIMIT 100")?;
+        let (version_scope, mut version_args) = Self::predicate(filter)?;
+        version_args.extend([
+            text(&group, "source").into(),
+            (family as i64).into(),
+            id.to_owned().into(),
+            (family as i64).into(),
+            text(&group, "key").into(),
+            id.to_owned().into(),
+        ]);
+        // Keep the viewed version in the bounded comparison list, then prefer
+        // versions with the most recent activity in the caller's parent scope.
+        let mut stmt = conn.prepare(&format!("SELECT g.id FROM groups g LEFT JOIN answers a ON a.group_id=g.id LEFT JOIN requests r ON r.id=a.request_id AND {version_scope} WHERE g.source=? AND ((?=1 AND g.family_id=?) OR (?=0 AND g.key=?)) GROUP BY g.id ORDER BY (g.id=?) DESC,max(r.timestamp) DESC,g.id LIMIT 100"))?;
         let ids = stmt
-            .query_map(
-                params![
-                    text(&group, "source"),
-                    family,
-                    id,
-                    family,
-                    text(&group, "key")
-                ],
-                |r| r.get::<_, String>(0),
-            )?
+            .query_map(params_from_iter(&version_args), |row| {
+                row.get::<_, String>(0)
+            })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let mut versions = Vec::new();
         for id in ids {
+            if group["id"] == id {
+                versions.push(group.clone());
+                continue;
+            }
             if let Some(version) = Self::group_summary(&conn, &id, filter)? {
                 versions.push(version);
             }
@@ -1114,7 +1420,7 @@ impl Store {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(Some(
-            json!({"total_answers":group["answer_count"],"group":group,"versions":versions,"timeline":timeline,"requests":requests,"answers":answers,"detail_limit":100}),
+            json!({"total_answers":group["answer_count"],"group":group,"versions":versions,"timeline":timeline,"timeline_meta":timeline_meta,"requests":requests,"answers":answers,"detail_limit":100}),
         ))
     }
 
@@ -1295,6 +1601,24 @@ mod tests {
     use super::*;
     use sha2::Digest;
 
+    pub(super) fn assert_overview_matches_detail(overview: &Value, detail: &Value) {
+        let mut shared = detail.clone();
+        for field in [
+            "warning_count",
+            "review_counts",
+            "mean_latency_ms",
+            "cost_usd",
+            "cost_known_requests",
+            "input_tokens",
+            "output_tokens",
+            "error_count",
+        ] {
+            assert!(overview.get(field).is_none(), "detail-only field {field}");
+            assert!(shared.as_object_mut().unwrap().remove(field).is_some());
+        }
+        assert_eq!(*overview, shared);
+    }
+
     #[test]
     fn encrypted_history_rejects_wrong_key_and_migrates_existing_records() {
         let directory = tempfile::tempdir().unwrap();
@@ -1417,6 +1741,101 @@ mod tests {
             before,
             "Failed startup must not change schema, data, or journal mode"
         );
+    }
+
+    #[test]
+    fn unsupported_schema_in_crash_left_wal_preserves_database_and_wal_bytes() {
+        for encrypted in [true, false] {
+            let directory = tempfile::tempdir().unwrap();
+            let original = directory.path().join("original.sqlite");
+            let crashed = directory.path().join("crashed.sqlite");
+            let key = "e".repeat(64);
+            let store = if encrypted {
+                Store::open_encrypted(&original, key.clone(), 7, 100)
+            } else {
+                Store::open(&original, 7, 100)
+            }
+            .unwrap();
+            let writer = store.writer_connection().unwrap();
+            writer
+                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+                .unwrap();
+            let main = std::fs::read(&original).unwrap();
+            writer
+                .execute("UPDATE schema_version SET version=999", [])
+                .unwrap();
+            assert_eq!(
+                std::fs::read(&original).unwrap(),
+                main,
+                "The unsupported version must exist only in the committed WAL"
+            );
+            let peer = |path: &Path, suffix: &str| {
+                let mut name = path.as_os_str().to_owned();
+                name.push(suffix);
+                PathBuf::from(name)
+            };
+            // The writer is quiescent. Copying its complete file set leaves a
+            // fixture with committed WAL state and no live SQLite connection.
+            for suffix in ["", "-wal", "-shm"] {
+                std::fs::copy(peer(&original, suffix), peer(&crashed, suffix)).unwrap();
+            }
+            drop(writer);
+            let before: Vec<_> = ["", "-wal"]
+                .into_iter()
+                .map(|suffix| {
+                    let bytes = std::fs::read(peer(&crashed, suffix)).unwrap();
+                    assert!(!bytes.is_empty());
+                    (suffix, sha2::Sha256::digest(bytes))
+                })
+                .collect();
+            let error = if encrypted {
+                Store::open_encrypted(&crashed, key, 7, 100)
+            } else {
+                Store::open(&crashed, 7, 100)
+            }
+            .err()
+            .expect("Committed future schema must be rejected");
+            assert!(
+                error
+                    .to_string()
+                    .contains("Unsupported database schema [999]")
+            );
+            for (suffix, digest) in before {
+                assert_eq!(
+                    sha2::Sha256::digest(std::fs::read(peer(&crashed, suffix)).unwrap()),
+                    digest,
+                    "Rejected startup must preserve {suffix:?} data bytes (encrypted={encrypted})"
+                );
+            }
+            // SHM is a transient WAL index; SQLite may rebuild it while reading
+            // a crash-left WAL. Its bytes are not persistent database content.
+        }
+    }
+
+    #[test]
+    fn unsupported_plaintext_and_encrypted_schemas_survive_live_startup_unchanged() {
+        for encrypted in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("future.sqlite");
+            let key = "d".repeat(64);
+            let store = if encrypted {
+                Store::open_encrypted(&path, key.clone(), 7, 100).unwrap()
+            } else {
+                Store::open(&path, 7, 100).unwrap()
+            };
+            let conn = store.writer_connection().unwrap();
+            conn.execute_batch(
+                "UPDATE schema_version SET version=999; PRAGMA journal_mode=DELETE;",
+            )
+            .unwrap();
+            drop(conn);
+            drop(store);
+            let before = std::fs::read(&path).unwrap();
+            let error = Store::open_encrypted(&path, key, 7, 100).err().unwrap();
+            assert!(error.to_string().contains("Unsupported database schema"));
+            assert_eq!(std::fs::read(&path).unwrap(), before);
+            assert_eq!(plaintext_database(&path).unwrap(), !encrypted);
+        }
     }
 
     #[test]
@@ -1633,7 +2052,10 @@ mod tests {
                 {"label":"0.8–<0.9","count":1}
             ])
         );
-        assert_eq!(*group, store.group("g", &filter).unwrap().unwrap()["group"]);
+        assert_overview_matches_detail(
+            group,
+            &store.group("g", &filter).unwrap().unwrap()["group"],
+        );
     }
 
     #[test]
@@ -1702,7 +2124,7 @@ mod tests {
             let baseline = Store::group_summary(&connection, &text(group, "id"), &filter)
                 .unwrap()
                 .unwrap();
-            assert_eq!(*group, baseline);
+            assert_overview_matches_detail(group, &baseline);
             assert_eq!(group["request_count"], 1);
             if group["is_family"] == true {
                 assert_eq!(group["answer_count"], 2);
@@ -1717,11 +2139,11 @@ mod tests {
         let overview = store.dashboard(&narrowed).unwrap();
         assert_eq!(overview["groups"].as_array().unwrap().len(), 1);
         assert_eq!(overview["groups"][0]["id"], "strict-129");
-        assert_eq!(
-            overview["groups"][0],
-            Store::group_summary(&connection, "strict-129", &narrowed)
+        assert_overview_matches_detail(
+            &overview["groups"][0],
+            &Store::group_summary(&connection, "strict-129", &narrowed)
                 .unwrap()
-                .unwrap()
+                .unwrap(),
         );
         let missing_source = Filter {
             source: Some("absent".into()),
@@ -1793,7 +2215,7 @@ mod tests {
                     .group(group["id"].as_str().unwrap(), &filter)
                     .unwrap()
                     .unwrap();
-                assert_eq!(*group, detail["group"]);
+                assert_overview_matches_detail(group, &detail["group"]);
                 let total: i64 = group["distribution"]
                     .as_array()
                     .unwrap()
@@ -1841,9 +2263,9 @@ mod tests {
             let overview = store.dashboard(&filter).unwrap();
             assert_eq!(overview["summary"]["request_count"], count, "{window}");
             assert_eq!(overview["groups"][0]["request_count"], count, "{window}");
-            assert_eq!(
-                store.group("g", &filter).unwrap().unwrap()["group"],
-                overview["groups"][0]
+            assert_overview_matches_detail(
+                &overview["groups"][0],
+                &store.group("g", &filter).unwrap().unwrap()["group"],
             );
             assert_eq!(
                 store.export(&filter, "jsonl").unwrap().lines().count(),
@@ -1902,9 +2324,9 @@ mod tests {
         let overview = reopened.dashboard(&Filter::default()).unwrap();
         assert_eq!(overview["summary"]["request_count"], 1);
         assert_eq!(overview["groups"][0]["valid_count"], 1);
-        assert_eq!(
-            overview["groups"][0],
-            reopened.group("g", &Filter::default()).unwrap().unwrap()["group"]
+        assert_overview_matches_detail(
+            &overview["groups"][0],
+            &reopened.group("g", &Filter::default()).unwrap().unwrap()["group"],
         );
     }
     #[test]

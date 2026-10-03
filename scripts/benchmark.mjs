@@ -22,6 +22,10 @@ const dashboardQuery = new URLSearchParams({window:'all'});
 if (args['dashboard-search']) dashboardQuery.set('search',args['dashboard-search']);
 const dashboardPath = `/api/dashboard?${dashboardQuery}`;
 const binary = path.resolve(String(args.binary ?? 'target/release/jev-observer'));
+if (args['keep-db'] && !process.env.JEV_OBSERVER_DB_KEY) throw new Error('--keep-db requires JEV_OBSERVER_DB_KEY so retained encrypted databases can be reopened');
+const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !['typesafe_api_key', 'http_proxy', 'https_proxy', 'all_proxy'].includes(name.toLowerCase())));
+environment.NO_PROXY = '127.0.0.1,localhost';
+environment.JEV_OBSERVER_DB_KEY = process.env.JEV_OBSERVER_DB_KEY ?? randomBytes(32).toString('hex');
 const workRoot = path.resolve(String(args['work-dir'] ?? '.jev-observer/benchmarks'));
 await fs.mkdir(workRoot,{recursive:true});
 const directory = await fs.mkdtemp(path.join(workRoot,'run-'));
@@ -161,7 +165,7 @@ async function load(label,port,duration,targetRate,dashboard){
 }
 
 try{
-  proxy=spawn(binary,['--port',String(proxyPort),'--db',path.join(directory,'bench.sqlite'),'--upstream',`http://127.0.0.1:${mockPort}/v1/systemone`,'--max-records','2000000'],{stdio:['ignore','ignore','pipe'],env:{...process.env,JEV_OBSERVER_DB_KEY:process.env.JEV_OBSERVER_DB_KEY??randomBytes(32).toString('hex')}});
+  proxy=spawn(binary,['--port',String(proxyPort),'--db',path.join(directory,'bench.sqlite'),'--upstream',`http://127.0.0.1:${mockPort}/v1/systemone`,'--max-records','2000000'],{stdio:['ignore','ignore','pipe'],env:environment});
   proxy.stderr.on('data',chunk=>{stderr+=chunk.toString();if(stderr.length>16000)stderr=stderr.slice(-16000)});
   proxy.on('error',error=>{stderr+=error.message});
   for(let n=0;n<100;n++){try{const token=await fs.readFile(path.join(directory,'bench.access-token'),'utf8');observerAccess=token;dashboardAuthorization=`Basic ${Buffer.from(`observer:${token}`).toString('base64')}`;}catch{}if(dashboardAuthorization&&(await exchange(proxyPort,'/api/health',null,dashboardAgent)).status===200)break;if(proxy.exitCode!==null)throw new Error(stderr);await sleep(100);if(n===99)throw new Error('Observer did not start: '+stderr);}
@@ -180,11 +184,15 @@ try{
   const countsComplete=health.persisted===expected&&health.dropped===0&&health.truncated===0&&health.write_failures===0&&dashboard.summary.request_count===expected&&dashboard.summary.answer_count===expectedAnswers&&sustained.errors===0&&(burst?.errors??0)===0;
   const accountingComplete = dashboard.summary.input_tokens===expected*1000 && dashboard.summary.output_tokens===expected*40 && dashboard.groups.length===20 && dashboard.groups.every(group=>group.valid_count===group.answer_count) && mockCount===baseline.completed+expected && health.forwarded===expected;
   const throughputPassed = [sustained, ...(burst?[burst]:[])].every(phase=>phase.steady_rps>=phase.target_rps*.98&&phase.scheduling_lateness_ms.p99<=100&&phase.dashboard.errors.length===0);
-  const complete = countsComplete && accountingComplete && throughputPassed && healthPollErrors === 0 && baseline.errors === 0;
+  const databaseFile = await fs.open(path.join(directory,'bench.sqlite'),'r');
+  const databaseHeader = Buffer.alloc(16);
+  try { await databaseFile.read(databaseHeader,0,16,0); } finally { await databaseFile.close(); }
+  const encrypted = !databaseHeader.equals(Buffer.from('SQLite format 3\0'));
+  const complete = countsComplete && accountingComplete && throughputPassed && healthPollErrors === 0 && baseline.errors === 0 && encrypted;
   const hostEnd=await sampleHost();
   const report={date:new Date().toISOString(),binary,binary_sha256:binarySha256,database_directory:directory,node:process.version,platform:`${os.platform()} ${os.release()} ${os.arch()}`,cpu:os.cpus()[0]?.model,logical_cpus:os.cpus().length,total_memory_gib:os.totalmem()/2**30,
     dashboard_query:dashboardPath,host_telemetry:{start:hostStart,end:hostEnd,sample_interval_ms:1000,cpu_scope:'Whole host across all logical CPUs, including unrelated processes; CPU busy excludes idle and iowait. Short/initial sample intervals remain null.'},
-    settings,fixture:{small_bytes:bodies[0].length,large_bytes:bodies[1].length,large_fraction:.1,questions:[3,20],upstream_delay_ms:delay},baseline,sustained,burst,peak_rss_mib:peakRssKiB/1024,peak_sampled_lag_ms:peakLagMs,peak_sampled_queue_depth:peakQueueDepth,health_poll_errors:healthPollErrors,database_bytes:(await fs.stat(path.join(directory,'bench.sqlite'))).size,health,summary:dashboard.summary,counts_complete:countsComplete,accounting_complete:accountingComplete,upstream_attempts:mockCount,throughput_passed:throughputPassed,complete,notes:['Local mock only; does not measure provider latency or paid API capacity.','Steady RPS excludes the stated warm-up and post-load drain; achieved_rps includes the drain. RSS and collection lag are sampled once per second.','Exact body/status and retained-count checks enabled.','Latency distributions are independent runs; subtracting percentiles does not produce a per-request overhead percentile.','The proxy, mock and generator share this host with unrelated processes. Phase host telemetry samples total CPU/load/memory pressure; it cannot attribute a failure to Observer or another workload by itself.','Runtime-reported free memory and Linux MemAvailable are recorded separately and may be equal; swap and runnable tasks are null on unsupported platforms. One-second host samples can miss short pressure spikes.']};
+    settings,storage:{mode:'sqlcipher',plaintext_header_absent:encrypted},fixture:{small_bytes:bodies[0].length,large_bytes:bodies[1].length,large_fraction:.1,questions:[3,20],upstream_delay_ms:delay},baseline,sustained,burst,peak_rss_mib:peakRssKiB/1024,peak_sampled_lag_ms:peakLagMs,peak_sampled_queue_depth:peakQueueDepth,health_poll_errors:healthPollErrors,database_bytes:(await fs.stat(path.join(directory,'bench.sqlite'))).size,health,summary:dashboard.summary,counts_complete:countsComplete,accounting_complete:accountingComplete,upstream_attempts:mockCount,throughput_passed:throughputPassed,complete,notes:['Local mock only; does not measure provider latency or paid API capacity.','Steady RPS excludes the stated warm-up and post-load drain; achieved_rps includes the drain. RSS and collection lag are sampled once per second.','Exact body/status and retained-count checks enabled.','Latency distributions are independent runs; subtracting percentiles does not produce a per-request overhead percentile.','The proxy, mock and generator share this host with unrelated processes. Phase host telemetry samples total CPU/load/memory pressure; it cannot attribute a failure to Observer or another workload by itself.','Runtime-reported free memory and Linux MemAvailable are recorded separately and may be equal; swap and runnable tasks are null on unsupported platforms. One-second host samples can miss short pressure spikes.']};
   const destination=path.resolve(String(args.output??'reports/benchmarks/latest.json'));await fs.mkdir(path.dirname(destination),{recursive:true});await fs.writeFile(destination,JSON.stringify(report,null,2)+'\n');
   console.log(`Saved ${destination}; complete=${complete}; peak RSS=${report.peak_rss_mib.toFixed(1)} MiB`);
   if(!complete)process.exitCode=1;

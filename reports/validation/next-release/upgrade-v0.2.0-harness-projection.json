@@ -1,0 +1,35 @@
+{
+  "checked_at": "2026-10-02T12:43:41.338933+00:00",
+  "scope": "Synthetic loopback upgrade; dummy database approval hash, no native credential-store persistence or provider calls",
+  "harness_sha256": "45f64285cd2d68646e305b9fe7de46f85b6cb8d80a373d52a98553a0e9d1f6b0",
+  "credential_limit": "Does not establish native keychain upgrade/downgrade compatibility. Re-register a provider key after downgrading if a saved credential was rotated in 0.2.0.",
+  "checks": {
+    "published_baseline_version": true,
+    "baseline_starts": true,
+    "baseline_history_created": true,
+    "baseline_export_excludes_credentials": true,
+    "baseline_clean_shutdown": true,
+    "baseline_history_encrypted": true,
+    "probe_seed-approval": true,
+    "probe_show": true,
+    "candidate_starts": true,
+    "upgrade_preserves_history_labels_and_exports": false,
+    "candidate_clean_shutdown": true
+  },
+  "passed": false,
+  "probe_sha256": "cb4c10ddbbd792febc029f80e6835b311e3c7756a3415a9015030a7f5e69719a",
+  "baseline": {
+    "version": "jev-observer 0.1.0",
+    "sha256": "ccda9320ea79dbf9398be762da09e70f3c10b14ef366ce5cee8b93a4321043c5"
+  },
+  "candidate": {
+    "version": "jev-observer 0.2.0",
+    "sha256": "f7ebfccc30edcf3f629da5891b27b794fbb43ec847144ab9b9c48de4b78202d7"
+  },
+  "failure": {
+    "phase": "candidate",
+    "type": "AssertionError",
+    "check": "upgrade_preserves_history_labels_and_exports"
+  },
+  "interpretation": "Initial harness compared raw export bytes; 0.2.0 adds a derived failed field. This is a harness mismatch, not evidence of lost stored data. The updated harness validates that projection and compares all persisted fields."
+}

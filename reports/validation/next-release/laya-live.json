@@ -1,0 +1,266 @@
+{
+  "checked_at": "2026-10-02T12:43:45.267326+00:00",
+  "scope": "Real local model inference through Observer; synthetic inputs",
+  "provider": "laya",
+  "requested_model": "english",
+  "upstream": "http://127.0.0.1:19883/v1/systemone",
+  "binary_sha256": "f7ebfccc30edcf3f629da5891b27b794fbb43ec847144ab9b9c48de4b78202d7",
+  "checks": {
+    "live_response_0_success": true,
+    "live_response_1_success": true,
+    "live_response_2_success": true,
+    "invalid_local_access_rejected": true,
+    "all_requests_and_answers_recorded": true,
+    "definition_versions_separate": true,
+    "provider_attribution": true,
+    "all_primitives_valid": true,
+    "input_not_retained": true,
+    "no_invented_local_cost": true,
+    "no_capture_gaps": true,
+    "local_access_token_absent_from_history": true,
+    "exact_input_tokens": true,
+    "exact_output_tokens": true,
+    "clean_shutdown": true,
+    "encrypted_history": true
+  },
+  "responses": [
+    {
+      "status": 200,
+      "duration_ms": 113504.57,
+      "model": "laya-rl-agent",
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "billing",
+          "probabilities": {
+            "billing": 0.9686,
+            "technical": 0.0182,
+            "sales": 0.0132
+          },
+          "confidence": 0.8537,
+          "answer_confidence": 0.9686,
+          "action": {
+            "act_probability": 1.0
+          }
+        },
+        "urgency": {
+          "type": "noul",
+          "noul": 0.7975,
+          "confidence": 0.7975,
+          "answer_confidence": 0.7975,
+          "action": {
+            "act_probability": 1.0
+          }
+        },
+        "frustration": {
+          "type": "score",
+          "score": 1.3075,
+          "legend": {
+            "0": "Calm",
+            "1": "Frustrated",
+            "2": "Very angry"
+          },
+          "probabilities": {
+            "0": 0.0115,
+            "1": 0.6694,
+            "2": 0.3191
+          },
+          "confidence": 0.3768,
+          "answer_confidence": 0.6694,
+          "action": {
+            "act_probability": 1.0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 145,
+        "output_tokens": 0,
+        "state_tokens": 17,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "status": 200,
+      "duration_ms": 16749.83,
+      "model": "laya-rl-agent",
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "billing",
+          "probabilities": {
+            "billing": 0.9686,
+            "technical": 0.0182,
+            "sales": 0.0132
+          },
+          "confidence": 0.8537,
+          "answer_confidence": 0.9686,
+          "action": {
+            "act_probability": 1.0
+          }
+        },
+        "urgency": {
+          "type": "noul",
+          "noul": 0.7975,
+          "confidence": 0.7975,
+          "answer_confidence": 0.7975,
+          "action": {
+            "act_probability": 1.0
+          }
+        },
+        "frustration": {
+          "type": "score",
+          "score": 1.3075,
+          "legend": {
+            "0": "Calm",
+            "1": "Frustrated",
+            "2": "Very angry"
+          },
+          "probabilities": {
+            "0": 0.0115,
+            "1": 0.6694,
+            "2": 0.3191
+          },
+          "confidence": 0.3768,
+          "answer_confidence": 0.6694,
+          "action": {
+            "act_probability": 1.0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 145,
+        "output_tokens": 0,
+        "state_tokens": 17,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    },
+    {
+      "status": 200,
+      "duration_ms": 19302.03,
+      "model": "laya-rl-agent",
+      "answers": {
+        "department": {
+          "type": "choice",
+          "choice": "billing",
+          "probabilities": {
+            "billing": 0.9432,
+            "technical": 0.0312,
+            "sales": 0.0255
+          },
+          "confidence": 0.766,
+          "answer_confidence": 0.9432,
+          "action": {
+            "act_probability": 1.0
+          }
+        },
+        "urgency": {
+          "type": "noul",
+          "noul": 0.7975,
+          "confidence": 0.7975,
+          "answer_confidence": 0.7975,
+          "action": {
+            "act_probability": 1.0
+          }
+        },
+        "frustration": {
+          "type": "score",
+          "score": 1.3075,
+          "legend": {
+            "0": "Calm",
+            "1": "Frustrated",
+            "2": "Very angry"
+          },
+          "probabilities": {
+            "0": 0.0115,
+            "1": 0.6694,
+            "2": 0.3191
+          },
+          "confidence": 0.3768,
+          "answer_confidence": 0.6694,
+          "action": {
+            "act_probability": 1.0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 151,
+        "output_tokens": 0,
+        "state_tokens": 17,
+        "state_tokens_dropped": 0,
+        "truncated": false,
+        "truncated_questions": []
+      }
+    }
+  ],
+  "passed": true,
+  "summary": {
+    "request_count": 3,
+    "answer_count": 9,
+    "error_count": 0,
+    "input_tokens": 441,
+    "output_tokens": 0,
+    "cost_usd": null,
+    "cost_known_requests": 0,
+    "sample_count": 0,
+    "incomplete_count": 0,
+    "action_count": 0,
+    "p50_ms": 19278.277517,
+    "p95_ms": 113477.123541
+  },
+  "health": {
+    "process_id": "7a6e0608-248b-42c7-bdf0-65101c0d7f6e",
+    "sample_sequence": 4,
+    "forwarded": 3,
+    "captured": 3,
+    "persisted": 3,
+    "dropped": 0,
+    "truncated": 0,
+    "write_failures": 0,
+    "maintenance_failures": 0,
+    "maintenance_healthy": true,
+    "last_maintenance_at": 1790945175296,
+    "queue_depth": 0,
+    "queued_bytes": 0,
+    "last_persisted_at": 1790945175296,
+    "last_gap_at": null,
+    "lag_ms": 0,
+    "last_batch_lag_ms": 43,
+    "active_captures": 0,
+    "capture_limit": 262144,
+    "capture_slots": 1024,
+    "scope": "current process",
+    "stopping": false,
+    "last_error": null
+  },
+  "warnings": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "invalid_answers": [],
+  "model_runtime": {
+    "repository": "convaiinnovations/laya",
+    "revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "laya_version": "0.3.23",
+    "device": "cpu",
+    "source_review_commit": "4aa6761be8173de4ce6d92c31b3e40b6eaf59a7c",
+    "serve_sha256": "1044d8da7f6d7b08379e5e147147510594b62f9f7624b55589b27fdabc3234ce",
+    "agent_sha256": "d98c299e945fe9404b223934db75e5070a84e65b3203e8aaca0c0699fa512646",
+    "source_review_note": "Installed PyPI0.3.23 differs from the later reviewed Git commit; four-decimal answer rounding and32-level HTTP bound were also verified in the installed package."
+  },
+  "limitations": [
+    "Functional smoke only, not model accuracy, calibration, or throughput evidence",
+    "One English checkpoint on CPU; cold inference and concurrent compilation affect timings",
+    "Batch endpoint and extended numeric Choice labels are outside native typed capture"
+  ]
+}

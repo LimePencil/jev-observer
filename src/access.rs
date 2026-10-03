@@ -134,7 +134,6 @@ impl Access {
         Self::new(format!("{PREFIX}{}", "a".repeat(64))).unwrap()
     }
 
-    #[cfg(test)]
     pub fn token(&self) -> &str {
         &self.token
     }

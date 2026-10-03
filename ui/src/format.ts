@@ -13,3 +13,22 @@ export const dateTime = (value: number | null | undefined) => value == null ? 'U
 export const bytes = (value: number) => value >= 1024 * 1024 ? `${(value / (1024 * 1024)).toFixed(1)} MiB` : value >= 1024 ? `${Math.round(value / 1024)} KiB` : `${value} B`;
 export const shortId = (id: string | null | undefined) => id ? id.replace(/^(?:presentation|group|def|candidate|family)_v\d+_/, '').slice(0, 10) : 'Unknown';
 export const answerValue = (value: unknown, kind: string) => value == null ? 'Unknown' : kind === 'noul' && typeof value === 'number' ? percent(value) : typeof value === 'number' ? String(Number(value.toFixed(3))) : String(value);
+
+export const costBasis = (value: string | null | undefined) => value === 'provider_reported' ? 'Provider-reported charge' : value === 'configured_estimate' || value === 'configured_rates' || value === 'configured-estimate' || value === 'estimated' ? 'Configured estimate' : value === 'synthetic' ? 'Synthetic sample' : value || 'Unknown';
+export const dateInput = (value: string | undefined) => {
+  if (!value || !Number.isFinite(Number(value))) return '';
+  const date = new Date(Number(value));
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+};
+export const dateFilter = (value: string) => value && Number.isFinite(new Date(value).getTime()) ? String(new Date(value).getTime()) : '';
+export const chartTime = (value: number, showDate: boolean) => new Date(value).toLocaleString([], { ...(showDate ? { month: 'short', day: 'numeric' } as const : {}), hour: '2-digit', minute: '2-digit', hour12: false });
+
+export const storageHint = (category: string) => ({
+  database_busy: 'The database was busy. Check whether another Observer process is using this history.',
+  storage_full: 'Storage was full. Free disk space on the volume holding your history.',
+  permission_denied: 'Storage access was denied. Check permissions for the database directory.',
+  database_unreadable: 'History could not be read. Check the saved database key and restore a verified backup if needed.',
+  storage_io: 'A storage read or write failed. Check the disk and database directory.',
+  database_error: 'A database operation failed. Check the Observer terminal for details.',
+}[category] ?? 'Check the Observer terminal for storage details.');

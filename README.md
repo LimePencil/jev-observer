@@ -4,7 +4,7 @@ See what Jev chose, and what changed when you edited a question.
 
 [Website & product tour](https://jev-observer-web.vercel.app/) · [Installation](docs/installation.md) · [Documentation](#documentation-and-project-history)
 
-Jev Observer is a local proxy and dashboard for TypeSafe's Jev API. It groups recurring questions, keeps their definition versions separate, and shows requests, answers, failures, latency, token usage and estimated cost in one local history.
+Jev Observer is a local proxy and dashboard for Jev and compatible System One models, including local Laya servers. It groups recurring questions, keeps their definition versions separate, and shows requests, answers, failures, latency, token usage and reported or estimated cost in one local history.
 
 Built with Rust, SQLite and React, it runs as one executable with the dashboard and fonts included. It is [MIT-licensed](LICENSE), requires no Observer account or subscription, and sends no analytics or automatic event uploads. Live inference goes to your configured provider and remains subject to its charges. This is an independent project; the name is provisional.
 
@@ -25,14 +25,16 @@ Inspect individual answers, their reported probabilities and request-level usage
 
 - Inspect Choice, Score and Noul answers, probabilities and question definitions.
 - Track recurring question groups and compare their saved definition versions.
-- Filter by source, model, time or search, and label outcomes correct, incorrect or unknown.
-- Review request-level usage and estimated cost without counting one request again for each answer.
+- Browse paginated history, search question groups, share date/source/model filters, and label outcomes correct, incorrect or unknown.
+- Review request-level usage, OpenRouter-reported USD cost and configured estimates without counting one request again for each answer.
 - Import Observer JSONL or supported JevRouter receipts, and export filtered history as JSONL or CSV.
 - Explore 720 synthetic requests in an offline demo with no provider credentials.
 
 ## Release and platform status
 
-**[Download 0.1.0](https://github.com/LimePencil/jev-observer/releases/tag/v0.1.0)** for Linux, macOS or Windows. Each release includes six native packages and `SHA256SUMS`.
+**0.2.0 adds local-model support**, improved history navigation and the [release fixes](docs/releases/0.2.0.md).
+
+**[Download 0.2.0](https://github.com/LimePencil/jev-observer/releases/tag/v0.2.0)** for Linux, macOS or Windows. Each release includes six native packages and `SHA256SUMS`.
 
 | Platform | Architectures | Package |
 |---|---|---|
@@ -50,7 +52,7 @@ Linux / macOS:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
-sh install.sh --version 0.1.0
+sh install.sh --version 0.2.0
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
 ```
@@ -59,7 +61,7 @@ Windows PowerShell:
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version 0.1.0
+.\install.ps1 -Version 0.2.0
 & "$env:LOCALAPPDATA\JevObserver\bin\jev-observer.exe" --demo
 ```
 
@@ -156,7 +158,18 @@ const client = new TypeSafeClient({
 
 Observer validates the local client token and substitutes the registered provider key before forwarding. These examples need no additional dashboard-access header. Direct provider-key configurations require `x-observer-access`; see the [connection guide](docs/connection.md) for that setup, credential handling, upstream settings and optional metadata headers.
 
-Both SDKs passed [local mock compatibility checks](docs/compatibility.md). Real-provider compatibility remains to be verified. Identity encoding allows typed-answer capture; compressed bodies pass through but their saved captures are marked incomplete.
+Both SDKs passed [local mock compatibility checks](docs/compatibility.md#sdk-mock-compatibility). Separate real-inference checks cover [OpenRouter](docs/compatibility.md#live-openrouter-check) and [local Laya](docs/compatibility.md#live-laya-check). The 0.2.0 validator preserves structurally valid Scores and flags cross-field discrepancies as warnings. Identity encoding allows typed-answer capture; compressed bodies pass through but their saved captures are marked incomplete.
+
+### Local Laya (0.2.0)
+
+With Laya already serving on loopback and your saved database key set:
+
+```sh
+jev-observer --upstream http://127.0.0.1:8000/v1/systemone \
+  --upstream-auth none --provider laya
+```
+
+Use the workspace access token as the SDK key and `english` as the request model. Observer authenticates the application locally and sends no authorization to Laya. See [local-model setup](docs/connection.md#laya-and-other-local-system-one-models) for installation, key-protected servers and compatibility limits.
 
 ## Inspect, import and export
 
@@ -164,7 +177,7 @@ Open a request to inspect its answers and add a review label. Open a question gr
 
 Import up to 10,000 records and 8 MiB of Observer JSONL or supported JevRouter receipts. Export the current filtered history as JSONL or CSV, or delete history from Settings with explicit confirmation. Imported application actions retain their provenance and do not create extra inference charges.
 
-Unknown usage, cost, confidence and outcomes remain unknown. For cost estimates, supply both `--input-price-per-million` and `--output-price-per-million` in USD. These are user-configured estimates, not invoices or an automatically maintained price list.
+Unknown usage, cost, confidence and outcomes remain unknown. OpenRouter-reported USD cost takes precedence and retains its basis. For cost estimates, supply both `--input-price-per-million` and `--output-price-per-million` in USD. These are user-configured estimates, not invoices or an automatically maintained price list.
 
 ## Storage and operating limits
 
@@ -189,9 +202,9 @@ npm test --prefix ui
 
 For frontend development, run the backend on port 8765 and `npm run dev --prefix ui`. See the [UI development notes](ui/README.md).
 
-The [verification workflow](.github/workflows/ci.yml) builds the executable, runs Rust and browser checks, and exercises both pinned SDKs against a loopback mock. Browser checks use synthetic API fixtures. The [release workflow](.github/workflows/release.yml) requires all six native targets to pass Rust, browser, SDK and packaged live/demo checks before publishing; Windows also runs PowerShell installation and upgrade tests.
+The [verification workflow](.github/workflows/ci.yml) builds the executable, runs Rust and browser checks, and exercises both pinned SDKs against a loopback mock. Browser checks include synthetic API fixtures and a separate journey against the executable and its real authentication, captures, labels, exports and restart. The [release workflow](.github/workflows/release.yml) requires all six native targets to pass Rust, browser, SDK and packaged live/demo checks before publishing; Windows also runs PowerShell installation and upgrade tests.
 
-Native forwarding currently covers `POST /v1/systemone`. Offline threshold previews, matched-dataset replay and universal provider routing are outside the implemented scope. [Performance measurements](docs/performance.md) and the [stress harness](docs/stress.md) document reproducible local tests; historical load results predate encrypted live history and are not current capacity claims.
+Native forwarding currently covers `POST /v1/systemone`. Offline threshold previews, matched-dataset replay and universal provider routing are outside the implemented scope. [Performance measurements](docs/performance.md) and the [stress harness](docs/stress.md) include 0.2.0 encrypted-history checks, retained-history query comparisons and overload recovery. Their recorded workloads and shared-host timings do not establish a general capacity limit.
 
 ## Documentation and project history
 

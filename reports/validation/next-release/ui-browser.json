@@ -1,0 +1,64 @@
+{
+  "command": "OBSERVER_UI_PREVIEW=1 npm test --prefix ui -- --timeout=90000",
+  "result": "passed",
+  "passed": 42,
+  "failed": 0,
+  "elapsed_reported": "7.0m",
+  "scope": "Production-bundle browser, accessibility, health, formatting, bookmark and SDK example tests. A subsequent one-line short-range timeline correction is verified separately in next-release-chart.log.",
+  "final_chart_checks": {
+    "passed": 2,
+    "failed": 0,
+    "unique_ui_tests_total": 43,
+    "command": "OBSERVER_UI_PREVIEW=1 npm test --prefix ui -- --timeout=90000 --grep \"timeline spacing|partial timeline bucket\""
+  },
+  "final_assets": [
+    "index-p_41OYsh.js",
+    "Details-DwMXzGuI.js"
+  ],
+  "build_and_typecheck": "passed",
+  "real_backend_checks": {
+    "passed": 2,
+    "failed": 0,
+    "binary_sha256": "527654941a5c62b242963178bd9781f21612639f96250b4095e4d8f572d72053",
+    "runs": [
+      "demo history, pagination, reviews, imports, JSONL/CSV exports",
+      "live encrypted workspace, UI key registration, synthetic capture, review/export, process restart"
+    ],
+    "note": "The first live harness run had an ambiguous selector; after narrowing it, the live journey passed. Demo journey passed separately."
+  },
+  "local_timeout_checks": {
+    "passed": 3,
+    "failed": 0,
+    "scope": "No-key local and bearer-protected Laya timeout units; hosted defaults unchanged",
+    "unique_ui_tests_total": 44
+  },
+  "timezone_checks": {
+    "passed": 2,
+    "failed": 0,
+    "elapsed_reported": "8.0s",
+    "command": "OBSERVER_UI_PREVIEW=1 npm test --prefix ui -- --timeout=90000 --grep 'timeline spacing'",
+    "typecheck_command": "cd ui && npx tsc -b",
+    "typecheck_result": "passed",
+    "scope": "Explicit UTC and America/Los_Angeles browser contexts verify timestamp spacing, local chart end dates and local dates in accessible chart rows against the production bundle.",
+    "unique_ui_tests_total": 45,
+    "note": "This adds one timezone case to the previously covered 44 distinct tests. The earlier full-suite run remains 42 passed; later focused runs are recorded separately."
+  },
+  "prior_native_ci": {
+    "run_url": "https://github.com/LimePencil/jev-observer/actions/runs/37011898877",
+    "head_sha": "0b771e1b40a222169363dd2d937af614688957e3",
+    "result": "failed",
+    "successful_targets": [
+      "aarch64-unknown-linux-musl",
+      "x86_64-unknown-linux-musl",
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-pc-windows-msvc"
+    ],
+    "failed_target": "aarch64-pc-windows-msvc",
+    "failed_step": "Run browser interaction and accessibility checks",
+    "browser_passed": 42,
+    "browser_failed": 1,
+    "cause": "The timeline test assumed a UTC calendar date but the Windows ARM64 browser used a local timezone: expected Oct 3, received Oct 2, 17:00. Product local-time formatting was correct.",
+    "resolution": "Replaced the timezone-dependent assertion with explicit UTC and America/Los_Angeles cases; both pass locally. A new native run is required to validate the final source."
+  }
+}

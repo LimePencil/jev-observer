@@ -1,8 +1,8 @@
 {
   "generator": "cargo-about 0.9.2 and scripts/generate-license-notices.py",
   "inputs": {
-    "Cargo.lock": "bafceb17e5dbd142439a0092f0a47974c6f5e964e1d50ecb43603f7ab54ba17e",
-    "ui/package-lock.json": "ff68d34fd8be043319ca1115241557908b9542327f96e1f4e187a4e57d9b406f",
+    "Cargo.lock": "d8fd895fd49c6d8ad9c8045c5e8fe9e8048dfd3b540e5c39ba1ac9400c2b42e9",
+    "ui/package-lock.json": "af60fc00aa5a1eddf6866e5a7d7ef02c4b44d8d67cbc11a42d7da71014422fb8",
     "about.toml": "17417c2133d625da246e8d1f8fa07ae98308faf2064a2c9d0b59186441158f3b",
     "licenses/npm-supplemental.json": "68d7c7f848ae872d263dc85c3705ebc20698a09abe5a97a5e6b5e5844748a25b"
   },

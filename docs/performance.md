@@ -1,5 +1,53 @@
 # Local performance measurements
 
+## Encrypted 0.2.0 measurements
+
+Measured October 2, 2026 on a shared Linux ARM64 host with two Neoverse-N1 logical CPUs and 11.6 GiB RAM. The proxy, loopback mock and load generator shared the host with unrelated processes. Live history used SQLCipher with a temporary key; the harness checked that the database had no plaintext SQLite header. No provider inference or real credential was used.
+
+The [optimized mixed-payload run](../reports/benchmarks/v0.2.0-encrypted-optimized.json) passed every accounting and timing check: all **8,000 requests and 37,600 answers** were retained, with zero client errors, dropped/incomplete captures or write failures. Usage was counted once per request. The measured executable has SHA-256 `1cdbb0e6fec54aa6e8c78df0b767977ec86bec42ce41111c4c5cad5d82f4301f`; it contains the optimized overview queries and final provider-connection UI. Subsequent startup schema-guard validation uses a separately rebuilt executable. These are measurements of this query and capture implementation, not every native release package.
+
+| Phase with a 25 ms mock upstream | Steady requests/sec | Requests / answers retained | Client p95 / p99 | Search query p95 |
+|---|---:|---:|---:|---:|
+| 100/sec for 60 seconds | 100 | 6,000 / 28,200 | 32.36 / 61.89 ms | 193 ms |
+| 200/sec for 10 seconds | 200 | 2,000 / 9,400 | 29.56 / 47.78 ms | 191 ms |
+
+Peak sampled proxy RSS was 65.7 MiB, queue depth 12 and pending-record age 83 ms. Generator scheduling-lateness p99 was 33.23 ms during sustained load and 9.53 ms during the burst, below the unchanged 100 ms harness bound. Sampled whole-host CPU busy had medians of approximately 80% and 81%. Those samples include unrelated work and do not isolate Observer's CPU use.
+
+The [earlier run](../reports/benchmarks/v0.2.0-encrypted.json), on executable `e81762daa75859bc7d36d3c332e8a1c2d2740f8c26f1b1f358a36bf21cf24c7a`, retained the same 8,000 requests correctly but **failed its overall timing gate**: burst generator lateness p99 was 170.44 ms against the 100 ms bound. Search query p95 was 2,711 ms during sustained load and 2,968 ms during the burst. Whole-host CPU busy medians were approximately 89% and 99%. The failed report remains unchanged; successful accounting does not turn it into a passing load result.
+
+Inspection found comparison statistics being recomputed for every displayed group on every overview poll, although the overview did not display them. The optimized version computes those statistics when opening group details or comparing versions, reuses the current group's summary, and combines review/warning aggregation. This removes repeated full-history joins and saved-answer JSON reads from ordinary overview polling. The runs used the same workload on separate temporary databases; shared-host variation means their differences are not an isolated speedup estimate.
+
+### Quiet encrypted history queries and retention
+
+The [before](../reports/benchmarks/v0.2.0-history.json) and [after](../reports/benchmarks/v0.2.0-history-optimized.json) checks each expanded one synthetic loopback capture into **100,000 requests, 300,000 answers and three repeated definitions** in a roughly 508 MB encrypted database. This measures a quiet database with no concurrent inference, not a quiet or dedicated host. Each filter received a warm-up followed by five timed queries.
+
+| Filter | Before median | Optimized median | Matching requests |
+|---|---:|---:|---:|
+| All history | 13,884.6 ms | 984.9 ms | 100,000 |
+| Search `urgency` | 17,659.3 ms | 1,872.9 ms | 100,000 |
+| Source | 16,670.6 ms | 1,278.7 ms | 100,000 |
+| Failures only | 1,054.3 ms | 1,929.2 ms | 0 |
+
+Both reports passed all 26 checks: exact request/answer/group counts, disjoint request pages, inclusive date filtering, group search and timeline coverage. Startup retention removed an expired tenth of the records, leaving 90,000; a subsequent 1,000-record cap retained exactly 1,000. Only the initial loopback request was forwarded. The empty failures filter became slower in the second run and is not evidence of populated failure-history performance. Five samples establish neither a p95 nor a universal one-second refresh guarantee. Higher definition cardinality, large families, larger histories and dedicated-host capacity remain unmeasured here.
+
+Reproduce with an optimized build and new output files:
+
+```bash
+node scripts/benchmark.mjs --binary=target/release/jev-observer \
+  --rate=100 --seconds=60 --baseline-seconds=5 --upstream-ms=25 \
+  --dashboard-search=urgency --output=reports/benchmarks/encrypted-local.json
+cargo build --release --locked --example upgrade_probe
+python3 scripts/check-history-capacity.py --binary target/release/jev-observer \
+  --probe target/release/examples/upgrade_probe --records 100000 \
+  --output reports/benchmarks/history-local.json
+```
+
+The mixed workload uses the 90% small / 10% large request mix described below. Both harnesses remove their temporary encrypted databases after completion. To retain a benchmark database with `--keep-db`, provide your own `JEV_OBSERVER_DB_KEY` so it can be reopened; the report never stores that key. Separate encrypted capture-slot exhaustion, writer-lock and burst recovery results are in [stress testing](stress.md), including the preserved failure caused by a direct-control header mistake in the stress harness and its corrected rerun.
+
+## Historical measurements before encrypted history
+
+All sections below preserve the September measurements and their original executable hashes. They predate encrypted live history and are not current 0.2.0 capacity evidence.
+
 Measured September 22, 2026 on an Intel N100 (4 logical CPUs), 7.0 GiB RAM, Linux x64 and an NVMe filesystem. The proxy, Node.js mock/load generator and browser shared the machine. These are local measurements, not provider capacity or an SLA. No paid inference or real credential was used.
 
 **Both baseline load checks passed:** no client errors, dropped/incomplete captures or database write failures; every expected request and answer was retained, and token accounting remained once per request. These checks cover commit `c202350`, release binary SHA-256 `15433574df562d6b87b995008b04c3e0496326d5631efb543afb98559c8a65f7`. That executable, including the dashboard, is 10,040,720 bytes (9.6 MiB). The subsequent query optimization and stress checks are documented below, with their own executable hashes.

@@ -1,0 +1,42 @@
+{
+  "checked_at": "2026-10-02T14:04:10.484946+00:00",
+  "scope": "Native GNU/Linux executable smoke using package-release.py smoke_test; static musl archives are validated separately by native CI.",
+  "binary_sha256": "363d87275d67802772404f0c239b66bcb00831a93ab82942d31da8df03b37a5f",
+  "package_harness_sha256": "ccccf468dc77fc685d2c9ff23d91021a4c60a0a7db6f7d094fae04c98d07e5f2",
+  "smoke_function_sha256": "bf1bd14abe6933814c650043c4b9370b3afb23b48866882dc0d6adad5963269b",
+  "version": "0.2.0",
+  "platform": "Linux-6.17.0-1019-oracle-aarch64-with-glibc2.39",
+  "embedded_files_checked_per_mode": 23,
+  "asset_files": [
+    "Details-DwMXzGuI.js",
+    "geist-cyrillic-ext-wght-normal-DjL33-gN.woff2",
+    "geist-cyrillic-wght-normal-BEAKL7Jp.woff2",
+    "geist-latin-ext-wght-normal-DC-KSUi6.woff2",
+    "geist-latin-wght-normal-BgDaEnEv.woff2",
+    "geist-mono-cyrillic-ext-wght-normal-X_5orZeX.woff2",
+    "geist-mono-cyrillic-wght-normal-DiZS0aHC.woff2",
+    "geist-mono-latin-ext-wght-normal-Bwz-egvJ.woff2",
+    "geist-mono-latin-wght-normal-XN7g48iV.woff2",
+    "geist-mono-symbols2-wght-normal-CO5SzqOn.woff2",
+    "geist-mono-vietnamese-wght-normal-DadHysG0.woff2",
+    "geist-vietnamese-wght-normal-6IgcOCM7.woff2",
+    "index-k8jDoUUp.css",
+    "index-p_41OYsh.js"
+  ],
+  "checks": [
+    {
+      "mode": "live",
+      "passed": true,
+      "request_count": 0,
+      "version_health_embedded_files_and_clean_shutdown": true
+    },
+    {
+      "mode": "demo",
+      "passed": true,
+      "request_count": 720,
+      "version_health_embedded_files_and_clean_shutdown": true
+    }
+  ],
+  "passed": true,
+  "finished_at": "2026-10-02T14:04:11.627291+00:00"
+}

@@ -27,7 +27,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     access::Access,
     collector::Collector,
-    config::Config,
+    config::{Config, UpstreamAuth},
     credentials::{Credentials, LOCAL_TOKEN_PREFIX, validate_key},
     model::{self, Capture},
     store::{Filter, Store},
@@ -544,6 +544,7 @@ impl Drop for CaptureGuard {
             transport_error: state.capture.transport_error.take(),
             secret: state.capture.secret.take(),
             local_token: state.capture.local_token.take(),
+            access_token: state.capture.access_token.take(),
         };
         drop(state);
         self.collector.submit(capture, permit);
@@ -572,100 +573,138 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
                 .and_then(|value| value.to_str().ok()),
         )
     });
-    let (authorization, local_token) = match headers
-        .get(header::AUTHORIZATION)
-        .filter(|_| !basic_fallback)
-    {
-        Some(value) => {
-            let local_token = value
-                .to_str()
-                .ok()
-                .and_then(|text| text.split_once(' '))
-                .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
-                .map(|(_, token)| token.trim());
-            if let Some(token) = local_token.filter(|token| token.starts_with(LOCAL_TOKEN_PREFIX)) {
-                let Some(key) = state.credentials.provider_for_token(token) else {
-                    return error(StatusCode::UNAUTHORIZED, "Local client token is invalid");
-                };
-                match HeaderValue::from_str(&format!("Bearer {key}")) {
-                    Ok(value) => (value, Some(token.to_owned())),
-                    Err(_) => {
+    let (authorization, local_token) = if state.config.upstream_auth == UpstreamAuth::None {
+        let bearer = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split_once(' '))
+            .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+            .map(|(_, token)| token.trim());
+        if state.access.as_ref().is_some_and(|access| {
+            !basic_fallback
+                && !access.allows_token(bearer)
+                && !access.allows_token(
+                    headers
+                        .get("x-observer-access")
+                        .and_then(|value| value.to_str().ok()),
+                )
+        }) {
+            return error(
+                StatusCode::UNAUTHORIZED,
+                "Observer access token required for a local model",
+            );
+        }
+        if !headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
+        {
+            return error(
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Local model requests require application/json",
+            );
+        }
+        (None, None)
+    } else {
+        match headers
+            .get(header::AUTHORIZATION)
+            .filter(|_| !basic_fallback)
+        {
+            Some(value) => {
+                let local_token = value
+                    .to_str()
+                    .ok()
+                    .and_then(|text| text.split_once(' '))
+                    .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+                    .map(|(_, token)| token.trim());
+                if let Some(token) =
+                    local_token.filter(|token| token.starts_with(LOCAL_TOKEN_PREFIX))
+                {
+                    let Some(key) = state.credentials.provider_for_token(token) else {
+                        return error(StatusCode::UNAUTHORIZED, "Local client token is invalid");
+                    };
+                    match HeaderValue::from_str(&format!("Bearer {key}")) {
+                        Ok(value) => (Some(value), Some(token.to_owned())),
+                        Err(_) => {
+                            return error(
+                                StatusCode::SERVICE_UNAVAILABLE,
+                                "Saved provider key is invalid",
+                            );
+                        }
+                    }
+                } else {
+                    if state.access.as_ref().is_some_and(|access| {
+                        !access.allows_token(
+                            headers
+                                .get("x-observer-access")
+                                .and_then(|value| value.to_str().ok()),
+                        )
+                    }) {
                         return error(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "Saved provider key is invalid",
+                            StatusCode::UNAUTHORIZED,
+                            "Local access token required with a provider key",
                         );
                     }
+                    (Some(value.clone()), None)
                 }
-            } else {
+            }
+            None => {
                 if state.access.as_ref().is_some_and(|access| {
-                    !access.allows_token(
-                        headers
-                            .get("x-observer-access")
-                            .and_then(|value| value.to_str().ok()),
-                    )
+                    !basic_fallback
+                        && !access.allows_token(
+                            headers
+                                .get("x-observer-access")
+                                .and_then(|value| value.to_str().ok()),
+                        )
                 }) {
                     return error(
                         StatusCode::UNAUTHORIZED,
-                        "Local access token required with a provider key",
+                        "Local access token required for fallback credentials",
                     );
                 }
-                (value.clone(), None)
+                let Some(value) = state
+                    .config
+                    .api_key
+                    .as_ref()
+                    .and_then(|key| HeaderValue::from_str(&format!("Bearer {key}")).ok())
+                else {
+                    return error(
+                        StatusCode::UNAUTHORIZED,
+                        "Provide a Bearer credential or set TYPESAFE_API_KEY",
+                    );
+                };
+                // Browser forms and no-CORS fetches can send a simple POST to
+                // loopback without setting Authorization. Do not let one spend
+                // the Observer process's fallback provider credential.
+                if !headers
+                    .get(header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.split(';').next())
+                    .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
+                {
+                    return error(
+                        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                        "Fallback credentials require application/json",
+                    );
+                }
+                (Some(value), None)
             }
-        }
-        None => {
-            if state.access.as_ref().is_some_and(|access| {
-                !basic_fallback
-                    && !access.allows_token(
-                        headers
-                            .get("x-observer-access")
-                            .and_then(|value| value.to_str().ok()),
-                    )
-            }) {
-                return error(
-                    StatusCode::UNAUTHORIZED,
-                    "Local access token required for fallback credentials",
-                );
-            }
-            let Some(value) = state
-                .config
-                .api_key
-                .as_ref()
-                .and_then(|key| HeaderValue::from_str(&format!("Bearer {key}")).ok())
-            else {
-                return error(
-                    StatusCode::UNAUTHORIZED,
-                    "Provide a Bearer credential or set TYPESAFE_API_KEY",
-                );
-            };
-            // Browser forms and no-CORS fetches can send a simple POST to
-            // loopback without setting Authorization. Do not let one spend
-            // the Observer process's fallback provider credential.
-            if !headers
-                .get(header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .and_then(|value| value.split(';').next())
-                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
-            {
-                return error(
-                    StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                    "Fallback credentials require application/json",
-                );
-            }
-            (value, None)
         }
     };
-    let Some(secret) = authorization
-        .to_str()
-        .ok()
+    let secret = authorization
+        .as_ref()
+        .or_else(|| headers.get(header::AUTHORIZATION))
+        .and_then(|authorization| authorization.to_str().ok())
         .and_then(|s| s.split_once(' '))
         .filter(|(scheme, token)| scheme.eq_ignore_ascii_case("bearer") && !token.trim().is_empty())
-        .map(|(_, token)| token.trim().to_owned())
-    else {
+        .map(|(_, token)| token.trim().to_owned());
+    if authorization.is_some() && secret.is_none() {
         return error(
             StatusCode::UNAUTHORIZED,
             "Authorization must contain a Bearer credential",
         );
-    };
+    }
     let guard = state.collector.reserve_capture().map(|permit| {
         let request_length = content_length(&headers);
         CaptureGuard {
@@ -683,8 +722,12 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
                     response: Vec::new(),
                     capture_complete: !encoded(&headers),
                     transport_error: None,
-                    secret: Some(secret),
+                    secret,
                     local_token,
+                    access_token: state
+                        .access
+                        .as_ref()
+                        .map(|access| access.token().to_owned()),
                 },
                 started: Instant::now(),
                 limit: state.config.capture_limit,
@@ -710,7 +753,10 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
     // Loopback cookies belong to local applications, not to the provider.
     headers.remove(header::COOKIE);
     headers.remove(header::HOST);
-    headers.insert(header::AUTHORIZATION, authorization);
+    headers.remove(header::AUTHORIZATION);
+    if let Some(authorization) = authorization {
+        headers.insert(header::AUTHORIZATION, authorization);
+    }
     let mut body_stream = body.into_data_stream();
     let request_stream = async_stream::stream! {
         while let Some(chunk) = body_stream.next().await {
@@ -862,12 +908,48 @@ fn invalid_filter(filter: &Filter) -> Option<&'static str> {
     {
         return Some("Status must be all or error");
     }
-    if [&filter.source, &filter.model, &filter.group, &filter.search]
-        .into_iter()
-        .flatten()
-        .any(|value| value.len() > 4096)
+    if [
+        &filter.source,
+        &filter.model,
+        &filter.group,
+        &filter.search,
+        &filter.group_search,
+        &filter.group_cursor,
+        &filter.request_cursor,
+    ]
+    .into_iter()
+    .flatten()
+    .any(|value| value.len() > 4096)
     {
         return Some("Filter values must not exceed 4096 bytes");
+    }
+    if filter
+        .from
+        .zip(filter.to)
+        .is_some_and(|(from, to)| from > to)
+    {
+        return Some("The start of a date range must not exceed its end");
+    }
+    if [filter.from, filter.to]
+        .into_iter()
+        .flatten()
+        .any(|time| !(-8_640_000_000_000_000..=8_640_000_000_000_000).contains(&time))
+    {
+        return Some("Date bounds must be valid epoch milliseconds");
+    }
+    if filter.request_cursor.as_deref().is_some_and(|cursor| {
+        !cursor.split_once(':').is_some_and(|(timestamp, seq)| {
+            timestamp.parse::<i64>().is_ok() && seq.parse::<i64>().is_ok_and(|seq| seq > 0)
+        })
+    }) {
+        return Some("Invalid request cursor");
+    }
+    if filter.group_cursor.as_deref().is_some_and(|cursor| {
+        !cursor
+            .split_once(':')
+            .is_some_and(|(timestamp, id)| timestamp.parse::<i64>().is_ok() && !id.is_empty())
+    }) {
+        return Some("Invalid group cursor");
     }
     None
 }
@@ -1194,6 +1276,12 @@ async fn set_credentials(
             "Provider keys cannot be set in demo mode",
         );
     }
+    if state.config.upstream_auth == UpstreamAuth::None {
+        return error(
+            StatusCode::CONFLICT,
+            "The local upstream is configured without provider credentials",
+        );
+    }
     if validate_key(&body.api_key).is_err() {
         return error(
             StatusCode::BAD_REQUEST,
@@ -1303,6 +1391,33 @@ mod tests {
             .unwrap()
     }
 
+    #[test]
+    fn filters_reject_invalid_dates_and_cursors_but_accept_timestamp_ties() {
+        for case in [
+            json!({"from":2,"to":1}),
+            json!({"from":8_640_000_000_000_001_i64}),
+            json!({"to":-8_640_000_000_000_001_i64}),
+            json!({"request_cursor":"invalid:3"}),
+            json!({"request_cursor":"123:0"}),
+            json!({"request_cursor":"123:2:extra"}),
+            json!({"group_cursor":"123:"}),
+            json!({"group_cursor":"invalid:group"}),
+            json!({"group_cursor":"group"}),
+        ] {
+            let filter: Filter = serde_json::from_value(case.clone()).unwrap();
+            assert!(invalid_filter(&filter).is_some(), "accepted {case}");
+        }
+        for case in [
+            json!({}),
+            json!({"from":123,"to":123,"request_cursor":"123:2"}),
+            json!({"from":123,"to":123,"group_cursor":"123:group-a"}),
+            json!({"from":-8_640_000_000_000_000_i64,"to":8_640_000_000_000_000_i64}),
+        ] {
+            let filter: Filter = serde_json::from_value(case.clone()).unwrap();
+            assert!(invalid_filter(&filter).is_none(), "rejected {case}");
+        }
+    }
+
     async fn saved(fixture: &Fixture) -> Value {
         for _ in 0..100 {
             let dashboard = fixture.state.store.dashboard(&Filter::default()).unwrap();
@@ -1315,6 +1430,60 @@ mod tests {
             "capture not persisted: {}",
             fixture.state.collector.health()
         );
+    }
+
+    #[tokio::test]
+    async fn local_model_auth_stays_local_and_does_not_need_a_provider_key() {
+        let access = Access::test();
+        let echoed = access.token().to_owned();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let received = calls.clone();
+        let (upstream, task) = mock(Router::new().route("/v1/systemone", post(move |headers: HeaderMap| {
+            let echoed = echoed.clone();
+            let received = received.clone();
+            async move {
+                received.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                assert!(!headers.contains_key(header::AUTHORIZATION));
+                assert!(!headers.contains_key("x-observer-access"));
+                assert!(!headers.contains_key("x-observer-source"));
+                Json(json!({"model":"laya-rl-agent","answers":{"q":{"type":"noul","noul":0.8}},"usage":{"input_tokens":8,"output_tokens":0},"echo":echoed}))
+            }
+        }))).await;
+        let mut fixture = fixture(&upstream, 4096, false);
+        Arc::make_mut(&mut fixture.state.config).upstream_auth = UpstreamAuth::None;
+        fixture.state.access = Some(access.clone());
+        let app = router(fixture.state.clone());
+        let body = r#"{"model":"english","state":"Synthetic","questions":{"q":{"type":"noul","instructions":"Is this synthetic?"}}}"#;
+        let rejected = app.clone().oneshot(native(body)).await.unwrap();
+        assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+        for token_as_bearer in [true, false] {
+            let mut request = native(body);
+            if token_as_bearer {
+                request.headers_mut().insert(
+                    header::AUTHORIZATION,
+                    HeaderValue::from_str(&format!("Bearer {}", access.token())).unwrap(),
+                );
+            } else {
+                request.headers_mut().insert(
+                    "x-observer-access",
+                    HeaderValue::from_str(access.token()).unwrap(),
+                );
+            }
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let value: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap())
+                    .unwrap();
+            assert_eq!(value["answers"]["q"]["noul"], 0.8);
+        }
+        let saved = saved(&fixture).await;
+        assert_eq!(saved["answers"][0]["valid"], true);
+        assert_eq!(saved["output_tokens"], 0);
+        assert!(!saved.to_string().contains(access.token()));
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 2);
+        fixture.state.collector.shutdown().await;
+        task.abort();
     }
 
     #[tokio::test]
@@ -1743,7 +1912,9 @@ mod tests {
                     "Bearer registered-provider-key"
                 );
                 assert!(request.headers().get("x-observer-client-token").is_none());
-                Json(json!({"answers": {}, "echo": "registered-provider-key"}))
+                assert!(request.headers().get("x-observer-access").is_none());
+                let body: Value = serde_json::from_slice(&to_bytes(request.into_body(), 4096).await.unwrap()).unwrap();
+                Json(json!({"answers": {}, "echo": body["echo"], "provider_echo": "registered-provider-key"}))
             }),
         ))
         .await;
@@ -1805,10 +1976,18 @@ mod tests {
                 .status(),
             StatusCode::UNAUTHORIZED
         );
-        let mut request = native(format!(r#"{{"questions":{{}},"echo":"{token}"}}"#));
+        let workspace_token = fixture.state.access.as_ref().unwrap().token().to_owned();
+        let mut request = native(
+            json!({"questions":{},"echo":["registered-provider-key",token,workspace_token]})
+                .to_string(),
+        );
         request.headers_mut().insert(
             header::AUTHORIZATION,
             HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+        );
+        request.headers_mut().insert(
+            "x-observer-access",
+            HeaderValue::from_str(&workspace_token).unwrap(),
         );
         let response = router(fixture.state.clone())
             .oneshot(request)
@@ -1817,9 +1996,19 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = to_bytes(response.into_body(), 4096).await.unwrap();
         assert!(String::from_utf8_lossy(&body).contains("registered-provider-key"));
-        let stored = saved(&fixture).await.to_string();
+        let record = saved(&fixture).await;
+        assert_eq!(
+            record["request_extra"]["echo"],
+            json!(["[REDACTED]", "[REDACTED]", "[REDACTED]"])
+        );
+        assert_eq!(
+            record["response_extra"]["echo"],
+            json!(["[REDACTED]", "[REDACTED]", "[REDACTED]"])
+        );
+        let stored = record.to_string();
         assert!(!stored.contains("registered-provider-key"));
         assert!(!stored.contains(token));
+        assert!(!stored.contains(&workspace_token));
 
         fixture.state.access = None;
 

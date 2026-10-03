@@ -1,0 +1,69 @@
+{
+  "checked_at": "2026-10-02T14:03:37.051991+00:00",
+  "scope": "Local mock only; no provider inference",
+  "binary_sha256": "363d87275d67802772404f0c239b66bcb00831a93ab82942d31da8df03b37a5f",
+  "platform": "Linux-6.17.0-1019-oracle-aarch64-with-glibc2.39",
+  "python": {
+    "sdk": "typesafe-sdk",
+    "version": "0.7.1",
+    "python": "3.12.13",
+    "attempts": 4,
+    "successes": 3,
+    "errors": 1,
+    "raw_bytes_preserved": true
+  },
+  "javascript": {
+    "sdk": "@typesafe-ai/sdk",
+    "version": "0.6.0",
+    "node": "v24.15.0",
+    "attempts": 4,
+    "successes": 3,
+    "errors": 1,
+    "raw_bytes_preserved": true,
+    "unknown_fields_preserved": true
+  },
+  "registered_python": {
+    "sdk": "typesafe-sdk",
+    "version": "0.7.1",
+    "python": "3.12.13",
+    "attempts": 4,
+    "successes": 3,
+    "errors": 1,
+    "raw_bytes_preserved": true
+  },
+  "registered_javascript": {
+    "sdk": "@typesafe-ai/sdk",
+    "version": "0.6.0",
+    "node": "v24.15.0",
+    "attempts": 4,
+    "successes": 3,
+    "errors": 1,
+    "raw_bytes_preserved": true,
+    "unknown_fields_preserved": true
+  },
+  "upstream_attempts": 16,
+  "summary": {
+    "request_count": 16,
+    "answer_count": 48,
+    "error_count": 4,
+    "input_tokens": 1200,
+    "output_tokens": 144,
+    "cost_usd": 0.0025440000000000003,
+    "cost_known_requests": 12,
+    "sample_count": 0,
+    "incomplete_count": 0,
+    "action_count": 0,
+    "p50_ms": 41.293105,
+    "p95_ms": 45.090642
+  },
+  "groups": 8,
+  "valid_answers": 36,
+  "request_extensions_preserved": true,
+  "response_bytes_preserved": true,
+  "accept_encoding_identity_forwarded": true,
+  "health_endpoints_share_sample_order": true,
+  "credentials_and_state_excluded": true,
+  "registered_token_excluded": true,
+  "capture_gaps": 0,
+  "passed": true
+}
