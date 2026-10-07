@@ -42,7 +42,7 @@ Rust, SQLite, React로 개발되었으며, 대시보드와 글꼴을 포함한 *
 
 ## 빠른 시작: 데모 실행
 
-[v0.2.0 다운로드](https://github.com/LimePencil/jev-observer/releases/tag/v0.2.0) 또는 아래 설치 스크립트를 이용하세요. 미리 빌드된 실행 파일은 Rust, Node.js, 데이터베이스 서버, 관리자 권한 없이 실행할 수 있습니다.
+[v0.2.1 다운로드](https://github.com/LimePencil/jev-observer/releases/tag/v0.2.1) 또는 아래 설치 스크립트를 이용하세요. 미리 빌드된 실행 파일은 Rust, Node.js, 데이터베이스 서버, 관리자 권한 없이 실행할 수 있습니다.
 
 | 플랫폼 | 아키텍처 | 압축 형식 |
 |---|---|---|
@@ -54,7 +54,7 @@ Rust, SQLite, React로 개발되었으며, 대시보드와 글꼴을 포함한 *
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
-sh install.sh --version 0.2.0
+sh install.sh --version 0.2.1
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
 ```
@@ -63,7 +63,7 @@ jev-observer --demo
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version 0.2.0
+.\install.ps1 -Version 0.2.1
 $env:PATH = "$env:LOCALAPPDATA\JevObserver\bin;$env:PATH"
 jev-observer --demo
 ```
@@ -77,7 +77,7 @@ jev-observer --demo
 
 Observer는 시작할 때 정확한 토큰 파일 경로를 출력합니다. 데모는 별도의 `*.demo.sqlite` 데이터베이스를 사용하며, 요청을 모델로 전달하지 않고 오프라인으로 동작합니다. **Ctrl-C**로 종료할 수 있습니다.
 
-macOS와 Windows 실행 파일은 서명되지 않았습니다. 운영체제의 실행 제한, 비공개 저장소 접근, 업그레이드, 삭제 방법은 [설치 안내](docs/installation.md)를 참고하세요. 릴리스에는 `SHA256SUMS`가 포함됩니다. 변경 사항은 [0.2.0 릴리스 노트](docs/releases/0.2.0.md)에 정리되어 있습니다.
+macOS와 Windows 실행 파일은 서명되지 않았습니다. 운영체제의 실행 제한, 비공개 저장소 접근, 업그레이드, 삭제 방법은 [설치 안내](docs/installation.md)를 참고하세요. 릴리스에는 `SHA256SUMS`가 포함됩니다. 변경 사항은 [0.2.1 릴리스 노트](docs/releases/0.2.1.md)에 정리되어 있습니다.
 
 ## 애플리케이션 연결
 

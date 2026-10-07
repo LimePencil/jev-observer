@@ -42,7 +42,7 @@ Observer currently forwards `POST /v1/systemone`. It does not host models, provi
 
 ## Quick start: try the demo
 
-[Download v0.2.0](https://github.com/LimePencil/jev-observer/releases/tag/v0.2.0), or use an installer below. Prebuilt releases need no Rust, Node.js, database server or administrator access.
+[Download v0.2.1](https://github.com/LimePencil/jev-observer/releases/tag/v0.2.1), or use an installer below. Prebuilt releases need no Rust, Node.js, database server or administrator access.
 
 | Platform | Architectures | Archive |
 |---|---|---|
@@ -54,7 +54,7 @@ Observer currently forwards `POST /v1/systemone`. It does not host models, provi
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
-sh install.sh --version 0.2.0
+sh install.sh --version 0.2.1
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
 ```
@@ -63,7 +63,7 @@ jev-observer --demo
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version 0.2.0
+.\install.ps1 -Version 0.2.1
 $env:PATH = "$env:LOCALAPPDATA\JevObserver\bin;$env:PATH"
 jev-observer --demo
 ```
@@ -77,7 +77,7 @@ Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** and sign in:
 
 Observer prints the exact token-file path at startup. Demo mode uses a separate `*.demo.sqlite` database, disables forwarding and works offline. Press **Ctrl-C** to stop it.
 
-macOS and Windows executables are unsigned. For OS restrictions, private repository access, upgrades or uninstalling, see the [installation guide](docs/installation.md). Every release includes `SHA256SUMS`; see the [0.2.0 release notes](docs/releases/0.2.0.md) for changes.
+macOS and Windows executables are unsigned. For OS restrictions, private repository access, upgrades or uninstalling, see the [installation guide](docs/installation.md). Every release includes `SHA256SUMS`; see the [0.2.1 release notes](docs/releases/0.2.1.md) for changes.
 
 ## Connect an application
 

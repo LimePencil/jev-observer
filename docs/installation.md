@@ -1,6 +1,6 @@
 # Installation
 
-Jev Observer 0.2.0 runs as one executable with its dashboard, fonts and SQLite included. Installation needs no Rust, Node.js, database server or administrator access.
+Jev Observer 0.2.1 runs as one executable with its dashboard, fonts and SQLite included. Installation needs no Rust, Node.js, database server or administrator access.
 
 ## Install a release
 
@@ -10,7 +10,7 @@ These commands download the public release without authentication. If you are ac
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
-sh install.sh --version 0.2.0
+sh install.sh --version 0.2.1
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
 ```
@@ -19,7 +19,7 @@ jev-observer --demo
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version 0.2.0
+.\install.ps1 -Version 0.2.1
 $env:PATH = "$env:LOCALAPPDATA\JevObserver\bin;$env:PATH"
 jev-observer --demo
 ```
@@ -41,7 +41,7 @@ Linux / macOS:
 ```sh
 gh api --hostname github.com repos/LimePencil/jev-observer/contents/install.sh \
   -H 'Accept: application/vnd.github.raw+json' > install.sh
-sh install.sh --version 0.2.0
+sh install.sh --version 0.2.1
 ```
 
 Windows PowerShell:
@@ -49,7 +49,7 @@ Windows PowerShell:
 ```powershell
 gh api --hostname github.com repos/LimePencil/jev-observer/contents/install.ps1 `
   -H 'Accept: application/vnd.github.raw+json' | Set-Content -Encoding UTF8 install.ps1
-.\install.ps1 -Version 0.2.0
+.\install.ps1 -Version 0.2.1
 ```
 
 Anonymous downloads require both the repository and release to be public. Private asset downloads use existing GitHub CLI authentication without printing or saving your GitHub token.
@@ -63,11 +63,11 @@ Omit the version option to install the latest published release. Rerun to upgrad
 Choose a different installation directory:
 
 ```sh
-sh install.sh --version v0.2.0 --install-dir "$HOME/bin"
+sh install.sh --version v0.2.1 --install-dir "$HOME/bin"
 ```
 
 ```powershell
-.\install.ps1 -Version v0.2.0 -InstallDir "$env:USERPROFILE\bin"
+.\install.ps1 -Version v0.2.1 -InstallDir "$env:USERPROFILE\bin"
 ```
 
 The installer prints a command to add that directory to the current terminal's `PATH`. To keep it available in new terminals, add the Unix export to your shell configuration or add the Windows directory to your user's `Path` environment variable.
@@ -76,7 +76,7 @@ Check the executable with `command -v jev-observer` on Unix or `Get-Command jev-
 
 ### History backups and downgrades
 
-Before upgrading to 0.2.0, stop Observer cleanly and keep a copy of the database and any remaining SQLite sidecars, the workspace dashboard-token file, and access to the saved `JEV_OBSERVER_DB_KEY`. Preserve the earlier executable if you need to test a rollback. Starting the new executable upgrades supported query indexes; a rejected unsupported database is not encrypted or otherwise rewritten. Copy files back only while every Observer process using that workspace is stopped.
+Before upgrading to 0.2.1, stop Observer cleanly and keep a copy of the database and any remaining SQLite sidecars, the workspace dashboard-token file, and access to the saved `JEV_OBSERVER_DB_KEY`. Preserve the earlier executable if you need to test a rollback. Starting the new executable upgrades supported query indexes; a rejected unsupported database is not encrypted or otherwise rewritten. Copy files back only while every Observer process using that workspace is stopped.
 
 Version 0.2.0 reads provider credentials saved by 0.1.0. After saving or rotating a persisted provider key in 0.2.0, the new credential entry layout is not readable by 0.1.0. If you downgrade, re-register the provider key and update the application's local client token. Restoring only an older SQLite backup cannot restore an operating-system credential entry removed by a later rotation. Session-only credentials always require registration after restart. The database key and provider key are separate secrets.
 
