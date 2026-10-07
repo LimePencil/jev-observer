@@ -1,0 +1,673 @@
+{
+  "checked_at": "2026-10-03",
+  "models": [
+    {
+      "id": "typesafe",
+      "name": "Jev",
+      "access": "closed",
+      "integration": "proxy",
+      "model_names": [
+        "jev-1.13.0",
+        "jev-latest",
+        "jev-preview"
+      ],
+      "upstream": "https://api.typesafe.ai/v1/systemone",
+      "source_url": "https://docs.typesafe.ai/models",
+      "note": "Jev 1.13 and its current aliases; text only.",
+      "profile": {},
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "milliseconds",
+      "name": "decision-machine-1",
+      "access": "closed",
+      "integration": "proxy",
+      "model_names": [
+        "decision-machine-1"
+      ],
+      "upstream": "https://api.milliseconds.ai/v1/systemone",
+      "source_url": "https://docs.milliseconds.ai/typesafe/overview",
+      "note": "Use its TypeSafe-compatible endpoint. Native extraction and image endpoints are separate.",
+      "profile": {
+        "probability_decimals": 3
+      },
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "openrouter",
+      "name": "Jev through OpenRouter",
+      "access": "closed",
+      "integration": "proxy",
+      "model_names": [
+        "jev-1.13",
+        "typesafe/jev-1.13"
+      ],
+      "upstream": "https://openrouter.ai/api/v1/systemone",
+      "source_url": "https://openrouter.ai/typesafe/jev-1.13",
+      "note": "OpenRouter-reported USD cost is supported.",
+      "profile": {},
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "vercel",
+      "name": "Jev through Vercel AI Gateway",
+      "access": "closed",
+      "integration": "proxy",
+      "model_names": [
+        "jev-latest"
+      ],
+      "upstream": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+      "source_url": "https://vercel.com/changelog/ai-gateway-now-supports-typesafe-clients-and-http-api-for-jev",
+      "note": "Use the /typesafe-compatible endpoint with TypeSafe model naming. The gateway /v1/evaluate surface has a separate contract.",
+      "profile": {},
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "laya",
+      "name": "Laya",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "english",
+        "multilingual",
+        "typed-decisions"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/NandhaKishorM/laya/blob/fa9a2a7070b1789912a49ae24603bbfb1a78b001/README.md",
+      "note": "English, multilingual and typed-decisions checkpoints; start your server separately.",
+      "profile": {
+        "probability_decimals": 4,
+        "list_choice": true,
+        "score_min": 1,
+        "score_max": 32
+      },
+      "verification": "source-reviewed",
+      "stars": 30286
+    },
+    {
+      "id": "kev",
+      "name": "Kev",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "kev-latest",
+        "jaredpalmer/kev-0.8b",
+        "jaredpalmer/kev-4b",
+        "jaredpalmer/kev-9b",
+        "jaredpalmer/kev-27b"
+      ],
+      "upstream": "http://127.0.0.1:8009/v1/systemone",
+      "source_url": "https://github.com/jaredpalmer/kev/blob/84847f0a883d900f7de5b7a57eaa341ca7f9a6b4/README.md",
+      "note": "The loaded checkpoint determines which model is served.",
+      "profile": {
+        "score_min": 1,
+        "score_max": 255,
+        "probability_decimals": 4,
+        "json_text": true,
+        "optional_instructions": true
+      },
+      "verification": "source-reviewed",
+      "stars": 8339
+    },
+    {
+      "id": "decider",
+      "name": "Decider",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/Mapika/decider/blob/45024082b7d4bb667bf9140b7a7c073d3b483f6b/README.md",
+      "note": "Use /v1/systemone; the separate /decide schema has different semantics.",
+      "profile": {
+        "probability_decimals": 4,
+        "list_choice": true,
+        "optional_instructions": true
+      },
+      "verification": "source-reviewed",
+      "stars": 1047
+    },
+    {
+      "id": "nimble",
+      "name": "Bespoke Nimble",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "nimble-latest"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/bespokelabsai/nimble/blob/62076b4f2d365b5879dafcf7f6dd072a1fe76df7/README.md",
+      "note": "The serving wrapper supports two to 26 rubric levels.",
+      "profile": {
+        "score_max": 26
+      },
+      "verification": "source-reviewed",
+      "stars": 2032
+    },
+    {
+      "id": "von",
+      "name": "Von",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "von-latest",
+        "von-1.3.0",
+        "von-1.2.0",
+        "von-1.1.0"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/wfzyx/von/blob/ef4e207beabe7abd695e4dbe01c6d2d3b637b9c4/README.md",
+      "note": "Inspect truncation metadata retained in response extensions.",
+      "profile": {},
+      "verification": "source-reviewed",
+      "stars": 821
+    },
+    {
+      "id": "openjev",
+      "name": "OpenJev (DiffusionGemma)",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "openjev-latest",
+        "openjev-0.1"
+      ],
+      "upstream": "http://127.0.0.1:8080/v1/systemone",
+      "source_url": "https://github.com/razorback16/openjev/blob/dcd20947b5ddad5be4a8f5aed6aa6dd245653823/README.md",
+      "note": "Text and image decisions; single-level scores and structured legends are supported.",
+      "profile": {
+        "score_min": 1,
+        "structured_legend": true
+      },
+      "verification": "source-reviewed",
+      "stars": 591
+    },
+    {
+      "id": "codiv",
+      "name": "Open models through Codiv",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "openjev-latest",
+        "laya-1.0",
+        "verdict-1.4",
+        "clm-v0.1",
+        "jevk5-0.2"
+      ],
+      "upstream": "https://api.codiv.ai/v1/systemone",
+      "source_url": "https://github.com/razorback16/openjev/blob/dcd20947b5ddad5be4a8f5aed6aa6dd245653823/README.md",
+      "note": "Hosted open models require a Codiv bearer key.",
+      "profile": {
+        "score_min": 1,
+        "structured_legend": true
+      },
+      "verification": "source-reviewed",
+      "stars": 591
+    },
+    {
+      "id": "open-jev",
+      "name": "Open-Jev (Zefan Cai)",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/Zefan-Cai/Open-Jev/blob/7434a4a8572a603067e3355799a72e1051b83b8a/README.md",
+      "note": "Independent 2B, 9B and 27B family; use its System One route.",
+      "profile": {
+        "structured_legend": true
+      },
+      "verification": "source-reviewed",
+      "stars": 389
+    },
+    {
+      "id": "reflex",
+      "name": "Reflex",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [],
+      "upstream": "http://127.0.0.1:8008/v1/systemone",
+      "source_url": "https://github.com/kshetrajna12/reflex/blob/231f896d818a62b94fec305ed553df1088486dcb/README.md",
+      "note": "Single-pass typed decisions, including optional vision inputs.",
+      "profile": {},
+      "verification": "source-reviewed",
+      "stars": 161
+    },
+    {
+      "id": "jevk5",
+      "name": "JevK5",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [],
+      "upstream": "http://127.0.0.1:8090/v1/systemone",
+      "source_url": "https://github.com/allebee/jevk5/blob/f26426d16f59e8bbe1470e5b162cc89329e29b29/README.md",
+      "note": "Use its compatible server or Codiv jevk5-0.2. Score legends are not reported and remain unknown.",
+      "profile": {
+        "list_choice": true,
+        "score_max": 255,
+        "optional_legend": true,
+        "structured_legend": true
+      },
+      "verification": "source-reviewed",
+      "stars": 131
+    },
+    {
+      "id": "openthai",
+      "name": "OpenThai-SystemOne",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "openthai-systemone"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/iapp-technology/openthai-systemone/blob/5d04bcca0c58bd10e7dac2d3d369d8f760bea6cf/README.md",
+      "note": "Thai and English checkpoint.",
+      "profile": {},
+      "verification": "source-reviewed",
+      "stars": 65
+    },
+    {
+      "id": "jeff",
+      "name": "Jeff (GliFormer)",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "jev-latest"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/logan-markewich/jeff/blob/34b32f99a727c47b679adde33f4702a001e02979/README.md",
+      "note": "Supports single-level scores and JSON legends.",
+      "profile": {
+        "score_min": 1,
+        "score_max": 255,
+        "structured_legend": true
+      },
+      "verification": "source-reviewed",
+      "stars": 284
+    },
+    {
+      "id": "rizzo",
+      "name": "Rizzo Flow",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "rizzo-latest"
+      ],
+      "upstream": "http://127.0.0.1:8017/v1/systemone",
+      "source_url": "https://github.com/Rizzo-AI-Academy/rizzo-flow/blob/b9ba007ee4d2928bbab5b1d8bfe9009c3696b6de/README.md",
+      "note": "Use its System One route; /v1/decisions is separate.",
+      "profile": {},
+      "verification": "source-reviewed",
+      "stars": 798
+    },
+    {
+      "id": "ollaya",
+      "name": "Ollaya",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [],
+      "upstream": "http://127.0.0.1:11435/v1/systemone",
+      "source_url": "https://github.com/ollaya-dev/ollaya/blob/37fcfa9f8a35b6b389447ffca49e4b4242970f81/README.md",
+      "note": "Local runtime for Laya, Decider and NLI models; model names depend on pulled artifacts.",
+      "profile": {
+        "structured_legend": true,
+        "probability_decimals": 4
+      },
+      "verification": "source-reviewed",
+      "stars": 1138
+    },
+    {
+      "id": "edgejev",
+      "name": "EdgeJev",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [],
+      "upstream": "http://127.0.0.1:8009/v1/systemone",
+      "source_url": "https://github.com/yzfly/edgejev/blob/dce469472e0e6eea396256e9bf866082dcb9490b/README.md",
+      "note": "ONNX runtime; use the model name configured on the server.",
+      "profile": {},
+      "verification": "source-reviewed",
+      "stars": 15
+    },
+    {
+      "id": "openjev-sglang",
+      "name": "OpenJev on SGLang",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "jev-latest"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/ekzhang/openjev-sglang/blob/bf6a53bbb1f75040b06de39abff1230524553ab5/README.md",
+      "note": "Independent runtime for compatible prefill models; no guarantee that every checkpoint works.",
+      "profile": {
+        "structured_legend": true,
+        "optional_instructions": true
+      },
+      "verification": "source-reviewed",
+      "stars": 337
+    },
+    {
+      "id": "semif",
+      "name": "SemIf (formerly OpenJev)",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/TheoLeeCJ/SemIf-OpenJev/blob/23cf1f39fc9534fe81437200959b6dfc7106e45a/README.md",
+      "note": "CLI/library option probabilities need mapping to named System One answers.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed",
+      "stars": 4663
+    },
+    {
+      "id": "tev1",
+      "name": "Tev1",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/togethercomputer/tev1/blob/1dde7782382c9f49d627153759b8d1deab426ce0/README.md",
+      "note": "Together answer letters and logprobs need mapping. A selected letter alone is not a full distribution.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed",
+      "stars": 205
+    },
+    {
+      "id": "nanojev",
+      "name": "NanoJev",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/TianyuCodings/NanoJev/blob/76fdfc9ecdca45a9bcef17991a07d3041a87685a/README.md",
+      "note": "Custom /api/evaluate batches need mapping; boolean becomes Noul, not a thresholded label.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed",
+      "stars": 2478
+    },
+    {
+      "id": "agentjev",
+      "name": "AgentJev",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/malevrigns/agent-jev/blob/1c2c1b1ae1dc427d4cc851ef7460a1112b0cb3e1/README.md",
+      "note": "Custom /api/evaluate lists need mapping by question ID.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed",
+      "stars": 335
+    },
+    {
+      "id": "anyjev",
+      "name": "AnyJev",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/nokia-applied-research/AnyJev/blob/e6efe1233a57ddc8b291eeb206142bcec003d10b/README.md",
+      "note": "Map library distributions and p_true. Numeric bin-center scores require an explicit ordinal mapping.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed",
+      "stars": 1018
+    },
+    {
+      "id": "verdict",
+      "name": "Verdict",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/Heman10x-NGU/openJev-verdict-2.0/blob/bff28567cff463b833bf044f351a8b7945d53e07/README.md",
+      "note": "Library/browser results need mapping; Codiv also serves verdict-1.4.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed",
+      "stars": 293
+    },
+    {
+      "id": "valen",
+      "name": "Valen",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/Liuziyu77/Valen/blob/33de9f9f77a00120009f1dd253cf06e32adc348f/README.md",
+      "note": "Multimodal library outputs need mapping to named typed answers.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed",
+      "stars": 574
+    },
+    {
+      "id": "eikos",
+      "name": "Eikos",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/caiovicentino/eikos/blob/8902fbe9e06e10da50d3ed5d27bb52fcf8ddd900/README.md",
+      "note": "System One server for finance. Score is a most-likely level; its separate expected field is preserved. Session routes are separate.",
+      "profile": {
+        "choice_max": 588,
+        "score_max": 588,
+        "optional_legend": true,
+        "modal_score": true
+      },
+      "verification": "source-reviewed",
+      "stars": 40
+    },
+    {
+      "id": "dev",
+      "name": "dev-0.4b",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/mpnikhil/dev-0.4b/blob/2ce2563db938e9ec22ffe69e5fb8d4706f61ed1a/README.md",
+      "note": "ModernBERT decision library outputs need mapping.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed",
+      "stars": 44
+    },
+    {
+      "id": "blink",
+      "name": "Blink",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/sqliteai/blink/blob/18d6ce836cadfd14f04feef8bba952f50da660db/README.md",
+      "note": "Embedded C/Wasm outputs need mapping; static demo hosting is not an inference endpoint.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed",
+      "stars": 19
+    },
+    {
+      "id": "jev-omni",
+      "name": "Jev-Omni",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://huggingface.co/akhilaaa3/Jev-Omni/blob/5addda86ddee081a68fb067477ea100c221b8917/README.md",
+      "note": "Use model-card runtime outputs in mapped captures; weights alone do not establish HTTP compatibility.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "autotrust",
+      "name": "AutoTrust JEV",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [
+        "autotrust/JEV-9B",
+        "autotrust/JEV-27B",
+        "autotrust/JEV-27B-VL"
+      ],
+      "upstream": null,
+      "source_url": "https://huggingface.co/autotrust/JEV-27B-VL/blob/d835ee0b42460bd74890c7eab63ba0dcb4dd808a/README.md",
+      "note": "Custom /v1/decide uses ordered probability arrays; map options explicitly.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "neohorse",
+      "name": "NeoHorse-Jev",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [
+        "TokenRhythm/NeoHorse-Jev-4B"
+      ],
+      "upstream": null,
+      "source_url": "https://huggingface.co/TokenRhythm/NeoHorse-Jev-4B/blob/434cb21d3a994a953d3ae5788405fcb2c4970554/README.md",
+      "note": "Map the bundled runtime response; serving adapters differ by backend.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "matilda",
+      "name": "MATILDA-jev",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "matilda-jev-v1"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://huggingface.co/Maincode/matilda-jev-v1/blob/c87f57504300588ff4270ff5ac17c38d1c7996b9/README.md",
+      "note": "Bundled System One runtime supports optional images.",
+      "profile": {},
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "jev-style",
+      "name": "Jev-Style GGUF",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://huggingface.co/chaoliangUNSW/Jev-Style-Qwen3.5-2B-Decision-GGUF/blob/adc5656741715ddd3e40dac44c6294cb888bc655/README.md",
+      "note": "LM Studio/llama.cpp logprobs need explicit option mapping; truncated top_logprobs is not a full distribution.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "intern-decision",
+      "name": "Intern-Decision",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [
+        "internlm/Intern-Decision-0.8B",
+        "internlm/Intern-Decision-2B",
+        "internlm/Intern-Decision-4B"
+      ],
+      "upstream": null,
+      "source_url": "https://huggingface.co/internlm/Intern-Decision-4B/blob/0e5e6aa7d6d750e2b1504ba11a8136cb58aeb3cd/README.md",
+      "note": "Map distributions over original option values; confidence means maximum probability.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "frida",
+      "name": "FRIDA-Decisions",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [
+        "ai-forever/FRIDA-Decisions"
+      ],
+      "upstream": null,
+      "source_url": "https://huggingface.co/ai-forever/FRIDA-Decisions/blob/0096b5384e821c68791cb2b3b7292c2b937dcec8/README.md",
+      "note": "Russian decision model; vLLM /pooling wrapper requires result mapping. Ranking is outside typed decision views.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed"
+    },
+    {
+      "id": "vllm-sr",
+      "name": "vLLM Semantic Router Decision models",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://huggingface.co/vllm-sr/Decision-2.0-Vega-27B/blob/477e90f537eb5bd62e90d5e5361c7b654e69cf45/README.md",
+      "note": "Decision 1.0/2.0 library outputs need mapping; routing outcomes remain application actions.",
+      "profile": {
+        "optional_confidence": true,
+        "optional_legend": true,
+        "score_min": 1,
+        "score_max": 255
+      },
+      "verification": "source-reviewed"
+    }
+  ]
+}

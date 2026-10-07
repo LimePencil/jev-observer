@@ -1,5 +1,7 @@
 # Compatibility checks
 
+The [decision-model catalog](models.md) adds source-reviewed proxy and mapped-capture paths for the [October 3 research snapshot](../research/models/README.md). New coverage is verified with synthetic contract tests; live evidence remains limited to the OpenRouter and Laya checks below.
+
 ## Live OpenRouter check
 
 Checked October 2, 2026 against `https://openrouter.ai/api/v1/systemone`, using a Linux ARM64 0.2.0 candidate and synthetic ticket data. **All 51 checks passed.** The requested model was `jev-1.13`; OpenRouter returned `typesafe/jev-1.13-20260917`. This check used Python's standard HTTP client; it does not establish live compatibility of either official SDK or the direct TypeSafe service.

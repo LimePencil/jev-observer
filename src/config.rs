@@ -180,6 +180,9 @@ impl Config {
             {
                 Some("api.typesafe.ai") => "typesafe",
                 Some("openrouter.ai") => "openrouter",
+                Some("api.milliseconds.ai") => "milliseconds",
+                Some("api.codiv.ai") => "codiv",
+                Some("ai-gateway.vercel.sh") => "vercel",
                 _ => "custom",
             }
         })
@@ -193,6 +196,7 @@ impl Config {
             "queue_capacity": self.queue_capacity, "upstream": self.upstream,
             "upstream_auth": self.upstream_auth, "provider": self.provider_name(),
             "version": env!("CARGO_PKG_VERSION"),
+            "model_catalog": *crate::catalog::CATALOG,
             "input_price_per_million": self.input_price_per_million,
             "output_price_per_million": self.output_price_per_million,
         })
@@ -244,6 +248,33 @@ mod tests {
         remote.validate().unwrap();
         assert_eq!(remote.public_settings()["provider"], "openrouter");
         assert_eq!(remote.public_settings()["upstream_auth"], "bearer");
+    }
+
+    #[test]
+    fn hosted_catalog_providers_use_exact_hosts_and_keep_configured_paths() {
+        for (endpoint, provider) in [
+            ("https://api.milliseconds.ai/v1/systemone", "milliseconds"),
+            ("https://api.codiv.ai/v1/systemone", "codiv"),
+            (
+                "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+                "vercel",
+            ),
+            (
+                "https://api.milliseconds.ai.example.org/v1/systemone",
+                "custom",
+            ),
+        ] {
+            let config = Config::try_parse_from(["observer", "--upstream", endpoint]).unwrap();
+            assert_eq!(config.provider_name(), provider);
+            assert_eq!(config.public_settings()["upstream"], endpoint);
+            assert_eq!(
+                config.public_settings()["model_catalog"]["models"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                38
+            );
+        }
     }
 
     #[test]

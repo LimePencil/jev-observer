@@ -1,0 +1,95 @@
+{
+  "checked_at": "2026-10-03T09:21:58.847060+00:00",
+  "scope": "Observer integration behavior; synthetic fixtures do not establish model accuracy or live inference availability.",
+  "research": {
+    "repository_commits": 27,
+    "pinned_model_cards": 11,
+    "catalog_integrations": 38,
+    "proxy_paths": 22,
+    "mapped_capture_paths": 16,
+    "source_register": "sources.json"
+  },
+  "checks": [
+    {
+      "command": "cargo test --locked --quiet",
+      "passed": 112,
+      "ignored": 1,
+      "failed": 0,
+      "note": "Ignored test is the existing CSV export timing benchmark."
+    },
+    {
+      "command": "cargo clippy --locked --all-targets -- -D warnings",
+      "result": "passed"
+    },
+    {
+      "command": "cargo fmt --check",
+      "result": "passed"
+    },
+    {
+      "command": "python3 scripts/test-decision-capture.py",
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "command": "npm run build --prefix ui",
+      "result": "passed"
+    },
+    {
+      "command": "npm test --prefix ui -- --workers=1",
+      "passed": 46,
+      "failed": 0,
+      "note": "Full final browser suite passes after rebasing onto current main; includes the new catalog, mobile overflow and accessibility checks."
+    },
+    {
+      "command": "npm test --prefix ui -- --workers=1 -g 'local model onboarding|key-protected Laya|mobile navigation contains focus|light and dark dashboard accessibility|the researched catalog'",
+      "passed": 5,
+      "failed": 0,
+      "note": "Final UI: includes the new catalog test, mobile overflow and axe accessibility checks."
+    },
+    {
+      "command": "OBSERVER_BINARY=<built-binary> npm run test:integration --prefix ui",
+      "passed": 2,
+      "failed": 0,
+      "note": "Final packaged backend: native forwarding/restart plus catalog, capture import, duplicate detection, filtering, privacy and export roundtrip."
+    },
+    {
+      "command": "python3 scripts/check-release.py --ref v0.2.0",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "python3 scripts/generate-license-notices.py --check",
+      "result": "passed"
+    },
+    {
+      "command": "python3 scripts/test-release-metadata.py",
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "command": "python3 scripts/test-install.py",
+      "passed": 21,
+      "failed": 0
+    },
+    {
+      "command": "scripts/sdk-compatibility.py with typesafe-sdk 0.7.1 and @typesafe-ai/sdk 0.6.0",
+      "result": "passed",
+      "scope": "Local mock only; direct and registered-token authentication, 16 calls, original bytes/extensions preserved, zero capture gaps. Not a provider inference test."
+    }
+  ],
+  "live_inference": {
+    "previously_verified": [
+      "Jev through OpenRouter",
+      "Laya"
+    ],
+    "newly_cataloged": "unverified; no model weights downloaded or paid inference calls made"
+  },
+  "workspace": {
+    "branch": "feat/decision-model-coverage",
+    "base_commit": "27cc2ff300f136f5caf89e9582458d21d83dbf10",
+    "original_checkout": "unchanged"
+  }
+}

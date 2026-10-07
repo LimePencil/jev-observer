@@ -35,7 +35,7 @@ Inspect answers, probabilities and request usage, then add a local review label.
 - **Compare question versions:** group recurring questions and keep statistics separate when their definitions change.
 - **Find and review results:** search question groups, filter history by date, source or model, and label answers correct, incorrect or unknown.
 - **Track usage and cost:** see request-level token usage, OpenRouter-reported USD cost or your configured estimates. Each request is counted once, even if it contains several answers.
-- **Move your data:** import Observer JSONL or supported JevRouter receipts; export filtered history as JSONL or CSV.
+- **Move your data:** import Observer JSONL, raw System One captures or supported JevRouter receipts; export filtered history as JSONL or CSV.
 - **Try it offline:** explore the demo without provider credentials or model calls.
 
 Observer currently forwards `POST /v1/systemone`. It does not host models, provide universal provider routing, or replay the same inputs across question versions. See [compatibility and tested scope](docs/compatibility.md).
@@ -181,6 +181,8 @@ jev-observer --upstream http://127.0.0.1:8000/v1/systemone \
 ```
 
 Use the workspace token from `.jev-observer/observer.access-token` as the SDK key and `english` as the request model. Observer authenticates your application locally and sends no authorization to Laya. CPU inference may need a longer SDK timeout. See [local-model setup](docs/connection.md#laya-and-other-local-system-one-models) for starting Laya, key-protected servers and compatibility limits.
+
+For other decision models, use the dashboard’s source-reviewed model catalog. [Model connection paths and mapped capture imports](docs/models.md) cover closed alternatives, open families and custom APIs. [Research snapshot](research/models/README.md).
 
 ## Storage and privacy
 
