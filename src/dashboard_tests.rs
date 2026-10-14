@@ -1,6 +1,60 @@
 use super::*;
 
 #[test]
+fn token_coverage_counts_requests_and_preserves_unknown_and_zero_usage() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("token-coverage.sqlite"), 7, 100).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut records = Vec::new();
+    for (id, input, output) in [
+        ("input-only", Some(100), None),
+        ("output-only", None, Some(20)),
+        ("unknown", None, None),
+        ("zero", Some(0), Some(0)),
+    ] {
+        let mut record = dashboard_record(id, now);
+        record["source"] = json!(id);
+        record["input_tokens"] = json!(input);
+        record["output_tokens"] = json!(output);
+        // Several answers still contribute only one parent request's usage.
+        let mut second = record["answers"][0].clone();
+        second["key"] = json!("second");
+        record["answers"].as_array_mut().unwrap().push(second);
+        records.push(record);
+    }
+    let mut action = dashboard_record("action", now);
+    action["event_kind"] = json!("application_action");
+    action["answers"] = json!([]);
+    records.push(action);
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+
+    for (source, requests, input, output, input_known, output_known) in [
+        (None, 4, Some(100), Some(20), 2, 2),
+        (Some("input-only"), 1, Some(100), None, 1, 0),
+        (Some("output-only"), 1, None, Some(20), 0, 1),
+        (Some("unknown"), 1, None, None, 0, 0),
+        (Some("zero"), 1, Some(0), Some(0), 1, 1),
+        (Some("missing-source"), 0, None, None, 0, 0),
+    ] {
+        let dashboard = store
+            .dashboard(&Filter {
+                window: Some("all".into()),
+                source: source.map(str::to_owned),
+                ..Default::default()
+            })
+            .unwrap();
+        let summary = &dashboard["summary"];
+        assert_eq!(summary["request_count"], requests);
+        assert_eq!(summary["input_tokens"], json!(input));
+        assert_eq!(summary["output_tokens"], json!(output));
+        assert_eq!(summary["input_tokens_known_requests"], input_known);
+        assert_eq!(summary["output_tokens_known_requests"], output_known);
+    }
+}
+
+#[test]
 fn empty_and_extreme_timeline_ranges_are_bounded_without_overflow() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(&dir.path().join("empty-range.sqlite"), 7, 100).unwrap();
@@ -409,7 +463,7 @@ fn sql_request_aggregates(
     let connection = store.reader().unwrap();
     let (predicate, args) = Store::predicate(filter).unwrap();
     let mut summary = connection.query_row(
-        &format!("SELECT count(*),coalesce(sum(answer_count),0),coalesce(sum(status>=400),0),sum(input_tokens),sum(output_tokens),sum(cost_usd),count(cost_usd),coalesce(sum(sample),0),coalesce(sum(NOT capture_complete),0) FROM requests r WHERE {predicate} AND event_kind='request'"),
+        &format!("SELECT count(*),coalesce(sum(answer_count),0),coalesce(sum(status>=400),0),sum(input_tokens),sum(output_tokens),sum(cost_usd),count(cost_usd),coalesce(sum(sample),0),coalesce(sum(NOT capture_complete),0),count(input_tokens),count(output_tokens) FROM requests r WHERE {predicate} AND event_kind='request'"),
         params_from_iter(&args),
         |row| Ok(json!({
             "request_count": row.get::<_, i64>(0)?,
@@ -420,7 +474,9 @@ fn sql_request_aggregates(
             "cost_usd": row.get::<_, Option<f64>>(5)?,
             "cost_known_requests": row.get::<_, i64>(6)?,
             "sample_count": row.get::<_, i64>(7)?,
-            "incomplete_count": row.get::<_, i64>(8)?
+            "incomplete_count": row.get::<_, i64>(8)?,
+            "input_tokens_known_requests": row.get::<_, i64>(9)?,
+            "output_tokens_known_requests": row.get::<_, i64>(10)?
         })),
     ).unwrap();
     summary["action_count"] =
