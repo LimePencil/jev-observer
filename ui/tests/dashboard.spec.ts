@@ -15,7 +15,7 @@ const record: RequestRecord = { id: 'request-one', timestamp: now, source: 'Test
 async function harness(page: Page, options: { demo?: boolean; settings?: Partial<Settings>; path?: string } = {}) {
   const state = {
     record: structuredClone(record),
-    dashboard: { generated_at: now, sample: false, sources: ['Test inbox'], models: ['test-model'], summary: { request_count: 2, answer_count: 2, error_count: 1, p50_ms: 124, p95_ms: 124, input_tokens: 100, output_tokens: 20, cost_usd: null, cost_known_requests: 0 }, timeline: [{ timestamp: now, requests: 2, errors: 1, mean_latency_ms: 124, cost_usd: null }], groups: [structuredClone(group)], requests: [structuredClone(record), { ...structuredClone(record), id: 'request-failed', status: 500, model: null, input_tokens: null, output_tokens: null, cost_usd: null }], health: { forwarded: 2, captured: 2, persisted: 2, dropped: 0, truncated: 0, write_failures: 0, queue_depth: 0, queued_bytes: 0, last_persisted_at: now, last_gap_at: null, lag_ms: 0, capture_limit: 262144, capture_slots: 256 } } as Dashboard,
+    dashboard: { generated_at: now, sample: false, sources: ['Test inbox'], models: ['test-model'], summary: { request_count: 2, answer_count: 2, error_count: 1, p50_ms: 124, p95_ms: 124, input_tokens: 100, output_tokens: 20, input_tokens_known_requests: 1, output_tokens_known_requests: 1, cost_usd: null, cost_known_requests: 0 }, timeline: [{ timestamp: now, requests: 2, errors: 1, mean_latency_ms: 124, cost_usd: null }], groups: [structuredClone(group)], requests: [structuredClone(record), { ...structuredClone(record), id: 'request-failed', status: 500, model: null, input_tokens: null, output_tokens: null, cost_usd: null }], health: { forwarded: 2, captured: 2, persisted: 2, dropped: 0, truncated: 0, write_failures: 0, queue_depth: 0, queued_bytes: 0, last_persisted_at: now, last_gap_at: null, lag_ms: 0, capture_limit: 262144, capture_slots: 256 } } as Dashboard,
     deleted: false, importError: false, dashboardError: false, labelError: false,
     labelPending: null as Promise<void> | null, labelHeaders: null as Record<string, string> | null,
     dashboardPending: null as Promise<void> | null, deletePending: null as Promise<void> | null, importDashboard: null as Dashboard | null,
@@ -77,6 +77,37 @@ test('keeps all three capabilities together and unknown cost explicit', async ({
   await expect(page.locator('.request-link')).toHaveCount(1);
   await expect(page.locator('.request-table')).toContainText('500');
   expect(errors).toEqual([]);
+});
+
+test('token totals disclose independently missing usage and preserve known zero values', async ({ page }) => {
+  const state = await harness(page);
+  // Request A reports only input tokens; request B reports only output tokens.
+  state.dashboard.requests[0] = { ...state.dashboard.requests[0], input_tokens: 100, output_tokens: null };
+  state.dashboard.requests[1] = { ...state.dashboard.requests[1], input_tokens: null, output_tokens: 20 };
+  const metric = page.getByRole('group', { name: 'Token usage', exact: true });
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(metric.locator('.metric-label')).toHaveText('Known tokens');
+  await expect(metric.locator('.metric-value')).toHaveText('120');
+  await expect(metric).toContainText('Input: 1 / 2 requests');
+  await expect(metric).toContainText('Output: 1 / 2 requests');
+
+  Object.assign(state.dashboard.summary, { input_tokens: 0, output_tokens: null, input_tokens_known_requests: 1, output_tokens_known_requests: 0 });
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(metric.locator('.metric-value')).toHaveText('0');
+  await expect(metric).toContainText('0 in / Unknown out');
+  await expect(metric).toContainText('Output: 0 / 2 requests');
+
+  Object.assign(state.dashboard.summary, { input_tokens: null, output_tokens: null, input_tokens_known_requests: 0, output_tokens_known_requests: 0 });
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(metric.locator('.metric-value')).toHaveText('Unknown');
+  await expect(metric).toContainText('Input: 0 / 2 requests');
+
+  Object.assign(state.dashboard.summary, { input_tokens: 0, output_tokens: 0, input_tokens_known_requests: 2, output_tokens_known_requests: 2 });
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(metric.locator('.metric-label')).toHaveText('Reported tokens');
+  await expect(metric.locator('.metric-value')).toHaveText('0');
+  await expect(metric).toContainText('Input: 2 / 2 requests');
+  await expect(metric).toContainText('Output: 2 / 2 requests');
 });
 
 test('registers a provider key and shows only the local client token', async ({ page }) => {

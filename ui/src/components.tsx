@@ -1,7 +1,8 @@
+/** @jsxImportSource react */
 import { useId, useState } from 'react';
-import { Aperture, ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, Info, WarningCircle } from '@phosphor-icons/react';
+import { Aperture, ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, Info, Pulse, WarningCircle } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
-import type { Group, RequestSummary, TimelineBucket, TimelineMeta } from './types';
+import type { Group, RequestSummary, Summary, TimelineBucket, TimelineMeta } from './types';
 import { chartTime, compact, costBasis, money, ms, number, time } from './format';
 
 // Reuse the website's duotone mark and two-weight wordmark in every app shell.
@@ -28,6 +29,24 @@ export function StatusBadge({ status, failed = false }: { status: number | null;
 export function SectionHeading({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
   return <div className="section-heading"><div><h2>{title}</h2>{description && <p>{description}</p>}</div>{action}</div>;
 }
+export function TokenMetric({ summary }: { summary: Summary }) {
+  const inputCoverage = summary.input_tokens_known_requests;
+  const outputCoverage = summary.output_tokens_known_requests;
+  const coverageKnown = inputCoverage != null && outputCoverage != null;
+  const complete = coverageKnown && inputCoverage === summary.request_count && outputCoverage === summary.request_count;
+  const total = summary.input_tokens == null && summary.output_tokens == null
+    ? null : (summary.input_tokens ?? 0) + (summary.output_tokens ?? 0);
+  return <div className="metric" role="group" aria-label="Token usage">
+    <span className="metric-label">{complete ? 'Reported tokens' : 'Known tokens'}<Pulse size={14} /></span>
+    <span className="metric-value">{compact(total)}</span>
+    <span className="metric-foot">{compact(summary.input_tokens)} in / {compact(summary.output_tokens)} out</span>
+    <span className="metric-foot metric-coverage">{coverageKnown ? <>
+      <span>Input: {number(inputCoverage)} / {number(summary.request_count)} requests</span>
+      <span>Output: {number(outputCoverage)} / {number(summary.request_count)} requests</span>
+    </> : 'Usage coverage unavailable'}</span>
+  </div>;
+}
+
 export function Definition({ value }: { value: unknown }) {
   return <pre className="json-view">{JSON.stringify(value, null, 2) ?? 'Not retained'}</pre>;
 }

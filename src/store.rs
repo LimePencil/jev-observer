@@ -995,6 +995,7 @@ impl Store {
         let (mut count, mut answers, mut errors, mut actions, mut samples, mut incomplete) =
             (0_i64, 0_i64, 0_i64, 0_i64, 0_i64, 0_i64);
         let (mut input, mut output) = (None, None);
+        let (mut input_known, mut output_known) = (0_i64, 0_i64);
         let mut cost = Mean::default();
         while let Some(row) = rows.next()? {
             let timestamp: i64 = row.get(1)?;
@@ -1012,8 +1013,12 @@ impl Store {
                 .is_some_and(|status| status >= 400)
                 || row.get_ref(12)? != rusqlite::types::ValueRef::Null;
             errors += i64::from(error);
-            add_integer_sum(&mut input, row.get(5)?)?;
-            add_integer_sum(&mut output, row.get(6)?)?;
+            let input_tokens: Option<i64> = row.get(5)?;
+            let output_tokens: Option<i64> = row.get(6)?;
+            input_known += i64::from(input_tokens.is_some());
+            output_known += i64::from(output_tokens.is_some());
+            add_integer_sum(&mut input, input_tokens)?;
+            add_integer_sum(&mut output, output_tokens)?;
             let charge: Option<f64> = row.get(7)?;
             if let Some(charge) = charge {
                 cost.add(charge);
@@ -1041,6 +1046,7 @@ impl Store {
         let mut summary = json!({
             "request_count":count,"answer_count":answers,"error_count":errors,
             "input_tokens":input,"output_tokens":output,"cost_usd":cost.total(),
+            "input_tokens_known_requests":input_known,"output_tokens_known_requests":output_known,
             "cost_known_requests":cost.count,"sample_count":samples,"incomplete_count":incomplete,
             "action_count":actions
         });
