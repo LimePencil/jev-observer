@@ -505,6 +505,16 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
     normalize_with_secrets(capture, options, &[])
 }
 
+fn clear_input_fields(value: &mut Value) {
+    if let Some(map) = value.as_object_mut() {
+        for field in ["state", "images", "image", "audio", "video"] {
+            if let Some(input) = map.get_mut(field) {
+                *input = Value::Null;
+            }
+        }
+    }
+}
+
 fn normalize_with_secrets(
     capture: &Capture,
     options: &NormalizeOptions,
@@ -534,13 +544,13 @@ fn normalize_with_secrets(
     // legitimately contain a field named `state`; that is part of its rule.
     if !options.capture_state {
         for envelope in ["request", "response"] {
-            if let Some(map) = safe[envelope].as_object_mut() {
-                for field in ["state", "images", "image", "audio", "video"] {
-                    if map.contains_key(field) {
-                        map.insert(field.into(), Value::Null);
-                    }
-                }
-            }
+            clear_input_fields(&mut safe[envelope]);
+        }
+        // Earlier capture-decision converters nested response envelope inputs
+        // here. Apply the same preference to those saved captures and exports,
+        // without recursively removing fields from question/result semantics.
+        if let Some(metadata) = safe["response"].get_mut("original_metadata") {
+            clear_input_fields(metadata);
         }
     }
     let request = &safe["request"];

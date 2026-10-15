@@ -23,6 +23,81 @@ fn imported(value: &Value) -> Value {
 }
 
 #[test]
+fn capture_envelope_and_legacy_metadata_inputs_obey_opt_in_on_import_and_reimport() {
+    let inputs = json!({
+        "state":"sensitive-state-marker", "images":["sensitive-images-marker"],
+        "image":"sensitive-image-marker", "audio":"sensitive-audio-marker",
+        "video":"sensitive-video-marker"
+    });
+    let opt_in = NormalizeOptions {
+        capture_state: true,
+        ..Default::default()
+    };
+    for legacy_metadata in [false, true] {
+        let mut event = envelope("autotrust");
+        event["request"]["questions"]["check"]["instructions"] = json!({"state":"California"});
+        event["response"]["original_metadata"] = json!({
+            "usage":{"questions":3}, "runtime":{"state":"ready"}
+        });
+        let destination = if legacy_metadata {
+            &mut event["response"]["original_metadata"]
+        } else {
+            &mut event["response"]
+        };
+        destination
+            .as_object_mut()
+            .unwrap()
+            .extend(inputs.as_object().unwrap().clone());
+
+        let retained = import_records(&event.to_string(), "systemone-capture", &opt_in)
+            .unwrap()
+            .remove(0);
+        let retained_inputs = if legacy_metadata {
+            &retained["response_extra"]["original_metadata"]
+        } else {
+            &retained["response_extra"]
+        };
+        for (field, value) in inputs.as_object().unwrap() {
+            assert_eq!(retained_inputs[field], *value, "{field}: explicit opt-in");
+        }
+
+        // Disabling input capture must also apply to an export made while it
+        // was enabled, including exports from the old converter layout.
+        let reimported = import_records(
+            &retained.to_string(),
+            "observer-jsonl",
+            &NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        for sanitized in [imported(&event), reimported] {
+            assert_eq!(sanitized["state_retained"], false);
+            assert!(sanitized["state"].is_null());
+            assert!(!sanitized.to_string().contains("sensitive-"));
+            let metadata = &sanitized["response_extra"]["original_metadata"];
+            let sanitized_inputs = if legacy_metadata {
+                metadata
+            } else {
+                &sanitized["response_extra"]
+            };
+            for field in inputs.as_object().unwrap().keys() {
+                assert!(
+                    sanitized_inputs[field].is_null(),
+                    "{field}: disabled opt-in"
+                );
+            }
+            assert_eq!(metadata["usage"]["questions"], 3);
+            assert_eq!(metadata["runtime"]["state"], "ready");
+            assert_eq!(
+                sanitized["answers"][2]["definition"]["instructions"]["state"],
+                "California"
+            );
+            assert_eq!(sanitized["answers"][2]["valid"], true);
+        }
+    }
+}
+
+#[test]
 fn all_catalog_integrations_capture_typed_answers_and_roundtrip_without_invented_metadata() {
     for model in catalog::CATALOG["models"].as_array().unwrap() {
         let provider = model["id"].as_str().unwrap();
