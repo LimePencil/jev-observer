@@ -951,11 +951,13 @@ impl Store {
             "{parent_predicate} AND r.id IN (SELECT aa.request_id FROM answers aa JOIN groups gg ON gg.id=aa.group_id WHERE {parent_selector})"
         );
         let metrics: Value = conn.query_row(
-            &format!("SELECT avg(duration_ms),sum(cost_usd),count(cost_usd),sum(input_tokens),sum(output_tokens),coalesce(sum({FAILED}),0) FROM requests r WHERE {parent_scope}"),
+            &format!("SELECT avg(duration_ms),sum(cost_usd),count(cost_usd),sum(input_tokens),sum(output_tokens),coalesce(sum({FAILED}),0),count(input_tokens),count(output_tokens) FROM requests r WHERE {parent_scope}"),
             params_from_iter(&parent_args), |row| Ok(json!({
                 "mean_latency_ms":row.get::<_,Option<f64>>(0)?, "cost_usd":row.get::<_,Option<f64>>(1)?,
                 "cost_known_requests":row.get::<_,i64>(2)?, "input_tokens":row.get::<_,Option<i64>>(3)?,
-                "output_tokens":row.get::<_,Option<i64>>(4)?, "error_count":row.get::<_,i64>(5)?
+                "output_tokens":row.get::<_,Option<i64>>(4)?, "error_count":row.get::<_,i64>(5)?,
+                "input_tokens_known_requests":row.get::<_,i64>(6)?,
+                "output_tokens_known_requests":row.get::<_,i64>(7)?
             })),
         )?;
         // Labels are unique by (request_id,key), so this join preserves answer
@@ -1617,6 +1619,8 @@ mod tests {
             "cost_known_requests",
             "input_tokens",
             "output_tokens",
+            "input_tokens_known_requests",
+            "output_tokens_known_requests",
             "error_count",
         ] {
             assert!(overview.get(field).is_none(), "detail-only field {field}");

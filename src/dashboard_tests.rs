@@ -55,6 +55,83 @@ fn token_coverage_counts_requests_and_preserves_unknown_and_zero_usage() {
 }
 
 #[test]
+fn version_token_coverage_counts_parents_within_the_selected_scope() {
+    for family in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("version-coverage.sqlite"), 7, 100).unwrap();
+        let now = Utc::now().timestamp_millis();
+        let records: Vec<_> = [
+            ("input-only", Some(100), None),
+            ("output-only", None, Some(20)),
+            ("unknown", None, None),
+            ("zero", Some(0), Some(0)),
+            ("outside-time-range", Some(999), Some(999)),
+        ]
+        .into_iter()
+        .map(|(id, input, output)| {
+            let timestamp = if id == "outside-time-range" {
+                now - 10_000
+            } else {
+                now
+            };
+            let mut record = dashboard_record(id, timestamp);
+            record["model"] = json!(id);
+            record["input_tokens"] = json!(input);
+            record["output_tokens"] = json!(output);
+            if family {
+                record["answers"][0]["family_id"] = json!("family");
+                record["answers"][0]["family_name"] = json!("Indexed questions");
+            }
+            let mut second = record["answers"][0].clone();
+            second["key"] = json!("second");
+            second["group_id"] = json!("second-group");
+            record["answers"].as_array_mut().unwrap().push(second);
+            record
+        })
+        .collect();
+        store
+            .write_batch(&mut store.writer_connection().unwrap(), &records)
+            .unwrap();
+
+        for (model, requests, input, output, input_known, output_known) in [
+            (None, 4, Some(100), Some(20), 2, 2),
+            (Some("input-only"), 1, Some(100), None, 1, 0),
+            (Some("output-only"), 1, None, Some(20), 0, 1),
+            (Some("unknown"), 1, None, None, 0, 0),
+            (Some("zero"), 1, Some(0), Some(0), 1, 1),
+            (Some("missing-model"), 0, None, None, 0, 0),
+        ] {
+            let detail = store
+                .group(
+                    if family { "family" } else { "dashboard-group" },
+                    &Filter {
+                        window: Some("all".into()),
+                        from: Some(now - 1_000),
+                        to: Some(now),
+                        model: model.map(str::to_owned),
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                detail["group"]["answer_count"],
+                requests * if family { 2 } else { 1 }
+            );
+            for group in
+                std::iter::once(&detail["group"]).chain(detail["versions"].as_array().unwrap())
+            {
+                assert_eq!(group["request_count"], requests);
+                assert_eq!(group["input_tokens"], json!(input));
+                assert_eq!(group["output_tokens"], json!(output));
+                assert_eq!(group["input_tokens_known_requests"], input_known);
+                assert_eq!(group["output_tokens_known_requests"], output_known);
+            }
+        }
+    }
+}
+
+#[test]
 fn empty_and_extreme_timeline_ranges_are_bounded_without_overflow() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(&dir.path().join("empty-range.sqlite"), 7, 100).unwrap();
