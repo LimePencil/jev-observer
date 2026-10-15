@@ -79,8 +79,10 @@ impl AppState {
             .no_deflate()
             .no_zstd()
             .connect_timeout(Duration::from_secs(15))
-            .read_timeout(Duration::from_secs(120))
-            .timeout(Duration::from_secs(300))
+            // Non-streaming local models can legitimately spend minutes on
+            // inference before sending headers. Use one configurable total
+            // deadline instead of silently imposing a shorter read deadline.
+            .timeout(Duration::from_secs(config.upstream_timeout_secs))
             .tcp_nodelay(true)
             .pool_idle_timeout(Duration::from_secs(90))
             .pool_max_idle_per_host(64)
@@ -1359,11 +1361,21 @@ mod tests {
     }
 
     fn fixture(upstream: &str, limit: usize, demo: bool) -> Fixture {
+        fixture_with_config(upstream, limit, demo, |_| {})
+    }
+
+    fn fixture_with_config(
+        upstream: &str,
+        limit: usize,
+        demo: bool,
+        configure: impl FnOnce(&mut Config),
+    ) -> Fixture {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::try_parse_from(["observer"]).unwrap();
         config.upstream = upstream.into();
         config.capture_limit = limit;
         config.demo = demo;
+        configure(&mut config);
         config.validate().unwrap();
         let store = Store::open(&directory.path().join("test.sqlite"), 7, 1000).unwrap();
         let collector = Collector::start(store.clone(), config.normalize_options(), limit, 4, 4);
@@ -1433,6 +1445,81 @@ mod tests {
             "capture not persisted: {}",
             fixture.state.collector.health()
         );
+    }
+
+    #[tokio::test]
+    async fn configured_upstream_deadline_controls_delayed_headers() {
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(|| async {
+                tokio::time::sleep(Duration::from_millis(1200)).await;
+                Json(json!({"answers": {}}))
+            }),
+        ))
+        .await;
+
+        for (seconds, expected) in [(1, StatusCode::GATEWAY_TIMEOUT), (2, StatusCode::OK)] {
+            let fixture = fixture_with_config(&url, 1024, false, |config| {
+                config.upstream_timeout_secs = seconds;
+            });
+            let response = tokio::time::timeout(
+                Duration::from_secs(5),
+                router(fixture.state.clone()).oneshot(native("{}")),
+            )
+            .await
+            .expect("the configured upstream deadline was not enforced")
+            .unwrap();
+            assert_eq!(response.status(), expected);
+            let _ = to_bytes(response.into_body(), 1024).await.unwrap();
+            let record = saved(&fixture).await;
+            assert_eq!(record["status"], expected.as_u16());
+            if expected == StatusCode::GATEWAY_TIMEOUT {
+                assert_eq!(record["transport_error"], "Upstream request timed out");
+                assert_eq!(record["capture_complete"], false);
+            } else {
+                assert!(record["transport_error"].is_null());
+                assert_eq!(record["capture_complete"], true);
+            }
+            fixture.state.collector.shutdown().await;
+        }
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn configured_upstream_deadline_also_bounds_response_body() {
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(|| async {
+                Body::from_stream(async_stream::stream! {
+                    yield Ok::<_, std::convert::Infallible>(Bytes::from_static(b"{\"answers\":"));
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    yield Ok(Bytes::from_static(b"{}}"));
+                })
+            }),
+        ))
+        .await;
+        let fixture = fixture_with_config(&url, 1024, false, |config| {
+            config.upstream_timeout_secs = 1;
+        });
+        let response = router(fixture.state.clone())
+            .oneshot(native("{}"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let result =
+            tokio::time::timeout(Duration::from_secs(3), to_bytes(response.into_body(), 1024))
+                .await
+                .expect("the upstream deadline stopped after response headers");
+        assert!(result.is_err());
+        let record = saved(&fixture).await;
+        assert_eq!(record["status"], 200);
+        assert_eq!(record["capture_complete"], false);
+        assert_eq!(
+            record["transport_error"],
+            "Upstream response transfer failed"
+        );
+        fixture.state.collector.shutdown().await;
+        task.abort();
     }
 
     #[tokio::test]
