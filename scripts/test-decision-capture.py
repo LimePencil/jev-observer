@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Contract checks for saved custom decision results; no model dependencies."""
 import importlib.util
+import json
+import os
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location('capture', Path(__file__).with_name('capture-decision.py'))
@@ -76,6 +81,75 @@ class CaptureTests(unittest.TestCase):
         self.assertNotIn('model', out['response'])
         self.assertIsNone(out['duration_ms'])
         self.assertEqual(out['response']['original_metadata']['usage'], {'questions': 1})
+
+
+class CaptureCliTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix='observer-capture-cli-')
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        self.request_path = self.directory / 'request.json'
+        self.response_path = self.directory / 'response.json'
+        self.output_path = self.directory / 'capture.jsonl'
+        self.write_inputs()
+
+    def write_inputs(self, original=None, response=None, ensure_ascii=True):
+        original = request() if original is None else original
+        response = {'answers': {}} if response is None else response
+        self.request_path.write_text(json.dumps(original, ensure_ascii=ensure_ascii), encoding='utf-8')
+        self.response_path.write_text(json.dumps(response, ensure_ascii=ensure_ascii), encoding='utf-8')
+
+    def run_cli(self, *extra):
+        environment = os.environ.copy()
+        environment.update({'LC_ALL': 'C', 'PYTHONUTF8': '0', 'PYTHONCOERCECLOCALE': '0'})
+        return subprocess.run([
+            sys.executable, str(Path(__file__).with_name('capture-decision.py')),
+            '--request', str(self.request_path), '--response', str(self.response_path),
+            '--id', 'event-1', '--timestamp', '1', '--source', 'app', '--provider', 'typesafe',
+            '--output', str(self.output_path), *extra,
+        ], env=environment, capture_output=True, timeout=10)
+
+    def test_utf8_inputs_and_output_do_not_depend_on_locale(self):
+        original = request()
+        original['questions']['route']['instructions'] = '분류 😀'
+        response = {'answers': {}, 'note': '응답 😀'}
+        for ensure_ascii in (False, True):
+            with self.subTest(escaped_input=ensure_ascii):
+                self.output_path = self.directory / f'capture-{ensure_ascii}.jsonl'
+                self.write_inputs(original, response, ensure_ascii=ensure_ascii)
+                result = self.run_cli()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                payload = self.output_path.read_bytes()
+                self.assertIn('분류 😀'.encode('utf-8'), payload)
+                decoded = json.loads(payload.decode('utf-8'))
+                self.assertEqual(decoded['request'], original)
+                self.assertEqual(decoded['response'], response)
+                self.assertTrue(payload.endswith(b'\n'))
+                self.output_path.unlink()
+
+    def test_failed_serialization_or_encoding_does_not_reserve_output(self):
+        invalid_unicode = request()
+        invalid_unicode['state'] = '\ud800'
+        cases = ((request(), ('--duration-ms', 'NaN')), (invalid_unicode, ()))
+        for index, (original, extra) in enumerate(cases):
+            with self.subTest(extra=extra):
+                self.output_path = self.directory / f'capture-{index}.jsonl'
+                self.write_inputs(original)
+                result = self.run_cli(*extra)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(b'Capture conversion failed:', result.stderr)
+                self.assertFalse(self.output_path.exists())
+                self.write_inputs()
+                corrected = self.run_cli('--duration-ms', '10')
+                self.assertEqual(corrected.returncode, 0, corrected.stderr)
+                self.output_path.unlink()
+
+    def test_existing_output_is_preserved(self):
+        previous = b'previous capture\n'
+        self.output_path.write_bytes(previous)
+        result = self.run_cli()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.output_path.read_bytes(), previous)
 
 
 if __name__ == '__main__': unittest.main()
