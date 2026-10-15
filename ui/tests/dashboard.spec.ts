@@ -739,6 +739,54 @@ test('version comparisons show observed outcomes and judged review coverage', as
   await expect(comparison).toContainText('billing');
 });
 
+for (const parentGroup of ['selected-group', 'selected-family']) {
+  test(`group details and version navigation retain the ${parentGroup} parent scope`, async ({ page }) => {
+    const state = await harness(page, { path: `/?window=all&group=${parentGroup}&source=Test+inbox&model=test-model` });
+    const scopedGroup = { ...structuredClone(group), answer_count: 1, valid_count: 1, request_count: 1 };
+    const otherVersion = { ...scopedGroup, id: 'other-version', definition_id: 'other-definition' };
+    const sharedRequest = { ...structuredClone(record), id: 'shared-request' };
+    const outsideRequest = { ...structuredClone(record), id: 'outside-parent-scope' };
+    state.dashboard.groups = [scopedGroup];
+    state.dashboard.requests = [sharedRequest];
+    state.record = sharedRequest;
+    await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+    await expect(page.locator('.distribution-meta')).toContainText('1 valid / 1 answers');
+
+    const detailQueries: URL[] = [];
+    await page.route('**/api/groups/**', route => {
+      const url = new URL(route.request().url());
+      detailQueries.push(url);
+      const scoped = url.searchParams.get('group') === parentGroup;
+      const selected = url.pathname.endsWith(otherVersion.id) ? otherVersion : scopedGroup;
+      const inScope = (version: Group) => ({ ...version, answer_count: scoped ? 1 : 2, valid_count: scoped ? 1 : 2, request_count: scoped ? 1 : 2 });
+      return route.fulfill({ json: {
+        group: inScope(selected), versions: [inScope(scopedGroup), inScope(otherVersion)],
+        timeline: [], requests: scoped ? [sharedRequest] : [sharedRequest, outsideRequest], answers: [],
+      } });
+    });
+
+    await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+    const drawer = page.getByRole('dialog');
+    await expect(drawer.locator('.detail-field').filter({ has: page.locator('dt', { hasText: 'Distinct requests' }) }).locator('dd')).toHaveText('1');
+    await expect(drawer.getByLabel('Inspect request outside-parent-scope')).toHaveCount(0);
+    await page.getByLabel('Compare with').selectOption(otherVersion.id);
+    await expect(page.getByLabel('Version outcome comparison').getByRole('row', { name: 'Distinct requests 1 1', exact: true })).toBeVisible();
+
+    await drawer.getByRole('button', { name: /Version 2/ }).click();
+    await expect(drawer.locator('.version-item.selected')).toContainText('other-defi');
+    await drawer.getByLabel('Inspect request shared-request', { exact: true }).click();
+    await drawer.getByRole('button', { name: 'View recurring group' }).click();
+    await expect(drawer.getByRole('heading', { name: 'department', exact: true })).toBeVisible();
+    expect(detailQueries).toHaveLength(3);
+    for (const url of detailQueries) {
+      expect(url.searchParams.get('group')).toBe(parentGroup);
+      expect(url.searchParams.get('source')).toBe('Test inbox');
+      expect(url.searchParams.get('model')).toBe('test-model');
+      expect(url.searchParams.get('window')).toBe('all');
+    }
+  });
+}
+
 
 test('the researched catalog keeps setup separate from active credentials and opens mapped capture import', async ({ page }) => {
   await harness(page, { settings: { provider: 'kev', upstream_auth: 'none', upstream: 'http://127.0.0.1:8009/v1/systemone', model_catalog: catalog as Settings['model_catalog'] } });

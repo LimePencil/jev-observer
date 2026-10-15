@@ -78,7 +78,7 @@ function AnswerDetail({ answer, record, onGroup, changed }: { answer: Answer; re
 }
 
 function GroupDetails({ id, filters, setPanel, filterGroup }: { id: string; filters: Filters; setPanel: Props['setPanel']; filterGroup: Props['filterGroup'] }) {
-  const { data, error, reload } = useResource<GroupDetail>(`/api/groups/${encodeURIComponent(id)}?${query({ ...filters, group: '' })}`);
+  const { data, error, reload } = useResource<GroupDetail>(`/api/groups/${encodeURIComponent(id)}?${query(filters)}`);
   const [compare, setCompare] = useState('');
   const group = data?.group, other = data?.versions.find(version => version.id === compare);
   return <><DetailHeading eyebrow="Recurring question" title={group?.name ?? 'Question group'} description="Definitions remain separate so meaningful changes stay visible." icon={<Fingerprint size={15} />} />
