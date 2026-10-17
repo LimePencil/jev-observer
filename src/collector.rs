@@ -21,6 +21,7 @@ const IDLE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(30);
 const IDLE_MAINTENANCE_INTERVAL: Duration = Duration::from_millis(100);
 const MAX_BATCH_RECORDS: usize = 128;
 const MAX_BATCH_CAPTURE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_BATCH_NORMALIZED_WORK: usize = 4 * 1024 * 1024;
 
 struct Pending {
     capture: Capture,
@@ -302,6 +303,97 @@ fn collect_batch(first: Pending, receiver: &Receiver<Pending>) -> (Vec<Pending>,
     (batch, None)
 }
 
+// An allocation-free upper bound for encoded JSON, capped at `limit`. Strings
+// need at most six bytes per UTF-8 byte when escaped; counting their length
+// avoids scanning large retained bodies again. This is not a heap-size bound.
+fn normalized_charge(record: &Value, limit: usize) -> usize {
+    fn charge(value: &Value, remaining: &mut usize) {
+        fn take(remaining: &mut usize, amount: usize) {
+            *remaining = remaining.saturating_sub(amount);
+        }
+        fn string_bytes(value: &str) -> usize {
+            2usize.saturating_add(value.len().saturating_mul(6))
+        }
+        match value {
+            Value::Null => take(remaining, 4),
+            Value::Bool(_) => take(remaining, 5),
+            Value::Number(_) => take(remaining, 32),
+            Value::String(value) => take(remaining, string_bytes(value)),
+            Value::Array(values) => {
+                take(remaining, 2);
+                for value in values {
+                    if *remaining == 0 {
+                        break;
+                    }
+                    take(remaining, 1);
+                    charge(value, remaining);
+                }
+            }
+            Value::Object(values) => {
+                take(remaining, 2);
+                for (key, value) in values {
+                    if *remaining == 0 {
+                        break;
+                    }
+                    take(remaining, string_bytes(key).saturating_add(2));
+                    charge(value, remaining);
+                }
+            }
+        }
+    }
+    let mut remaining = limit;
+    charge(record, &mut remaining);
+    limit - remaining
+}
+
+fn normalized_batches(
+    batch: Vec<Pending>,
+    mut normalize: impl FnMut(&Capture) -> Option<Value>,
+) -> impl Iterator<Item = (Vec<Pending>, Vec<Value>)> {
+    let mut remaining = batch.into_iter();
+    let mut deferred = None;
+    std::iter::from_fn(move || {
+        if remaining.len() == 0 && deferred.is_none() {
+            return None;
+        }
+        let mut pending = Vec::new();
+        let mut records = Vec::with_capacity(remaining.len());
+        let mut work = 0;
+        loop {
+            let (item, record, charge) = match deferred.take() {
+                Some(item) => item,
+                None => {
+                    let Some(item) = remaining.next() else {
+                        break;
+                    };
+                    let record = normalize(&item.capture);
+                    let charge = record.as_ref().map_or(0, |record| {
+                        normalized_charge(record, MAX_BATCH_NORMALIZED_WORK + 1)
+                    });
+                    (item, record, charge)
+                }
+            };
+            if !records.is_empty() && charge > MAX_BATCH_NORMALIZED_WORK - work {
+                // Keep one prepared record so a boundary never normalizes it
+                // twice. Its permit and FIFO accounting remain pending.
+                deferred = Some((item, record, charge));
+                break;
+            }
+            if let Some(record) = record {
+                records.push(record);
+            }
+            work += charge;
+            pending.push(item);
+            // Preserve an individually oversized record intact, alone. No
+            // normalization happens inside the following write transaction.
+            if work >= MAX_BATCH_NORMALIZED_WORK {
+                break;
+            }
+        }
+        Some((pending, records))
+    })
+}
+
 fn writer(
     store: Store,
     options: NormalizeOptions,
@@ -354,61 +446,66 @@ fn writer(
         };
         let (batch, next) = collect_batch(first, &receiver);
         deferred = next;
-        let mut records = Vec::with_capacity(batch.len());
-        for item in &batch {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                normalize(&item.capture, &options)
-            })) {
-                Ok(record) => records.push(record),
-                Err(_) => gap(&c, 1),
-            }
-        }
-        if connection.is_none() {
-            connection = open_writer(&store, &c);
-        }
-        let written =
-            connection
-                .as_mut()
-                .and_then(|conn| match store.write_batch(conn, &records) {
-                    Ok(written) => Some(written),
-                    Err(error) => {
-                        diagnostic(&c, "write", &error);
+        for (batch, records) in
+            normalized_batches(batch, |capture| {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    normalize(capture, &options)
+                })) {
+                    Ok(record) => Some(record),
+                    Err(_) => {
+                        gap(&c, 1);
                         None
                     }
-                });
-        match written {
-            Some(count) => {
-                // write_batch checks retention in the same successful
-                // transaction. Steady traffic may never enter the idle path.
-                let checked_at = chrono::Utc::now().timestamp_millis();
-                c.maintenance_failed.store(false, Ordering::Relaxed);
-                c.last_maintenance_at.store(checked_at, Ordering::Relaxed);
-                last_maintenance = Instant::now();
-                c.persisted.fetch_add(count as u64, Ordering::Relaxed);
-                c.last_persisted_at.store(checked_at, Ordering::Relaxed);
-            }
-            None => {
-                c.write_failures.fetch_add(1, Ordering::Relaxed);
-                gap(&c, records.len() as u64);
-                connection = None;
-            }
-        }
-        let lag = batch
-            .iter()
-            .map(|item| item.queued.elapsed().as_millis() as u64)
-            .max()
-            .unwrap_or(0);
-        c.lag_ms.store(lag, Ordering::Relaxed);
+                }
+            })
         {
-            let mut pending = c.pending_times.lock().unwrap_or_else(|e| e.into_inner());
-            pending.drain(..batch.len());
+            if connection.is_none() {
+                connection = open_writer(&store, &c);
+            }
+            let written =
+                connection
+                    .as_mut()
+                    .and_then(|conn| match store.write_batch(conn, &records) {
+                        Ok(written) => Some(written),
+                        Err(error) => {
+                            diagnostic(&c, "write", &error);
+                            None
+                        }
+                    });
+            match written {
+                Some(count) => {
+                    // write_batch checks retention in the same successful
+                    // transaction. Steady traffic may never enter the idle path.
+                    let checked_at = chrono::Utc::now().timestamp_millis();
+                    c.maintenance_failed.store(false, Ordering::Relaxed);
+                    c.last_maintenance_at.store(checked_at, Ordering::Relaxed);
+                    last_maintenance = Instant::now();
+                    c.persisted.fetch_add(count as u64, Ordering::Relaxed);
+                    c.last_persisted_at.store(checked_at, Ordering::Relaxed);
+                }
+                None => {
+                    c.write_failures.fetch_add(1, Ordering::Relaxed);
+                    gap(&c, records.len() as u64);
+                    connection = None;
+                }
+            }
+            let lag = batch
+                .iter()
+                .map(|item| item.queued.elapsed().as_millis() as u64)
+                .max()
+                .unwrap_or(0);
+            c.lag_ms.store(lag, Ordering::Relaxed);
+            {
+                let mut pending = c.pending_times.lock().unwrap_or_else(|e| e.into_inner());
+                pending.drain(..batch.len());
+            }
+            for item in &batch {
+                c.queue_depth.fetch_sub(1, Ordering::Relaxed);
+                c.queued_bytes.fetch_sub(item.size, Ordering::Relaxed);
+            }
+            // Permits stay owned through persistence, including prepared records carried between batches.
+            drop(batch);
         }
-        for item in &batch {
-            c.queue_depth.fetch_sub(1, Ordering::Relaxed);
-            c.queued_bytes.fetch_sub(item.size, Ordering::Relaxed);
-        }
-        // Permits stay owned through persistence; the same memory budget covers the complete pipeline.
-        drop(batch);
     }
 }
 
@@ -728,3 +825,7 @@ mod tests {
         assert_eq!(health["last_maintenance_at"], health["last_persisted_at"]);
     }
 }
+
+#[cfg(test)]
+#[path = "collector_batch_tests.rs"]
+mod batch_tests;
