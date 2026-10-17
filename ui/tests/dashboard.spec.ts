@@ -546,6 +546,41 @@ test('imported actions and unknown transport facts stay distinct', async ({ page
   await expect(page.getByRole('dialog')).toContainText('cache_reuse');
 });
 
+for (const format of ['jevrouter-receipt', 'observer-jsonl']) {
+  test(`${format} application input stays distinct from absent request state`, async ({ page }) => {
+    const state = await harness(page);
+    state.record = { ...state.record, event_kind: 'application_action', import_format: format, source_event_id: 'synthetic-receipt', state_retained: false, state: null, answers: [], actions: [{ kind: 'policy_decision', source: 'jevrouter-receipt', decision: { input: 'synthetic retained input' } }] };
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const input = dialog.locator('section').filter({ has: page.getByRole('heading', { name: 'Request input state', exact: true }) });
+    await expect(input).toContainText('This record has no retained request state.');
+    await expect(input).toContainText('Imported application data is shown under Application outcome.');
+    await expect(input).not.toContainText('Raw input capture is off');
+    await expect(dialog.getByText('Inspect retained input', { exact: true })).toHaveCount(0);
+    const outcome = dialog.locator('section').filter({ has: page.getByRole('heading', { name: 'Application outcome', exact: true }) });
+    await expect(outcome).toContainText('synthetic retained input');
+    await expect(dialog).toContainText(format);
+  });
+}
+
+for (const retained of [false, true]) {
+  test(`ordinary request state copy describes ${retained ? 'retained' : 'absent'} input`, async ({ page }) => {
+    const state = await harness(page);
+    state.record = { ...state.record, state_retained: retained, state: retained ? { message: 'synthetic request state' } : null };
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    const input = page.getByRole('dialog').locator('section').filter({ has: page.getByRole('heading', { name: 'Request input state', exact: true }) });
+    await expect(input).not.toContainText('Imported application data');
+    if (retained) {
+      await expect(input).toContainText('Captured with local opt-in and configured redaction.');
+      await input.getByText('Inspect retained input', { exact: true }).click();
+      await expect(input).toContainText('synthetic request state');
+    } else {
+      await expect(input).toContainText('This record has no retained request state.');
+      await expect(input.getByText('Inspect retained input', { exact: true })).toHaveCount(0);
+    }
+  });
+}
+
 test('light and dark dashboard accessibility and assets stay local', async ({ page }) => {
   const requests: string[] = []; page.on('request', request => requests.push(request.url()));
   await harness(page);
