@@ -1030,13 +1030,17 @@ impl Store {
         args.push(id.to_owned().into());
         let selector = if family { "g.family_id=?" } else { "g.id=?" };
         let (parent_predicate, mut parent_args) = Self::predicate(filter)?;
-        parent_args.push(id.to_owned().into());
+        parent_args.insert(0, id.to_owned().into());
         let parent_selector = if family { "gg.family_id=?" } else { "gg.id=?" };
+        // Start with distinct parents from this group. With an IN predicate,
+        // a source/model filter can make SQLite scan that entire population
+        // once per version instead. CROSS JOIN keeps these indexed parent
+        // lookups first while preserving one contribution per request.
         let parent_scope = format!(
-            "{parent_predicate} AND r.id IN (SELECT aa.request_id FROM answers aa JOIN groups gg ON gg.id=aa.group_id WHERE {parent_selector})"
+            "FROM (SELECT DISTINCT aa.request_id FROM answers aa JOIN groups gg ON gg.id=aa.group_id WHERE {parent_selector}) selected CROSS JOIN requests r ON r.id=selected.request_id WHERE {parent_predicate}"
         );
         let metrics = conn.query_row(
-            &format!("SELECT avg(duration_ms),sum(cost_usd),count(cost_usd),sum(input_tokens),sum(output_tokens),coalesce(sum({FAILED}),0),count(input_tokens),count(output_tokens) FROM requests r WHERE {parent_scope}"),
+            &format!("SELECT avg(duration_ms),sum(cost_usd),count(cost_usd),sum(input_tokens),sum(output_tokens),coalesce(sum({FAILED}),0),count(input_tokens),count(output_tokens) {parent_scope}"),
             params_from_iter(&parent_args), |row| Ok(json!({
                 "mean_latency_ms":row.get::<_,Option<f64>>(0)?, "cost_usd":row.get::<_,Option<f64>>(1)?,
                 "cost_known_requests":row.get::<_,i64>(2)?, "input_tokens":row.get::<_,Option<i64>>(3)?,
@@ -1056,7 +1060,7 @@ impl Store {
                     && message == "integer overflow" =>
             {
                 let mut parent_stmt = conn.prepare(&format!(
-                    "SELECT duration_ms,cost_usd,input_tokens,output_tokens,{FAILED} FROM requests r WHERE {parent_scope}"
+                    "SELECT duration_ms,cost_usd,input_tokens,output_tokens,{FAILED} {parent_scope}"
                 ))?;
                 let mut parents = parent_stmt.query(params_from_iter(&parent_args))?;
                 let (mut latency, mut cost) = (Mean::default(), Mean::default());
