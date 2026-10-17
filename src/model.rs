@@ -774,15 +774,15 @@ fn prepare_values(
     .flatten()
     .chain(import_secrets.iter().map(String::as_str))
     .collect();
-    let mut safe = privacy(
-        &json!({
-            "request": raw_request, "response": response, "id": capture.id,
+    let mut safe = {
+        let mut envelope = json!({
+            "request": raw_request, "response": null, "id": capture.id,
             "source": capture.source, "task_version": capture.task_version,
             "transport_error": capture.transport_error
-        }),
-        options,
-        &explicit_secrets,
-    );
+        });
+        envelope["response"] = response;
+        privacy(&envelope, options, &explicit_secrets)
+    };
     // Only the actual input snapshot is opt-in. A structured question can
     // legitimately contain a field named `state`; that is part of its rule.
     if !options.capture_state {
