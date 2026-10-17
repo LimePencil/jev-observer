@@ -11,11 +11,14 @@ import { DetailBoundary, DetailFallback } from './DetailBoundary';
 
 const Details = lazy(() => import('./Details'));
 const defaults = defaultFilters;
+type PageNavigation = { errorRequestOrder: number; scope: string; returnScope: string; filters: Filters; requestPages: string[]; groupPages: string[] };
 
 export default function App() {
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [search, setSearch] = useState(() => filters.search), [groupSearch, setGroupSearch] = useState(() => filters.group_search ?? '');
   const [requestPages, setRequestPages] = useState<string[]>([]), [groupPages, setGroupPages] = useState<string[]>([]);
+  const [pageNavigation, setPageNavigation] = useState<PageNavigation | null>(null);
+  const [pageFailure, setPageFailure] = useState<{ message: string; navigation: PageNavigation } | null>(null);
   const [datesOpen, setDatesOpen] = useState(() => Boolean(filters.from || filters.to));
   const [paused, setPaused] = useState(false), [panel, updatePanel] = useState<Panel>(null);
   const [displayed, setDisplayed] = useState<{ data: Dashboard; scope: string } | null>(null);
@@ -31,7 +34,7 @@ export default function App() {
   const openerRef = useRef<HTMLElement | null>(null);
   const exportRef = useRef<HTMLButtonElement>(null);
   const mobileMenuRef = useRef<HTMLButtonElement>(null);
-  const { snapshot, error, invalidate, reset, scope } = useDashboard(filters);
+  const { snapshot, error, errorRequestOrder, invalidate, reset, scope } = useDashboard(filters);
   const liveHealth = useLiveHealth();
   const { data: settings } = useResource<Settings>('/api/settings');
   const frozen = paused || panel !== null;
@@ -39,6 +42,24 @@ export default function App() {
   useEffect(() => {
     if (snapshot && (!frozen || displayed?.scope !== snapshot.scope)) setDisplayed(snapshot);
   }, [snapshot, frozen, displayed?.scope]);
+  useEffect(() => {
+    if (!pageNavigation) return;
+    if (pageNavigation.scope !== scope) { setPageNavigation(null); return; }
+    if (snapshot?.scope === scope) {
+      setRequestPages(pageNavigation.requestPages); setGroupPages(pageNavigation.groupPages);
+      setPageNavigation(null);
+    } else if (error && errorRequestOrder !== pageNavigation.errorRequestOrder) {
+      // A failed attempt never enters history. Restore the loaded page while
+      // retaining an explicit retry, independently of subsequent live polls.
+      setPageFailure({ message: error, navigation: pageNavigation });
+      setPageNavigation(null);
+      const previous = readFilters(pageNavigation.returnScope);
+      setFilters(value => ({ ...value, request_cursor: previous.request_cursor ?? '', group_cursor: previous.group_cursor ?? '' }));
+    }
+  }, [pageNavigation, scope, snapshot, error, errorRequestOrder]);
+  useEffect(() => {
+    if (pageFailure && pageFailure.navigation.returnScope !== scope) setPageFailure(null);
+  }, [scope, pageFailure]);
   useEffect(() => { const timer = setTimeout(() => setFilters(value => value.search === search ? value : ({ ...value, search, request_cursor: '', group_cursor: '' })), 250); return () => clearTimeout(timer); }, [search]);
   useEffect(() => { const timer = setTimeout(() => setFilters(value => (value.group_search ?? '') === groupSearch ? value : ({ ...value, group_search: groupSearch, group_cursor: '' })), 250); return () => clearTimeout(timer); }, [groupSearch]);
   // Draft edits can be undone before debounce; only committed searches change the page scope.
@@ -46,7 +67,7 @@ export default function App() {
   useEffect(() => { setGroupPages(previous => previous.length ? [] : previous); }, [filters.group_search]);
   useEffect(() => { window.history.replaceState(null, '', `${window.location.pathname}?${query(filters)}${window.location.hash}`); }, [filters]);
   useEffect(() => {
-    const restore = () => { const next = readFilters(); setFilters(next); setSearch(next.search); setGroupSearch(next.group_search ?? ''); setRequestPages([]); setGroupPages([]); setDatesOpen(Boolean(next.from || next.to)); };
+    const restore = () => { const next = readFilters(); setPageNavigation(null); setPageFailure(null); setFilters(next); setSearch(next.search); setGroupSearch(next.group_search ?? ''); setRequestPages([]); setGroupPages([]); setDatesOpen(Boolean(next.from || next.to)); };
     window.addEventListener('popstate', restore);
     return () => window.removeEventListener('popstate', restore);
   }, []);
@@ -77,18 +98,26 @@ export default function App() {
     if (!value) requestAnimationFrame(() => { if (openerRef.current?.isConnected) openerRef.current.focus(); });
   }
   function setFilter(key: keyof Filters, value: string) {
+    setPageNavigation(null); setPageFailure(null);
     setRequestPages([]); setGroupPages([]);
     setFilters(previous => ({ ...previous, request_cursor: '', group_cursor: '', ...(key === 'window' ? { from: '', to: '' } : {}), ...((key === 'from' || key === 'to') ? { window: 'all' } : {}), [key]: value }));
   }
-  function pageRequests(cursor: string) { setRequestPages(previous => [...previous, filters.request_cursor ?? '']); setFilters(previous => ({ ...previous, request_cursor: cursor })); setMoreRequests(true); }
-  function pageGroups(cursor: string) { setGroupPages(previous => [...previous, filters.group_cursor ?? '']); setFilters(previous => ({ ...previous, group_cursor: cursor })); }
-  function newerRequests() { const cursor = requestPages.at(-1) ?? ''; setRequestPages(previous => previous.slice(0, -1)); setFilters(previous => ({ ...previous, request_cursor: cursor })); }
-  function newerGroups() { const cursor = groupPages.at(-1) ?? ''; setGroupPages(previous => previous.slice(0, -1)); setFilters(previous => ({ ...previous, group_cursor: cursor })); }
-  function historyChanged() { setHistoryRevision(value => value + 1); setDisplayed(null); setSelectedGroup(''); setRequestPages([]); setGroupPages([]); setFilters(previous => ({ ...previous, request_cursor: '', group_cursor: '' })); reset(); }
-  function resetFilters() { setFilters(defaults); setSearch(''); setGroupSearch(''); setRequestPages([]); setGroupPages([]); setDatesOpen(false); }
+  function navigatePage(next: Filters, nextRequestPages = requestPages, nextGroupPages = groupPages) {
+    setPageFailure(null);
+    setPageNavigation({ errorRequestOrder, scope: query(next), returnScope: displayed?.scope ?? scope, filters: next, requestPages: nextRequestPages, groupPages: nextGroupPages });
+    setFilters(next);
+  }
+  function pageRequests(cursor: string) { navigatePage({ ...filters, request_cursor: cursor }, [...requestPages, filters.request_cursor ?? '']); setMoreRequests(true); }
+  function pageGroups(cursor: string) { navigatePage({ ...filters, group_cursor: cursor }, requestPages, [...groupPages, filters.group_cursor ?? '']); }
+  function newerRequests() { navigatePage({ ...filters, request_cursor: requestPages.at(-1) ?? '' }, requestPages.slice(0, -1)); }
+  function newerGroups() { navigatePage({ ...filters, group_cursor: groupPages.at(-1) ?? '' }, requestPages, groupPages.slice(0, -1)); }
+  function historyChanged() { setPageNavigation(null); setPageFailure(null); setHistoryRevision(value => value + 1); setDisplayed(null); setSelectedGroup(''); setRequestPages([]); setGroupPages([]); setFilters(previous => ({ ...previous, request_cursor: '', group_cursor: '' })); reset(); }
+  function resetFilters() { setPageNavigation(null); setPageFailure(null); setFilters(defaults); setSearch(''); setGroupSearch(''); setRequestPages([]); setGroupPages([]); setDatesOpen(false); }
   function navigate(section: string) { setActiveNav(section); setSidebarOpen(false); document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   const explorerLoading = Boolean(displayed && displayed.scope !== scope && parentScope(displayed.scope) === parentScope(scope));
   const data = displayed && (displayed.scope === scope || explorerLoading) ? displayed.data : null;
+  const displayedRequestCursor = new URLSearchParams(displayed?.scope ?? '').get('request_cursor');
+  const pageLoading = explorerLoading || pageNavigation !== null;
   const latest = snapshot?.scope === scope ? snapshot.data : null;
   // Catalogs describe retained history, independently of the selected scope.
   // Keep them during refreshes and keep active values visible after retention.
@@ -139,6 +168,7 @@ export default function App() {
 
       {includesSamples && <div className="sample-notice"><span className="sample-mark"><Aperture size={16} weight="bold" /></span><span><strong>{sample ? 'A workspace to explore.' : 'Sample records included.'}</strong> {sample ? 'These are synthetic records; forwarding is disabled until you restart without --demo.' : 'This window includes synthetic observations. Their costs are not real charges.'}</span><button className="text-button" onClick={() => setPanel({ type: 'connect' })}>{sample ? 'See live setup' : 'Connect your app'}<ArrowRight size={14} /></button></div>}
       {(error || !data) && gap && <div className="warning-notice" role="status"><WarningCircle size={18} /><span>Collection history is incomplete: {number(health?.dropped)} dropped, {number(health?.truncated ?? 0)} incomplete captures, {number(health?.write_failures)} write failures. These counters are independent of history storage.</span></div>}
+      {pageFailure && <ErrorNotice message={`Could not load the requested history page: ${pageFailure.message}. Showing the last successfully loaded page.`} retry={() => { const navigation = pageFailure.navigation; navigatePage(navigation.filters, navigation.requestPages, navigation.groupPages); }} />}
       {error && <ErrorNotice message={`${error}. ${data ? 'Showing the last loaded snapshot; values may be stale.' : 'Check that your local Observer service is running.'}`} retry={invalidate} />}
 
       <div className="filterbar"><div className="filter-select"><FunnelSimple size={15} /><select aria-label="Filter by source" value={filters.source} onChange={event => setFilter('source', event.target.value)}><option value="">All sources</option>{sources.map(source => <option key={source}>{source}</option>)}</select><CaretDown size={12} /></div><div className="filter-select"><select aria-label="Filter by model" value={filters.model} onChange={event => setFilter('model', event.target.value)}><option value="">All models</option>{models.map(model => <option key={model}>{model}</option>)}</select><CaretDown size={12} /></div><div className="filter-divider" /><label className="search-box"><span className="search-symbol"><MagnifyingGlass size={15} /></span><input ref={searchRef} value={search} onChange={event => setSearch(event.target.value)} aria-label="Search requests" placeholder="Search requests…" /><kbd>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'} K</kbd></label><div className="filter-select time-select"><Clock size={15} /><select aria-label="Time window" value={filters.window} onChange={event => setFilter('window', event.target.value)}><option value="1h">Last hour</option><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="all">All history</option></select><CaretDown size={12} /></div><button className="icon-button refresh-button" onClick={invalidate} aria-label="Refresh dashboard"><ArrowsClockwise size={17} /></button></div>
@@ -155,11 +185,11 @@ export default function App() {
 
       <div className="explorer-grid"><section className="panel questions-panel" id="questions"><SectionHeading title="Recurring questions" description="Retained definitions and indexed families" action={<span className="count-badge">{number(data.groups.length)}</span>} />
         <label className="group-search"><FunnelSimple size={14} /><input value={groupSearch} onChange={event => setGroupSearch(event.target.value)} placeholder="Search all question groups…" aria-label="Find a question group" /></label>{groupSearch && <p className="caption group-loading">Searching groups in this scope. Request totals are unchanged.</p>}{explorerLoading && <p className="caption group-loading" role="status">Loading history…</p>}{data.groups.length > 0 ? <><div className="group-list" aria-busy={explorerLoading} role="list" aria-label="Question groups">{groups.length ? groups.map(item => <div key={item.id} role="listitem"><button className={`group-row ${group?.id === item.id ? 'selected' : ''}`} onClick={() => setSelectedGroup(item.id)} aria-pressed={group?.id === item.id}><span className={`group-type-icon kind-${item.kind}`}><Rows size={16} weight="bold" /></span><span className="group-row-main"><strong title={item.name}>{item.name}</strong><span>{item.source}{item.version_count > 1 && <span className="version-mark">{item.version_count} {item.is_family ? 'definitions' : 'versions'}</span>}</span></span><span className="group-row-count">{compact(item.answer_count)}<small>answers</small></span></button></div>) : <p className="group-search-empty">No questions match this search.</p>}</div>
-        {(filters.group_cursor || data.group_next_cursor) && <div className="history-pagination" aria-label="Question group pages"><button className="text-button" disabled={explorerLoading || !filters.group_cursor} onClick={newerGroups}>Newer groups</button><span>{number(groups.length)} groups</span><button className="text-button" disabled={explorerLoading || !data.group_next_cursor} onClick={() => data.group_next_cursor && pageGroups(data.group_next_cursor)}>Older groups</button></div>}
-        {group && <div className="selected-distribution"><div className="distribution-heading"><div><strong>{group.name}</strong><div className="distribution-meta"><KindBadge kind={group.kind} /><span>{number(group.valid_count)} valid / {number(group.answer_count)} answers</span></div></div><button className="icon-button" onClick={() => setPanel({ type: 'group', id: group.id })} aria-label={`Inspect group ${group.name}`}><ArrowSquareOut size={18} /></button></div><Distribution group={group} /><div className="distribution-bottom"><span>{number(group.request_count)} distinct requests</span><button className="text-button" onClick={() => setPanel({ type: 'group', id: group.id })}>Inspect group<ArrowRight size={13} /></button></div></div>}</> : <Empty title={groupSearch ? 'No questions match this search' : 'Patterns start with a question'}>{groupSearch ? 'Try another question name or clear the group search.' : 'Repeated definitions will form groups automatically. Changed criteria keep their own versions.'}{filters.group_cursor && <button className="text-button" onClick={newerGroups}>Newer groups</button>}</Empty>}
+        {(filters.group_cursor || data.group_next_cursor) && <div className="history-pagination" aria-label="Question group pages"><button className="text-button" disabled={pageLoading || !filters.group_cursor} onClick={newerGroups}>Newer groups</button><span>{number(groups.length)} groups</span><button className="text-button" disabled={pageLoading || !data.group_next_cursor} onClick={() => data.group_next_cursor && pageGroups(data.group_next_cursor)}>Older groups</button></div>}
+        {group && <div className="selected-distribution"><div className="distribution-heading"><div><strong>{group.name}</strong><div className="distribution-meta"><KindBadge kind={group.kind} /><span>{number(group.valid_count)} valid / {number(group.answer_count)} answers</span></div></div><button className="icon-button" onClick={() => setPanel({ type: 'group', id: group.id })} aria-label={`Inspect group ${group.name}`}><ArrowSquareOut size={18} /></button></div><Distribution group={group} /><div className="distribution-bottom"><span>{number(group.request_count)} distinct requests</span><button className="text-button" onClick={() => setPanel({ type: 'group', id: group.id })}>Inspect group<ArrowRight size={13} /></button></div></div>}</> : <Empty title={groupSearch ? 'No questions match this search' : 'Patterns start with a question'}>{groupSearch ? 'Try another question name or clear the group search.' : 'Repeated definitions will form groups automatically. Changed criteria keep their own versions.'}{filters.group_cursor && <button className="text-button" disabled={pageLoading} onClick={newerGroups}>Newer groups</button>}</Empty>}
       </section>
 
-      <section className="panel requests-panel" id="requests"><SectionHeading title="Request stream" description={`${filters.request_cursor ? 'Older' : 'Latest'} ${Math.min(data.requests.length, moreRequests ? 100 : 12)} records · totals above cover the whole window`} action={<button className={`filter-toggle ${filters.status === 'error' ? 'selected' : ''}`} onClick={() => setFilter('status', filters.status === 'error' ? '' : 'error')} aria-pressed={filters.status === 'error'}><WarningCircle size={14} />Failures</button>} />{data.requests.length ? <><div className="request-feed"><RequestTable requests={data.requests.slice(0, moreRequests ? 100 : 12)} open={id => setPanel({ type: 'request', id })} /></div><div className="requests-footer"><span><span className={`connection-dot ${frozen ? 'paused' : error ? 'offline' : ''}`} />{frozen ? 'View paused · collection continues' : error ? 'Last loaded history' : 'Live snapshots'}</span>{data.requests.length > 12 && <button className="text-button" onClick={() => setMoreRequests(!moreRequests)}>{moreRequests ? 'Show fewer' : `Show ${Math.min(100, data.requests.length)} records`}<CaretDown size={13} /></button>}</div>{(filters.request_cursor || data.feed_next_cursor) && <div className="history-pagination" aria-label="Request pages"><button className="text-button" disabled={explorerLoading || !filters.request_cursor} onClick={newerRequests}>Newer requests</button><button className="text-button" disabled={explorerLoading || !data.feed_next_cursor} onClick={() => data.feed_next_cursor && pageRequests(data.feed_next_cursor)}>Older requests</button></div>}</> : <Empty title={filtered ? 'No requests match these filters' : hasRetainedHistory && filters.window !== 'all' ? 'No requests in this window' : 'Your workspace is ready'}>{filtered ? 'Try a wider time window or clear your filters.' : hasRetainedHistory && filters.window !== 'all' ? 'Older records are available in this workspace.' : 'Connect a local application or import existing records to start exploring.'}<div className="button-row empty-actions">{filters.request_cursor && <button className="button" onClick={newerRequests}>Newer requests</button>}{filtered ? <button className="button" onClick={resetFilters}>Clear filters</button> : hasRetainedHistory && filters.window !== 'all' ? <button className="button primary" onClick={() => setFilter('window', 'all')}>Show all history</button> : <><button className="button primary" onClick={() => setPanel({ type: 'connect' })}><Plus size={15} />Connect app</button><button className="button" onClick={() => setPanel({ type: 'import' })}>Import records</button></>}</div></Empty>}</section></div>
+      <section className="panel requests-panel" id="requests"><SectionHeading title="Request stream" description={`${displayedRequestCursor ? 'Older' : 'Latest'} ${Math.min(data.requests.length, moreRequests ? 100 : 12)} records · totals above cover the whole window`} action={<button className={`filter-toggle ${filters.status === 'error' ? 'selected' : ''}`} onClick={() => setFilter('status', filters.status === 'error' ? '' : 'error')} aria-pressed={filters.status === 'error'}><WarningCircle size={14} />Failures</button>} />{data.requests.length ? <><div className="request-feed"><RequestTable requests={data.requests.slice(0, moreRequests ? 100 : 12)} open={id => setPanel({ type: 'request', id })} /></div><div className="requests-footer"><span><span className={`connection-dot ${frozen ? 'paused' : error ? 'offline' : ''}`} />{frozen ? 'View paused · collection continues' : error ? 'Last loaded history' : 'Live snapshots'}</span>{data.requests.length > 12 && <button className="text-button" onClick={() => setMoreRequests(!moreRequests)}>{moreRequests ? 'Show fewer' : `Show ${Math.min(100, data.requests.length)} records`}<CaretDown size={13} /></button>}</div>{(filters.request_cursor || data.feed_next_cursor) && <div className="history-pagination" aria-label="Request pages"><button className="text-button" disabled={pageLoading || !filters.request_cursor} onClick={newerRequests}>Newer requests</button><button className="text-button" disabled={pageLoading || !data.feed_next_cursor} onClick={() => data.feed_next_cursor && pageRequests(data.feed_next_cursor)}>Older requests</button></div>}</> : <Empty title={filtered ? 'No requests match these filters' : hasRetainedHistory && filters.window !== 'all' ? 'No requests in this window' : 'Your workspace is ready'}>{filtered ? 'Try a wider time window or clear your filters.' : hasRetainedHistory && filters.window !== 'all' ? 'Older records are available in this workspace.' : 'Connect a local application or import existing records to start exploring.'}<div className="button-row empty-actions">{filters.request_cursor && <button className="button" disabled={pageLoading} onClick={newerRequests}>Newer requests</button>}{filtered ? <button className="button" onClick={resetFilters}>Clear filters</button> : hasRetainedHistory && filters.window !== 'all' ? <button className="button primary" onClick={() => setFilter('window', 'all')}>Show all history</button> : <><button className="button primary" onClick={() => setPanel({ type: 'connect' })}><Plus size={15} />Connect app</button><button className="button" onClick={() => setPanel({ type: 'import' })}>Import records</button></>}</div></Empty>}</section></div>
 
       <footer className="workspace-footer"><span><ShieldCheck size={14} />{sample ? 'Sample workspace' : 'Local workspace'}<span className="footer-divider" />{health ? `${bytes(health.queued_bytes)} queued` : ''}</span><span>Snapshot {time(data.generated_at)}<span className="footer-divider" />Times shown locally</span></footer>
       </>}

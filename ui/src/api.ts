@@ -82,14 +82,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export function useDashboard(filters: Filters) {
   const [snapshot, setSnapshot] = useState<{ data: Dashboard; scope: string; requestOrder: number } | null>(null);
-  const [error, setError] = useState('');
+  const [failure, setFailure] = useState<{ scope: string; message: string; requestOrder: number } | null>(null);
   const [refresh, setRefresh] = useState(0);
   const generation = useRef(0);
   const scope = query(filters);
+  const error = failure?.scope === scope ? failure.message : '';
   const invalidate = useCallback(() => setRefresh(value => value + 1), []);
   const reset = useCallback(() => {
     generation.current += 1;
-    setSnapshot(null); setError(''); setRefresh(value => value + 1);
+    setSnapshot(null); setFailure(null); setRefresh(value => value + 1);
   }, []);
   useEffect(() => {
     let stopped = false;
@@ -106,9 +107,9 @@ export function useDashboard(filters: Filters) {
       let succeeded = false;
       try {
         const data = await api<Dashboard>(`/api/dashboard?${scope}`, { signal: controller.signal });
-        if (!stopped && !controller.signal.aborted && currentGeneration === generation.current) { setSnapshot({ data, scope, requestOrder }); setError(''); succeeded = true; }
+        if (!stopped && !controller.signal.aborted && currentGeneration === generation.current) { setSnapshot({ data, scope, requestOrder }); setFailure(null); succeeded = true; }
       } catch (error) {
-        if (!stopped && !controller.signal.aborted && currentGeneration === generation.current) setError(error instanceof Error ? error.message : 'Unable to reach Observer');
+        if (!stopped && !controller.signal.aborted && currentGeneration === generation.current) setFailure({ scope, requestOrder, message: error instanceof Error ? error.message : 'Unable to reach Observer' });
       } finally {
         inFlight = false;
         // Count query time toward the live cadence. A slow query still gets a
@@ -122,7 +123,7 @@ export function useDashboard(filters: Filters) {
     void tick();
     return () => { stopped = true; if (timer) clearTimeout(timer); controller?.abort(); document.removeEventListener('visibilitychange', onVisibility); };
   }, [scope, refresh]);
-  return { snapshot, error, invalidate, reset, scope };
+  return { snapshot, error, errorRequestOrder: failure?.requestOrder ?? 0, invalidate, reset, scope };
 }
 
 export function useResource<T>(path: string | null, revision = 0) {
