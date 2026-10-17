@@ -1626,13 +1626,25 @@ impl Store {
                 }
             }
         }
-        let mut sources =
-            tx.prepare("SELECT DISTINCT source FROM requests ORDER BY source LIMIT 1000")?;
+        // Seek past duplicate runs in the existing source/model indexes. The
+        // catalogs describe retained history and stay capped at 1000 values,
+        // independently of the selected request scope.
+        let mut sources = tx.prepare(
+            "WITH RECURSIVE source_catalog(value) AS (
+                SELECT min(source) FROM requests
+                UNION ALL SELECT (SELECT min(source) FROM requests WHERE source>source_catalog.value)
+                FROM source_catalog WHERE value IS NOT NULL LIMIT 1000
+            ) SELECT value FROM source_catalog WHERE value IS NOT NULL ORDER BY value",
+        )?;
         let sources = sources
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let mut models = tx.prepare(
-            "SELECT DISTINCT model FROM requests WHERE model<>'' ORDER BY model LIMIT 1000",
+            "WITH RECURSIVE model_catalog(value) AS (
+                SELECT min(model) FROM requests WHERE model>''
+                UNION ALL SELECT (SELECT min(model) FROM requests WHERE model>model_catalog.value)
+                FROM model_catalog WHERE value IS NOT NULL LIMIT 1000
+            ) SELECT value FROM model_catalog WHERE value IS NOT NULL ORDER BY value",
         )?;
         let models = models
             .query_map([], |r| r.get::<_, String>(0))?
