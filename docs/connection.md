@@ -55,6 +55,8 @@ Both SDKs passed the [reproducible local compatibility check](compatibility.md),
 
 Native forwarding covers `POST /v1/systemone`; the default destination is `https://api.typesafe.ai/v1/systemone`. Configure a different fixed endpoint with `--upstream URL`. Remote upstreams require HTTPS; HTTP is accepted for loopback servers. Caller authorization takes precedence over an optional `TYPESAFE_API_KEY` fallback in Observer's environment. Direct provider-key and environment-fallback requests must send the dashboard token in `X-Observer-Access`; the fallback also requires an `application/json` Content-Type. Provider keys cannot be passed as command-line arguments. Observer adds no upstream retries, caching or redirects.
 
+Observer allows **300 seconds for the entire upstream exchange**, including request upload, inference and response-body transfer. Change this with `--upstream-timeout-secs SECONDS` (1–86,400); connection establishment is still limited to 15 seconds. There is no shorter read timeout while waiting for inference. A deadline reached before response headers returns HTTP 504; a deadline reached during the response body ends the stream and records an incomplete transfer. The SDK's own timeout also applies.
+
 ## Jev through OpenRouter
 
 After setting your saved `JEV_OBSERVER_DB_KEY`, start Observer with OpenRouter's fixed System One endpoint:
@@ -82,6 +84,8 @@ jev-observer --upstream http://127.0.0.1:8000/v1/systemone \
 ```
 
 This example assumes `LAYA_API_KEY` is unset. Read the workspace access token into `JEV_OBSERVER_ACCESS_TOKEN` privately, then use it as the SDK's `api_key` / `apiKey`. Keep the SDK base URL at the Observer origin and `Accept-Encoding: identity`. Set the request model to `english`. CPU inference can exceed the SDKs' ten-second defaults: set Python's `timeout=180` (seconds) or JavaScript's `timeout: 180000` (milliseconds), then tune this for your model and machine. This also applies when Laya requires a provider key. The connection panel supplies matching examples and confirms the first saved request.
+
+For models that need longer than Observer's default five-minute deadline, start it with a larger value such as `--upstream-timeout-secs 600` and increase the SDK timeout too. The shorter of the SDK and Observer deadlines limits the call.
 
 `--upstream-auth none` requires a loopback upstream. Observer still authenticates every caller using its workspace access token and removes local authorization before forwarding. No provider-key registration is needed, and inherited `TYPESAFE_API_KEY` values are ignored. If Laya requires `LAYA_API_KEY`, keep the default bearer mode instead, register that key in Observer, and use the returned local client token.
 

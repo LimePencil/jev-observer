@@ -31,6 +31,9 @@ pub struct Config {
     /// Fixed provider endpoint; request headers cannot override this URL.
     #[arg(long, default_value = "https://api.typesafe.ai/v1/systemone")]
     pub upstream: String,
+    /// Total upstream deadline in seconds, including upload, inference and response.
+    #[arg(long, default_value_t = 300)]
+    pub upstream_timeout_secs: u64,
     /// Provider credential policy. None is limited to a loopback model server;
     /// Observer access authentication is still required.
     #[arg(long, value_enum, default_value_t = UpstreamAuth::Bearer)]
@@ -83,6 +86,9 @@ impl Config {
         }
         if self.upstream_auth == UpstreamAuth::None && !loopback {
             bail!("--upstream-auth none requires a loopback model endpoint");
+        }
+        if !(1..=86_400).contains(&self.upstream_timeout_secs) {
+            bail!("--upstream-timeout-secs must be between 1 and 86400 seconds");
         }
         if self.provider.as_ref().is_some_and(|provider| {
             provider.is_empty()
@@ -194,6 +200,7 @@ impl Config {
             "retention_days": self.retention_days, "max_records": self.max_records,
             "capture_limit": self.capture_limit, "capture_slots": self.capture_slots,
             "queue_capacity": self.queue_capacity, "upstream": self.upstream,
+            "upstream_timeout_secs": self.upstream_timeout_secs,
             "upstream_auth": self.upstream_auth, "provider": self.provider_name(),
             "version": env!("CARGO_PKG_VERSION"),
             "model_catalog": *crate::catalog::CATALOG,
@@ -206,6 +213,26 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upstream_deadline_is_bounded_and_exposed_in_settings() {
+        let default = Config::try_parse_from(["observer"]).unwrap();
+        assert_eq!(default.upstream_timeout_secs, 300);
+        for seconds in ["1", "600", "86400"] {
+            let mut config =
+                Config::try_parse_from(["observer", "--upstream-timeout-secs", seconds]).unwrap();
+            config.validate().unwrap();
+            assert_eq!(
+                config.public_settings()["upstream_timeout_secs"],
+                seconds.parse::<u64>().unwrap()
+            );
+        }
+        for seconds in ["0", "86401", "18446744073709551615"] {
+            let mut config =
+                Config::try_parse_from(["observer", "--upstream-timeout-secs", seconds]).unwrap();
+            assert!(config.validate().is_err(), "accepted {seconds}");
+        }
+    }
 
     #[test]
     fn local_models_need_explicit_loopback_auth_policy() {
