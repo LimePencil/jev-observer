@@ -1,8 +1,8 @@
 {
   "generator": "cargo-about 0.9.2 and scripts/generate-license-notices.py",
   "inputs": {
-    "Cargo.lock": "6ab8687cf8c11c21d363a0f2e0ade9b06f108e8e9af2b02b702430300fdb297c",
-    "ui/package-lock.json": "67b34e96ef7d128a675932d0e4d738bc19f78d688e5b51e753607505eef46d34",
+    "Cargo.lock": "413d47b02fa8fb4803f5062b53b3b10af3d45ab3282f8ca8b2b1d20458163caa",
+    "ui/package-lock.json": "484201f10fe05e90d497269428191f745ee05deb48457f1a0234492f56c9ce35",
     "about.toml": "17417c2133d625da246e8d1f8fa07ae98308faf2064a2c9d0b59186441158f3b",
     "licenses/npm-supplemental.json": "68d7c7f848ae872d263dc85c3705ebc20698a09abe5a97a5e6b5e5844748a25b"
   },
@@ -814,7 +814,7 @@
     },
     {
       "name": "rustls",
-      "version": "0.23.45",
+      "version": "0.23.46",
       "declared_license": "Apache-2.0 OR ISC OR MIT"
     },
     {
@@ -1739,7 +1739,7 @@
     }
   ],
   "outputs": {
-    "THIRD-PARTY-NOTICES.txt": "23416abe1eff3fd7636a713d1a0a137aa2f94f1ecca95ecd9f4d13c76539c1b7",
+    "THIRD-PARTY-NOTICES.txt": "4e5618a46d992ceecd05ebec9856aad8a757835c30fd72dfb58670b9adfaf60f",
     "rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
     "musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b"
   }
