@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "event_kind": "request",
+  "id": "capture_v1_dd94c8575d806a1aa1041a969e106a8a1e8813dc1725ad831ccd44b3e30346e6",
+  "timestamp": 1720000000000,
+  "source": "Malformed probability fixture",
+  "provider": "typesafe",
+  "model": null,
+  "requested_model": null,
+  "status": 200,
+  "duration_ms": 12.5,
+  "input_tokens": null,
+  "output_tokens": null,
+  "cost_usd": null,
+  "cost_basis": null,
+  "price": null,
+  "source_event_id": "capture_v1_dd94c8575d806a1aa1041a969e106a8a1e8813dc1725ad831ccd44b3e30346e6",
+  "import_format": "systemone-capture",
+  "capture_complete": true,
+  "state_retained": false,
+  "state": null,
+  "transport_error": null,
+  "sample": false,
+  "answers": [
+    {
+      "key": "route",
+      "kind": "choice",
+      "group_id": "group_v1_8de71432acf57f225f67277909da4a48830e5d000b8a70910d226d3fdb6e640b",
+      "definition_id": "def_v1_e811bea312768e975e7c15c0c868e70811772403e80b9679e75f42c490f31032",
+      "presentation_id": "presentation_v1_a6d959a67f300608a218bde9012f028aa01e934a9bc5286bec489e6263d24757",
+      "candidate_id": "candidates_v1_629273f06f99dcf677ee1b91c9a7b32f669c6a4495c98df100a2235ca9769409",
+      "task_version": null,
+      "definition": {
+        "type": "choice",
+        "instructions": "Synthetic malformed probability fixture",
+        "criteria": {
+          "object_value": "object_value",
+          "string_value": "string_value",
+          "boolean_value": "boolean_value",
+          "null_value": "null_value",
+          "empty_array": "empty_array",
+          "numeric_array": "numeric_array",
+          "negative": "negative",
+          "over_one": "over_one",
+          "huge": "huge",
+          "half": "half",
+          "zero": "zero",
+          "one": "one"
+        }
+      },
+      "definition_redacted": false,
+      "value": "one",
+      "probabilities": {
+        "object_value": {
+          "toString": null
+        },
+        "string_value": "0.5",
+        "boolean_value": true,
+        "null_value": null,
+        "empty_array": [],
+        "numeric_array": [
+          0.5
+        ],
+        "negative": -0.2,
+        "over_one": 1.2,
+        "huge": 1e+308,
+        "half": 0.5,
+        "zero": 0,
+        "one": 1
+      },
+      "confidence": 0.8,
+      "valid": false,
+      "warnings": [],
+      "error": "Probabilities must be finite numbers between zero and one",
+      "family_id": null,
+      "family_name": null,
+      "adapter": null,
+      "instance_ref": null,
+      "mapping_reason": null,
+      "raw_answer": {
+        "type": "choice",
+        "choice": "one",
+        "probabilities": {
+          "object_value": {
+            "toString": null
+          },
+          "string_value": "0.5",
+          "boolean_value": true,
+          "null_value": null,
+          "empty_array": [],
+          "numeric_array": [
+            0.5
+          ],
+          "negative": -0.2,
+          "over_one": 1.2,
+          "huge": 1e+308,
+          "half": 0.5,
+          "zero": 0,
+          "one": 1
+        },
+        "confidence": 0.8
+      }
+    }
+  ],
+  "actions": [],
+  "labels": [],
+  "normalization_error": null,
+  "request_extra": {},
+  "response_extra": {},
+  "usage_extra": null
+}
