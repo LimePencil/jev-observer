@@ -11,26 +11,26 @@ import { Definition, Distribution, Empty, ErrorNotice, KindBadge, Loading, Reque
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
 const DECISIONS_PER_PAGE = 50;
-type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; changed: () => void; historyChanged: () => void; filterGroup: (id: string) => void; notify: (message: string) => void };
+type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; changed: () => void; historyChanged: () => void; historyRevision: number; filterGroup: (id: string) => void; notify: (message: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
   return <div className="drawer-heading"><div className="eyebrow">{icon}{eyebrow}</div><Dialog.Title>{title}</Dialog.Title><Dialog.Description>{description}</Dialog.Description></div>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="detail-field"><dt>{label}</dt><dd>{children}</dd></div>; }
 
-export default function Details({ health, panel, setPanel, filters, changed, historyChanged, filterGroup, notify }: Props) {
+export default function Details({ health, panel, setPanel, filters, changed, historyChanged, historyRevision, filterGroup, notify }: Props) {
   return <Dialog.Root open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className={`drawer ${panel?.type === 'import' || panel?.type === 'connect' ? 'drawer-small' : ''}`}>
     <Dialog.Close className="icon-button drawer-close" aria-label="Close detail panel"><X size={20} weight="bold" /></Dialog.Close>
-    {panel?.type === 'request' && <RequestDetails key={panel.id} id={panel.id} setPanel={setPanel} changed={changed} />}
-    {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} />}
+    {panel?.type === 'request' && <RequestDetails key={panel.id} id={panel.id} setPanel={setPanel} changed={changed} historyRevision={historyRevision} />}
+    {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} historyRevision={historyRevision} />}
     {panel?.type === 'settings' && <SettingsDetails changed={historyChanged} notify={notify} close={() => setPanel(null)} />}
     {panel?.type === 'import' && <ImportDetails changed={historyChanged} initialFormat={panel.format} />}
     {panel?.type === 'connect' && <ConnectDetails health={health} importCaptures={() => setPanel({ type: 'import', format: 'systemone-capture' })} />}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
 
-function RequestDetails({ id, setPanel, changed }: { id: string; setPanel: Props['setPanel']; changed: () => void }) {
-  const { data: record, error, reload, update } = useResource<RequestRecord>(`/api/requests/${encodeURIComponent(id)}`);
+function RequestDetails({ id, setPanel, changed, historyRevision }: { id: string; setPanel: Props['setPanel']; changed: () => void; historyRevision: number }) {
+  const { data: record, error, reload, update } = useResource<RequestRecord>(`/api/requests/${encodeURIComponent(id)}`, historyRevision);
   const [answerPage, setAnswerPage] = useState(0);
   const [pendingReviews, setPendingReviews] = useState<Set<string>>(() => new Set());
   const page = Math.min(answerPage, Math.max(0, Math.ceil((record?.answers.length ?? 0) / DECISIONS_PER_PAGE) - 1));
@@ -90,8 +90,8 @@ function AnswerDetail({ answer, record, onGroup, changed, pendingChanged }: { an
   </section>;
 }
 
-function GroupDetails({ id, filters, setPanel, filterGroup }: { id: string; filters: Filters; setPanel: Props['setPanel']; filterGroup: Props['filterGroup'] }) {
-  const { data, error, reload } = useResource<GroupDetail>(`/api/groups/${encodeURIComponent(id)}?${query(filters)}`);
+function GroupDetails({ id, filters, setPanel, filterGroup, historyRevision }: { id: string; filters: Filters; setPanel: Props['setPanel']; filterGroup: Props['filterGroup']; historyRevision: number }) {
+  const { data, error, reload } = useResource<GroupDetail>(`/api/groups/${encodeURIComponent(id)}?${query(filters)}`, historyRevision);
   const [compare, setCompare] = useState('');
   const group = data?.group, other = data?.versions.find(version => version.id === compare);
   return <><DetailHeading eyebrow="Recurring question" title={group?.name ?? 'Question group'} description="Definitions remain separate so meaningful changes stay visible." icon={<Fingerprint size={15} />} />

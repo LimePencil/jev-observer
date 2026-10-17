@@ -763,6 +763,114 @@ test('a completed deletion refreshes history without closing a newly opened pane
   await expect(page.getByRole('heading', { name: 'Your workspace is ready' })).toBeVisible();
 });
 
+for (const detail of ['request', 'group'] as const) {
+  test(`a completed deletion invalidates a newly opened ${detail} while paused`, async ({ page }) => {
+    const state = await harness(page, { path: '/?source=Test+inbox' });
+    const path = detail === 'request' ? '/api/requests/request-one' : `/api/groups/${group.id}`;
+    let reads = 0, finish!: () => void;
+    await page.route(`**${path}*`, route => {
+      reads += 1;
+      return state.deleted ? route.fulfill({ status: 404, json: { error: 'Record not found' } }) : route.fulfill({ json: detail === 'request' ? state.record : { group, versions: [group], requests: [], answers: [], timeline: [] } });
+    });
+    await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    state.deletePending = new Promise(resolve => { finish = resolve; });
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).click();
+    await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await page.getByLabel(detail === 'request' ? 'Inspect request request-one' : 'Inspect group department', { exact: true }).click();
+    const drawer = page.getByRole('dialog');
+    await expect(drawer.locator(detail === 'request' ? '.request-detail-id' : '.group-detail-meta')).toBeVisible();
+    const initialReads = reads;
+    finish();
+    await expect(drawer.getByRole('alert')).toContainText('Record not found');
+    expect(reads).toBe(initialReads + 1);
+    await expect(drawer.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Filter by source')).toHaveValue('Test inbox');
+    await expect(page).toHaveURL(/source=Test\+inbox/);
+    await expect(page.locator('.request-link')).toHaveCount(0);
+  });
+}
+
+for (const succeeds of [false, true]) {
+  test(`a ${succeeds ? 'successful' : 'failed'} delayed import ${succeeds ? 'refreshes' : 'preserves'} a newly opened group`, async ({ page }) => {
+    await harness(page, { path: '/?source=Test+inbox' });
+    let finish!: () => void, imported = false, reads = 0;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    await page.route('**/api/import', async route => {
+      await pending;
+      imported = succeeds;
+      await route.fulfill(succeeds ? { json: { imported: 7, duplicates: 0 } } : { status: 400, json: { error: 'Invalid source record' } });
+    });
+    await page.route(`**/api/groups/${group.id}*`, route => {
+      reads += 1;
+      const current = imported ? { ...group, valid_count: 8, answer_count: 9, request_count: 9 } : group;
+      return route.fulfill({ json: { group: current, versions: [current], requests: [], answers: [], timeline: [] } });
+    });
+    await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Import records', exact: true }).click();
+    await page.getByLabel('Or paste records').fill('{"synthetic":true}');
+    await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Inspect group department', { exact: true }).click();
+    const metric = page.getByRole('dialog').locator('.detail-grid > div').filter({ has: page.getByText('Valid answers', { exact: true }) });
+    await expect(metric).toContainText('1 / 2');
+    const initialReads = reads;
+    const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname === '/api/import');
+    finish();
+    await finished;
+    if (succeeds) {
+      await expect(metric).toContainText('8 / 9');
+      expect(reads).toBe(initialReads + 1);
+    } else {
+      // Flush the completed fetch's React update before checking no invalidation.
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await expect(metric).toContainText('1 / 2');
+      expect(reads).toBe(initialReads);
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Filter by source')).toHaveValue('Test inbox');
+  });
+}
+
+test('a completed deletion discards an older in-flight detail response', async ({ page }) => {
+  const state = await harness(page);
+  let finishDelete!: () => void, finishDetail!: () => void, oldReads = 0, newReads = 0;
+  state.deletePending = new Promise(resolve => { finishDelete = resolve; });
+  const pendingDetail = new Promise<void>(resolve => { finishDetail = resolve; });
+  await page.route('**/api/requests/request-one', async route => {
+    if (state.deleted) {
+      newReads += 1;
+      await route.fulfill({ status: 404, json: { error: 'Record not found' } });
+    } else {
+      oldReads += 1;
+      await pendingDetail;
+      await route.fulfill({ json: state.record });
+    }
+  });
+  await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+  await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+  await page.getByRole('button', { name: 'Permanently delete history' }).click();
+  await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Inspect request request-one', { exact: true }).click();
+  await expect.poll(() => oldReads).toBeGreaterThan(0);
+  finishDelete();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Record not found');
+  expect(newReads).toBe(1);
+  finishDetail();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Record not found');
+  await expect(page.getByRole('dialog').locator('.request-detail-id')).toHaveCount(0);
+});
+
 test('imported actions and unknown transport facts stay distinct', async ({ page }) => {
   const state = await harness(page);
   state.record = { ...state.record, timestamp: null, imported_at: now, timestamp_basis: 'import', event_kind: 'application_action', status: null, duration_ms: null, model: null, input_tokens: null, output_tokens: null, cost_usd: null, actions: [{ kind: 'cache_reuse', source: 'import' }] };
