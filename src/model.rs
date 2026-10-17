@@ -885,10 +885,8 @@ fn import_observer(record: &Value, options: &NormalizeOptions) -> Result<Value> 
             answer.get("definition").is_some() && answer.get("raw_answer").is_some(),
             "Answer must retain definition and raw_answer (null allowed)"
         );
-        ensure!(
-            answer["definition"].is_object() || answer["definition"].is_null(),
-            "definition must be an object or null"
-        );
+        // Captures retain malformed question values as evidence. Revalidation
+        // below keeps them invalid while preserving their JSON and identity.
         if !answer["definition"].is_null() {
             questions.insert(key.to_owned(), answer["definition"].clone());
         }
@@ -2415,6 +2413,97 @@ mod tests {
         .unwrap();
         assert_eq!(again[0]["source_event_id"], imported[0]["source_event_id"]);
         assert_eq!(again[0]["answers"], imported[0]["answers"]);
+    }
+
+    #[test]
+    fn observer_roundtrip_preserves_malformed_definitions_and_revalidates_answers() {
+        let options = NormalizeOptions::default();
+        let mut groups = BTreeSet::new();
+        for definition in [
+            json!(42),
+            json!(-1.5),
+            json!(true),
+            json!(""),
+            json!("한글"),
+            json!([]),
+            json!([null, 1, {"instructions": "nested"}]),
+            Value::Null,
+        ] {
+            for raw in [json!({"type": "noul", "noul": 0.8}), Value::Null] {
+                let original = normalized(&capture(
+                    json!({"questions": {"q": definition}}),
+                    json!({"answers": {"q": raw}}),
+                ));
+                let answer = &original["answers"][0];
+                assert_eq!(answer["definition"], definition);
+                assert_eq!(answer["raw_answer"], raw);
+                assert_eq!(answer["valid"], false);
+                if !raw.is_null() {
+                    assert!(groups.insert(answer["group_id"].as_str().unwrap().to_owned()));
+                }
+                let mut exported = original.clone();
+                for field in ["group_id", "definition_id", "presentation_id", "family_id"] {
+                    exported["answers"][0][field] = json!("forged");
+                }
+                exported["answers"][0]["valid"] = json!(true);
+                exported["answers"][0]["value"] = json!(123);
+                let imported = import_records(&exported.to_string(), "observer-jsonl", &options)
+                    .unwrap_or_else(|error| panic!("{definition}: {error:#}"))
+                    .remove(0);
+                assert_eq!(imported["answers"], original["answers"]);
+                let again = import_records(&imported.to_string(), "observer-jsonl", &options)
+                    .unwrap()
+                    .remove(0);
+                assert_eq!(again["answers"], original["answers"]);
+                assert_eq!(again["source_event_id"], original["id"]);
+            }
+        }
+        // Null is retained evidence; an absent required field is still invalid.
+        for field in ["definition", "raw_answer"] {
+            let mut missing = normalized(&noul());
+            missing["answers"][0].as_object_mut().unwrap().remove(field);
+            assert!(import_records(&missing.to_string(), "observer-jsonl", &options).is_err());
+        }
+    }
+
+    #[test]
+    fn observer_roundtrip_keeps_redacted_scalar_and_array_definitions_isolated() {
+        let secret = "malformed-definition-test-secret";
+        for (key, definition) in [
+            ("q", json!([secret, {"api_key": secret}])),
+            (
+                "authorization",
+                json!({"type": "noul", "instructions": secret}),
+            ),
+        ] {
+            let mut groups = Vec::new();
+            for id in ["first", "second"] {
+                let mut c = capture(
+                    json!({"questions": {key: definition}}),
+                    json!({"answers": {key: {"type": "noul", "noul": 0.8}}}),
+                );
+                c.id = id.into();
+                c.secret = Some(secret.into());
+                let original = normalized(&c);
+                assert!(!original.to_string().contains(secret));
+                let answer = &original["answers"][0];
+                assert!(!answer["definition"].is_object());
+                assert_eq!(answer["valid"], false);
+                assert_eq!(answer["definition_redacted"], true);
+                assert!(answer["family_id"].is_null());
+                let imported = import_records(
+                    &original.to_string(),
+                    "observer-jsonl",
+                    &NormalizeOptions::default(),
+                )
+                .unwrap()
+                .remove(0);
+                assert!(!imported.to_string().contains(secret));
+                assert_eq!(imported["answers"], original["answers"]);
+                groups.push(imported["answers"][0]["group_id"].clone());
+            }
+            assert_ne!(groups[0], groups[1]);
+        }
     }
 
     #[test]
