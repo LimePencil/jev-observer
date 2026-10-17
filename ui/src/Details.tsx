@@ -10,6 +10,7 @@ import { answerValue, bytes, costBasis, dateTime, money, ms, number, percent, sh
 import { Definition, Distribution, Empty, ErrorNotice, KindBadge, Loading, RequestTable, StatusBadge, Timeline } from './components';
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
+const DECISIONS_PER_PAGE = 50;
 type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; changed: () => void; historyChanged: () => void; filterGroup: (id: string) => void; notify: (message: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
@@ -20,7 +21,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) { re
 export default function Details({ health, panel, setPanel, filters, changed, historyChanged, filterGroup, notify }: Props) {
   return <Dialog.Root open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className={`drawer ${panel?.type === 'import' || panel?.type === 'connect' ? 'drawer-small' : ''}`}>
     <Dialog.Close className="icon-button drawer-close" aria-label="Close detail panel"><X size={20} weight="bold" /></Dialog.Close>
-    {panel?.type === 'request' && <RequestDetails id={panel.id} setPanel={setPanel} changed={changed} />}
+    {panel?.type === 'request' && <RequestDetails key={panel.id} id={panel.id} setPanel={setPanel} changed={changed} />}
     {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} />}
     {panel?.type === 'settings' && <SettingsDetails changed={historyChanged} notify={notify} close={() => setPanel(null)} />}
     {panel?.type === 'import' && <ImportDetails changed={historyChanged} initialFormat={panel.format} />}
@@ -30,6 +31,13 @@ export default function Details({ health, panel, setPanel, filters, changed, his
 
 function RequestDetails({ id, setPanel, changed }: { id: string; setPanel: Props['setPanel']; changed: () => void }) {
   const { data: record, error, reload, update } = useResource<RequestRecord>(`/api/requests/${encodeURIComponent(id)}`);
+  const [answerPage, setAnswerPage] = useState(0);
+  const [pendingReviews, setPendingReviews] = useState<Set<string>>(() => new Set());
+  const page = Math.min(answerPage, Math.max(0, Math.ceil((record?.answers.length ?? 0) / DECISIONS_PER_PAGE) - 1));
+  const answerStart = page * DECISIONS_PER_PAGE;
+  function reviewPending(key: string, pending: boolean) {
+    setPendingReviews(previous => { const next = new Set(previous); if (pending) next.add(key); else next.delete(key); return next; });
+  }
   function updateLabel(key: string, label: Label) {
     update(previous => previous.id !== id ? previous : { ...previous, labels: [...previous.labels.filter(item => (item.key ?? item.answer_key) !== key), { key, label }] });
     changed();
@@ -44,7 +52,8 @@ function RequestDetails({ id, setPanel, changed }: { id: string; setPanel: Props
       <dl className="detail-grid"><Field label={record.timestamp == null ? "Imported at" : "Recorded"}>{dateTime(record.timestamp ?? record.imported_at)}{record.timestamp == null && <span className="table-subline">Original event time unknown</span>}</Field><Field label="Latency">{ms(record.duration_ms)}</Field><Field label="Provider">{record.provider || 'Unknown'}</Field><Field label="Model">{record.model || 'Unknown'}</Field><Field label="Requested model">{record.requested_model ?? 'Unknown'}</Field><Field label="Input tokens">{number(record.input_tokens)}</Field><Field label="Output tokens">{number(record.output_tokens)}</Field><Field label="Request cost">{money(record.cost_usd)}</Field><Field label="Cost basis">{costBasis(record.cost_basis)}</Field></dl>
       <div className="detail-section-title"><h3>Decisions</h3><span className="count-badge">{record.answers.length}</span></div>
       <p className="caption">Usage and cost belong to this request, across all its answers.</p>
-      {!record.answers.length ? <Empty title="No captured answers">The provider response did not include a supported answer, or the capture was incomplete.</Empty> : record.answers.map(answer => <AnswerDetail key={`${record.id}-${answer.key}`} answer={answer} record={record} onGroup={() => setPanel({ type: 'group', id: answer.group_id })} changed={label => updateLabel(answer.key, label)} />)}
+      {record.answers.length > DECISIONS_PER_PAGE && <nav className="history-pagination" aria-label="Decision pages"><button className="text-button" aria-disabled={page === 0 || pendingReviews.size > 0} onClick={() => { if (page > 0 && pendingReviews.size === 0) setAnswerPage(page - 1); }}>Previous decisions</button><span role="status">Decisions {number(answerStart + 1)}–{number(Math.min(answerStart + DECISIONS_PER_PAGE, record.answers.length))} of {number(record.answers.length)}{pendingReviews.size > 0 && ' · Saving reviews…'}</span><button className="text-button" aria-disabled={answerStart + DECISIONS_PER_PAGE >= record.answers.length || pendingReviews.size > 0} onClick={() => { if (answerStart + DECISIONS_PER_PAGE < record.answers.length && pendingReviews.size === 0) setAnswerPage(page + 1); }}>Next decisions</button></nav>}
+      {!record.answers.length ? <Empty title="No captured answers">The provider response did not include a supported answer, or the capture was incomplete.</Empty> : record.answers.slice(answerStart, answerStart + DECISIONS_PER_PAGE).map(answer => <AnswerDetail key={`${record.id}-${answer.key}`} answer={answer} record={record} onGroup={() => setPanel({ type: 'group', id: answer.group_id })} changed={label => updateLabel(answer.key, label)} pendingChanged={pending => reviewPending(answer.key, pending)} />)}
       <section className="detail-section"><h3>Request input state</h3><div className="inline-notice"><ShieldCheck size={18} weight="bold" />{record.state_retained ? 'Captured with local opt-in and configured redaction.' : 'This record has no retained request state.'}</div>{record.import_format && !!record.actions?.length && <p className="caption">Imported application data is shown under Application outcome.</p>}{record.state_retained && <details><summary>Inspect retained input</summary><Definition value={record.state} /></details>}</section>
       <section className="detail-section"><h3>Application outcome</h3>{record.actions?.length ? <Definition value={record.actions} /> : <p className="muted">Not collected. An API response does not establish whether an application action ran or succeeded.</p>}</section>
       {(record.source_event_id || record.import_format) && <section className="detail-section"><h3>Import provenance</h3><dl className="detail-grid"><Field label="Source event">{record.source_event_id ?? 'Not supplied'}</Field><Field label="Format">{record.import_format ?? 'Native capture'}</Field></dl></section>}
@@ -52,7 +61,7 @@ function RequestDetails({ id, setPanel, changed }: { id: string; setPanel: Props
   </>;
 }
 
-function AnswerDetail({ answer, record, onGroup, changed }: { answer: Answer; record: RequestRecord; onGroup: () => void; changed: (label: Label) => void }) {
+function AnswerDetail({ answer, record, onGroup, changed, pendingChanged }: { answer: Answer; record: RequestRecord; onGroup: () => void; changed: (label: Label) => void; pendingChanged: (pending: boolean) => void }) {
   const [pending, setPending] = useState<Label | null>(null), [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const currentLabel = [...(record.labels ?? [])].reverse().find(item => (item.key ?? item.answer_key) === answer.key)?.label;
@@ -63,10 +72,10 @@ function AnswerDetail({ answer, record, onGroup, changed }: { answer: Answer; re
   async function label(value: string) {
     if (!value || pending) return;
     const next = value as Label;
-    setPending(next); setError(''); setSaved(false);
+    setPending(next); pendingChanged(true); setError(''); setSaved(false);
     try { await api(`/api/requests/${encodeURIComponent(record.id)}/label`, { method: 'POST', body: JSON.stringify({ key: answer.key, label: next }) }); changed(next); setSaved(true); }
     catch (error) { setError(error instanceof Error ? error.message : 'Could not save label'); }
-    finally { setPending(null); }
+    finally { setPending(null); pendingChanged(false); }
   }
   return <section className="answer-card"><div className="answer-heading"><h4>{answer.key}</h4><KindBadge kind={answer.kind} /></div>
     <div className="answer-value">{answer.valid ? answerValue(answer.value, answer.kind) : 'Invalid or missing answer'}{answer.kind === 'noul' && answer.valid && <span className="caption">yes-probability</span>}</div>
