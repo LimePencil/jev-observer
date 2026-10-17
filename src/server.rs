@@ -468,7 +468,14 @@ impl Capturing {
         let available = self.limit.saturating_sub(body.len());
         let append = data.len().min(available);
         if body.len() + append > body.capacity() {
-            body.reserve_exact(append);
+            // Amortize streamed chunks without letting Vec's implicit growth
+            // exceed the configured per-body capture memory budget.
+            let capacity = body
+                .capacity()
+                .saturating_mul(2)
+                .max(body.len() + append)
+                .min(self.limit);
+            body.reserve_exact(capacity - body.len());
         }
         body.extend_from_slice(&data[..append]);
         if data.len() > available {
@@ -1404,6 +1411,96 @@ mod tests {
             .header(header::CONTENT_TYPE, "application/json")
             .body(body.into())
             .unwrap()
+    }
+
+    fn capturing(limit: usize) -> Capturing {
+        Capturing {
+            capture: Capture {
+                capture_complete: true,
+                ..Capture::default()
+            },
+            started: Instant::now(),
+            limit,
+            request_bytes: 0,
+            response_bytes: 0,
+            request_length: Some(limit as u64),
+            response_length: Some(limit as u64),
+            request_done: false,
+            response_done: false,
+            finalized: false,
+        }
+    }
+
+    #[test]
+    fn capture_growth_is_amortized_for_tiny_chunks() {
+        let limit = 256 * 1024;
+        let mut capture = capturing(limit);
+        assert_eq!(capture.capture.request.capacity(), 0);
+        assert_eq!(capture.capture.response.capacity(), 0);
+        let mut growths = [0; 2];
+        let mut capacities = [0; 2];
+        let payload: Vec<u8> = (0..limit).map(|i| (i % 251) as u8).collect();
+        for byte in &payload {
+            capture.append(&[*byte], false);
+            capture.append(&[255 - *byte], true);
+            for (index, body) in [&capture.capture.request, &capture.capture.response]
+                .into_iter()
+                .enumerate()
+            {
+                assert!(body.capacity() <= limit);
+                if body.capacity() != capacities[index] {
+                    growths[index] += 1;
+                    capacities[index] = body.capacity();
+                }
+            }
+        }
+        assert!(growths.into_iter().all(|growths| growths <= 20));
+        assert_eq!(capture.capture.request, payload);
+        assert_eq!(
+            capture.capture.response,
+            payload.iter().map(|byte| 255 - byte).collect::<Vec<_>>()
+        );
+        assert!(capture.capture.capture_complete);
+        assert!(capture.request_done && capture.response_done);
+        capture.append(b"excess", false);
+        capture.append(b"excess", true);
+        assert!(!capture.capture.capture_complete);
+        assert_eq!(capture.capture.request.len(), limit);
+        assert_eq!(capture.capture.response.len(), limit);
+        assert_eq!(capture.capture.request.capacity(), capacities[0]);
+        assert_eq!(capture.capture.response.capacity(), capacities[1]);
+        assert_eq!(capture.request_bytes, limit as u64 + 6);
+        assert_eq!(capture.response_bytes, limit as u64 + 6);
+    }
+
+    #[test]
+    fn capture_growth_respects_small_and_irregular_limits() {
+        for limit in [0, 1, 3, 31, 127, 4093, 262_143] {
+            let payload: Vec<u8> = (0..limit + 17).map(|i| (i % 251) as u8).collect();
+            let mut capture = capturing(limit);
+            for response in [false, true] {
+                let mut offset = 0;
+                for size in [0, 1, 7, 4096, 5, 123, payload.len()].into_iter().cycle() {
+                    let end = (offset + size).min(payload.len());
+                    capture.append(&payload[offset..end], response);
+                    let body = if response {
+                        &capture.capture.response
+                    } else {
+                        &capture.capture.request
+                    };
+                    assert!(body.capacity() <= limit);
+                    assert_eq!(body.as_slice(), &payload[..end.min(limit)]);
+                    offset = end;
+                    if offset == payload.len() {
+                        break;
+                    }
+                }
+            }
+            assert!(!capture.capture.capture_complete);
+            assert_eq!(capture.request_bytes, payload.len() as u64);
+            assert_eq!(capture.response_bytes, payload.len() as u64);
+            assert!(capture.request_done && capture.response_done);
+        }
     }
 
     #[test]
