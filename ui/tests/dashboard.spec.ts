@@ -871,6 +871,158 @@ test('a completed deletion discards an older in-flight detail response', async (
   await expect(page.getByRole('dialog').locator('.request-detail-id')).toHaveCount(0);
 });
 
+for (const outcome of ['success', 'failure'] as const) {
+  for (const timing of ['before', 'during', 'after'] as const) {
+    test(`review ${outcome} ${timing} a history refresh retains its outcome on the same decision page`, async ({ page }) => {
+      const state = await harness(page);
+      state.record.answers = Array.from({ length: 60 }, (_, index) => ({ ...structuredClone(record.answers[0]), key: `q${String(index).padStart(4, '0')}` }));
+      state.record.labels = [{ key: 'q0050', label: 'unknown' }];
+      let finishImport!: () => void, finishReview!: () => void, finishDetail!: () => void;
+      const importing = new Promise<void>(resolve => { finishImport = resolve; });
+      const reviewing = new Promise<void>(resolve => { finishReview = resolve; });
+      const refreshing = new Promise<void>(resolve => { finishDetail = resolve; });
+      let imported = false, refreshReads = 0, reviewWrites = 0;
+      await page.route('**/api/import', async route => { await importing; imported = true; await route.fulfill({ json: { imported: 1, duplicates: 0 } }); });
+      await page.route('**/api/requests/request-one', async route => {
+        const snapshot = structuredClone(state.record);
+        if (imported && ++refreshReads === 1) await refreshing;
+        await route.fulfill({ json: snapshot });
+      });
+      await page.route('**/api/requests/request-one/label', async route => {
+        reviewWrites += 1;
+        await reviewing;
+        if (outcome === 'failure') await route.fulfill({ status: 503, json: { error: 'Review could not be stored' } });
+        else { state.record.labels = [{ key: 'q0050', label: 'correct' }]; await route.fulfill({ json: { ok: true } }); }
+      });
+      await page.getByRole('button', { name: 'Import records', exact: true }).click();
+      await page.getByLabel('Or paste records').fill('{"synthetic":true}');
+      await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+      await page.keyboard.press('Escape');
+      await page.getByLabel('Inspect request request-one', { exact: true }).click();
+      const drawer = page.getByRole('dialog'), pages = drawer.getByRole('navigation', { name: 'Decision pages' });
+      await pages.getByRole('button', { name: 'Next decisions' }).press('Enter');
+      const review = drawer.getByLabel('Review q0050', { exact: true });
+      await review.selectOption('correct');
+      await expect(review).toHaveAttribute('aria-disabled', 'true');
+      async function completeReview() {
+        const saved = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname.endsWith('/label'));
+        finishReview(); await saved;
+      }
+      if (timing === 'before') {
+        await completeReview();
+        await expect(drawer.getByText(outcome === 'success' ? 'Saved' : 'Review could not be stored', { exact: true })).toBeVisible();
+      }
+      finishImport();
+      await expect.poll(() => refreshReads).toBe(1);
+      await expect(drawer.getByRole('status')).toContainText('Loading request');
+      if (timing === 'after') {
+        finishDetail();
+        await expect(review).toHaveAttribute('aria-disabled', 'true');
+        await expect(pages.getByRole('button', { name: 'Previous decisions' })).toHaveAttribute('aria-disabled', 'true');
+      }
+      if (timing !== 'before') await completeReview();
+      finishDetail();
+      await expect(pages).toContainText('Decisions 51–60 of 60');
+      await expect(review).toHaveValue(outcome === 'success' ? 'correct' : 'unknown');
+      await expect(review).toHaveAttribute('aria-disabled', 'false');
+      await expect(drawer.getByText(outcome === 'success' ? 'Saved' : 'Review could not be stored', { exact: true })).toBeVisible();
+      expect(reviewWrites).toBe(1);
+      expect(refreshReads).toBe(outcome === 'success' && timing !== 'before' ? 2 : 1);
+      await pages.getByRole('button', { name: 'Previous decisions' }).press('Enter');
+      await pages.getByRole('button', { name: 'Next decisions' }).press('Enter');
+      await expect(review).toHaveValue(outcome === 'success' ? 'correct' : 'unknown');
+      await expect(drawer.getByText(outcome === 'success' ? 'Saved' : 'Review could not be stored', { exact: true })).toBeVisible();
+    });
+  }
+}
+
+test('prototype-named answer keys retain enabled review controls and independent outcomes', async ({ page }) => {
+  const state = await harness(page);
+  const keys = ['__proto__', 'constructor', 'toString'];
+  state.record.answers = keys.map(key => ({ ...structuredClone(record.answers[0]), key }));
+  await page.getByLabel('Inspect request request-one', { exact: true }).click();
+  const drawer = page.getByRole('dialog');
+  for (const key of keys) await expect(drawer.getByLabel(`Review ${key}`, { exact: true })).toHaveAttribute('aria-disabled', 'false');
+  for (const key of keys) {
+    const card = drawer.locator('.answer-card').filter({ has: page.getByRole('heading', { name: key, exact: true }) });
+    let finish!: () => void;
+    state.labelPending = new Promise(resolve => { finish = resolve; });
+    state.labelError = true;
+    await card.getByLabel(`Review ${key}`, { exact: true }).selectOption('incorrect');
+    await expect(card.getByLabel(`Review ${key}`, { exact: true })).toHaveAttribute('aria-disabled', 'true');
+    finish();
+    await expect(card.getByRole('alert')).toContainText('Review could not be stored');
+    await expect(card.getByLabel(`Review ${key}`, { exact: true })).toHaveAttribute('aria-disabled', 'false');
+    state.labelError = false;
+    await card.getByLabel(`Review ${key}`, { exact: true }).selectOption('correct');
+    await expect(card.getByText('Saved', { exact: true })).toBeVisible();
+    await expect(card.getByRole('alert')).toHaveCount(0);
+    await expect(card.getByLabel(`Review ${key}`, { exact: true })).toHaveValue('correct');
+  }
+});
+
+test('parallel reviews survive refresh, retry independently, and stay isolated after closing the request', async ({ page }) => {
+  const state = await harness(page);
+  state.record.answers = Array.from({ length: 60 }, (_, index) => ({ ...structuredClone(record.answers[0]), key: `q${String(index).padStart(4, '0')}` }));
+  let finishImport!: () => void, finishFirst!: () => void, finishSecond!: () => void, finishClosed!: () => void;
+  const importing = new Promise<void>(resolve => { finishImport = resolve; });
+  const first = new Promise<void>(resolve => { finishFirst = resolve; });
+  const second = new Promise<void>(resolve => { finishSecond = resolve; });
+  const closed = new Promise<void>(resolve => { finishClosed = resolve; });
+  const writes: Record<string, number> = {};
+  let failSecond = true, imported = false, refreshReads = 0;
+  await page.route('**/api/import', async route => { await importing; imported = true; await route.fulfill({ json: { imported: 1, duplicates: 0 } }); });
+  await page.route('**/api/requests/request-one', route => { if (imported) refreshReads += 1; return route.fulfill({ json: state.record }); });
+  await page.route('**/api/requests/request-failed', route => route.fulfill({ json: { ...state.record, id: 'request-failed', labels: [] } }));
+  await page.route('**/api/requests/request-one/label', async route => {
+    const { key, label } = route.request().postDataJSON();
+    writes[key] = (writes[key] ?? 0) + 1;
+    await (key === 'q0050' ? first : key === 'q0051' ? second : closed);
+    if (key === 'q0051' && failSecond) return route.fulfill({ status: 503, json: { error: 'Review could not be stored' } });
+    state.record.labels = [...state.record.labels.filter(item => item.key !== key), { key, label }];
+    return route.fulfill({ json: { ok: true } });
+  });
+  await page.getByRole('button', { name: 'Import records', exact: true }).click();
+  await page.getByLabel('Or paste records').fill('{"synthetic":true}');
+  await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Inspect request request-one', { exact: true }).click();
+  const drawer = page.getByRole('dialog'), pages = drawer.getByRole('navigation', { name: 'Decision pages' });
+  await pages.getByRole('button', { name: 'Next decisions' }).click();
+  await drawer.getByLabel('Review q0050', { exact: true }).selectOption('correct');
+  await drawer.getByLabel('Review q0051', { exact: true }).selectOption('incorrect');
+  finishImport();
+  await expect.poll(() => refreshReads).toBe(1);
+  await expect(drawer.getByLabel('Review q0050', { exact: true })).toHaveAttribute('aria-disabled', 'true');
+  await expect(drawer.getByLabel('Review q0051', { exact: true })).toHaveAttribute('aria-disabled', 'true');
+  finishFirst();
+  await expect(drawer.getByLabel('Review q0050', { exact: true })).toHaveValue('correct');
+  await expect(drawer.getByLabel('Review q0050', { exact: true })).toHaveAttribute('aria-disabled', 'false');
+  await expect(pages.getByRole('button', { name: 'Previous decisions' })).toHaveAttribute('aria-disabled', 'true');
+  finishSecond();
+  await expect(drawer.getByRole('alert')).toContainText('Review could not be stored');
+  await expect(pages.getByRole('button', { name: 'Previous decisions' })).toHaveAttribute('aria-disabled', 'false');
+  failSecond = false;
+  await drawer.getByLabel('Review q0051', { exact: true }).selectOption('correct');
+  await expect(drawer.getByRole('alert')).toHaveCount(0);
+  await expect(drawer.getByText('Saved', { exact: true })).toHaveCount(2);
+  await drawer.getByLabel('Review q0052', { exact: true }).selectOption('correct');
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Inspect request request-failed', { exact: true }).click();
+  await expect(pages).toContainText('Decisions 1–50 of 60');
+  const saved = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname.endsWith('/label'));
+  finishClosed(); await saved;
+  await expect(drawer.locator('.request-detail-id')).toContainText('request-failed');
+  await expect(drawer.getByText('Saved', { exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.getByLabel('Inspect request request-one', { exact: true }).click();
+  await pages.getByRole('button', { name: 'Next decisions' }).click();
+  for (const key of ['q0050', 'q0051', 'q0052']) await expect(drawer.getByLabel(`Review ${key}`, { exact: true })).toHaveValue('correct');
+  expect(writes).toEqual({ q0050: 1, q0051: 2, q0052: 1 });
+});
+
 test('imported actions and unknown transport facts stay distinct', async ({ page }) => {
   const state = await harness(page);
   state.record = { ...state.record, timestamp: null, imported_at: now, timestamp_basis: 'import', event_kind: 'application_action', status: null, duration_ms: null, model: null, input_tokens: null, output_tokens: null, cost_usd: null, actions: [{ kind: 'cache_reuse', source: 'import' }] };
