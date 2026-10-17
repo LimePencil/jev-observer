@@ -7,6 +7,7 @@ import { bytes, compact, dateFilter, dateInput, dateTime, money, ms, number, per
 import { Brand, Distribution, Empty, ErrorNotice, KindBadge, Loading, RequestTable, SectionHeading, Timeline, TokenMetric } from './components';
 import type { Dashboard, Filters, Settings } from './types';
 import type { Panel } from './Details';
+import { DetailBoundary, DetailFallback } from './DetailBoundary';
 
 const Details = lazy(() => import('./Details'));
 const defaults = defaultFilters;
@@ -160,7 +161,7 @@ export default function App() {
       </>}
       </main>
     </div>
-    {panel && <Suspense fallback={panel ? <div className="lazy-detail-loading" role="status">Opening details…</div> : null}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} changed={invalidate} historyChanged={historyChanged} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests'); }} notify={notify} /></Suspense>}
+    {panel && <DetailBoundary close={() => setPanel(null)}><Suspense fallback={<DetailFallback close={() => setPanel(null)} />}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} changed={invalidate} historyChanged={historyChanged} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests'); }} notify={notify} /></Suspense></DetailBoundary>}
     {toast && <div className="toast" role="status"><Info size={18} /><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast('')}><X size={15} /></button></div>}
   </div></Dialog.Root>;
 }

@@ -165,6 +165,60 @@ for (const { storage, choice } of [
   });
 }
 
+const detailModule = /\/(?:assets\/Details-[^/?]+\.js|src\/Details\.tsx)(?:\?.*)?$/;
+
+test('a failed details module preserves the dashboard and recovers after an explicit page reload', async ({ page }) => {
+  let attempts = 0;
+  await page.route(detailModule, route => { attempts += 1; return route.abort('connectionreset'); });
+  const state = await harness(page, { path: '/?window=all&source=Test+inbox' });
+  const trigger = page.getByRole('button', { name: 'Connect an application' });
+  await trigger.click();
+  await expect(page.getByRole('dialog')).toContainText('Details unavailable');
+  await expect(page.locator('#requests h2')).toHaveText('Request stream');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  state.dashboard.requests = [{ ...record, id: 'after-detail-load-failure' }];
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(page.getByLabel('Inspect request after-detail-load-failure')).toBeVisible();
+
+  await page.unroute(detailModule);
+  await trigger.click();
+  // React.lazy caches the rejection: closing/reopening must still offer recovery.
+  await expect(page.getByRole('dialog')).toContainText('Details unavailable');
+  expect(attempts).toBe(1);
+  await page.getByRole('button', { name: 'Reload page', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Request stream' })).toBeVisible();
+  await expect(page.getByLabel('Filter by source')).toHaveValue('Test inbox');
+  await expect(page.getByLabel('Time window')).toHaveValue('all');
+  await trigger.click();
+  await expect(page.getByRole('heading', { name: 'Your next request, visible.' })).toBeVisible();
+});
+
+test('Escape cancels a loading details module without reopening after the download completes', async ({ page }) => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route(detailModule, async route => { await pending; await route.continue(); });
+  await harness(page);
+  const trigger = page.getByRole('button', { name: 'Connect an application' });
+  try {
+    await trigger.click();
+    await expect(page.getByRole('dialog')).toContainText('Opening details');
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Close detail panel' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    const loaded = page.waitForResponse(detailModule);
+    release();
+    await loaded;
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await trigger.click();
+    await expect(page.getByRole('heading', { name: 'Your next request, visible.' })).toBeVisible();
+  } finally { release(); }
+});
+
 test('sample mode explains how to start live collection without offering an unusable key form', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await harness(page, { demo: true });
