@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter, types::Value as SqlValue};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize, ser::SerializeMap};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -54,6 +54,40 @@ fn parse(s: String) -> rusqlite::Result<Value> {
     crate::normalized_json::from_slice(s.as_bytes()).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
     })
+}
+
+fn serialize_without_field(
+    fields: &serde_json::Map<String, Value>,
+    excluded: &str,
+) -> serde_json::Result<String> {
+    struct WithoutField<'a> {
+        fields: &'a serde_json::Map<String, Value>,
+        excluded: &'a str,
+    }
+    impl Serialize for WithoutField<'_> {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let removed = self.fields.contains_key(self.excluded);
+            let mut output =
+                serializer.serialize_map(Some(self.fields.len() - usize::from(removed)))?;
+            let last = self.fields.iter().next_back();
+            for (key, value) in self.fields {
+                if removed && key == self.excluded {
+                    // preserve_order Map::remove moves the last entry into
+                    // the removed slot. Keep those exact bytes while borrowing
+                    // the surviving fields instead of cloning discarded data.
+                    if let Some((last_key, last_value)) = last
+                        && last_key != key
+                    {
+                        output.serialize_entry(last_key, last_value)?;
+                    }
+                } else if !removed || !last.is_some_and(|(last_key, _)| last_key == key) {
+                    output.serialize_entry(key, value)?;
+                }
+            }
+            output.end()
+        }
+    }
+    serde_json::to_string(&WithoutField { fields, excluded })
 }
 
 #[derive(Default)]
@@ -589,28 +623,20 @@ impl Store {
             if id.is_empty() {
                 bail!("Record ID is required");
             }
-            let mut parent = record.clone();
-            parent
-                .as_object_mut()
-                .context("Record must be an object")?
-                .remove("answers");
+            let parent = record.as_object().context("Record must be an object")?;
             let answers = record["answers"]
                 .as_array()
                 .context("Record answers must be an array")?;
             let count = tx.prepare_cached("INSERT OR IGNORE INTO requests(id,timestamp,source,model,status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,capture_complete,sample,source_event_id,import_format,event_kind,data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")?.execute(
-                params![id, record["timestamp"].as_i64().or(record["imported_at"].as_i64()).context("timestamp or imported_at is required")?, text(record,"source"),text(record,"model"),record["status"].as_i64(),record["duration_ms"].as_f64(),record["input_tokens"].as_i64(),record["output_tokens"].as_i64(),record["cost_usd"].as_f64(),text(record,"cost_basis"),answers.len() as i64,record["capture_complete"].as_bool().unwrap_or(false),record["sample"].as_bool().unwrap_or(false),optional_text(record,"source_event_id"),optional_text(record,"import_format"),record["event_kind"].as_str().unwrap_or("request"),serde_json::to_string(&parent)?])?;
+                params![id, record["timestamp"].as_i64().or(record["imported_at"].as_i64()).context("timestamp or imported_at is required")?, text(record,"source"),text(record,"model"),record["status"].as_i64(),record["duration_ms"].as_f64(),record["input_tokens"].as_i64(),record["output_tokens"].as_i64(),record["cost_usd"].as_f64(),text(record,"cost_basis"),answers.len() as i64,record["capture_complete"].as_bool().unwrap_or(false),record["sample"].as_bool().unwrap_or(false),optional_text(record,"source_event_id"),optional_text(record,"import_format"),record["event_kind"].as_str().unwrap_or("request"),serialize_without_field(parent,"answers")?])?;
             if count == 0 {
                 continue;
             }
             inserted += 1;
             for answer in answers {
                 tx.prepare_cached("INSERT OR IGNORE INTO groups(id,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter) VALUES(?,?,?,?,?,?,?,?,?,?,?)")?.execute( params![text(answer,"group_id"),text(answer,"key"),text(answer,"kind"),text(record,"source"),text(answer,"definition_id"),text(answer,"presentation_id"),serde_json::to_string(&answer["definition"])?,optional_text(answer,"task_version"),optional_text(answer,"family_id"),optional_text(answer,"family_name"),optional_text(answer,"adapter")])?;
-                let mut child = answer.clone();
-                child
-                    .as_object_mut()
-                    .context("Answer must be an object")?
-                    .remove("definition");
-                tx.prepare_cached("INSERT INTO answers(request_id,key,group_id,kind,valid,value_num,value_text,confidence,data) VALUES(?,?,?,?,?,?,?,?,?)")?.execute(params![id,text(answer,"key"),text(answer,"group_id"),text(answer,"kind"),answer["valid"].as_bool().unwrap_or(false),answer["value"].as_f64(),answer["value"].as_str(),answer["confidence"].as_f64(),serde_json::to_string(&child)?])?;
+                let child = answer.as_object().context("Answer must be an object")?;
+                tx.prepare_cached("INSERT INTO answers(request_id,key,group_id,kind,valid,value_num,value_text,confidence,data) VALUES(?,?,?,?,?,?,?,?,?)")?.execute(params![id,text(answer,"key"),text(answer,"group_id"),text(answer,"kind"),answer["valid"].as_bool().unwrap_or(false),answer["value"].as_f64(),answer["value"].as_str(),answer["confidence"].as_f64(),serialize_without_field(child,"definition")?])?;
             }
             if let Some(labels) = record["labels"].as_array() {
                 for label in labels {
@@ -1918,6 +1944,36 @@ fn csv_cell(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn borrowed_storage_json_keeps_field_order_and_nested_values() {
+        let original = r#"{"first":1,"middle":{"z":["한글",null],"a":true},"last":"tail"}"#;
+        let value: Value = serde_json::from_str(original).unwrap();
+        let fields = value.as_object().unwrap();
+        for (excluded, expected) in [
+            (
+                "first",
+                r#"{"last":"tail","middle":{"z":["한글",null],"a":true}}"#,
+            ),
+            ("middle", r#"{"first":1,"last":"tail"}"#),
+            (
+                "last",
+                r#"{"first":1,"middle":{"z":["한글",null],"a":true}}"#,
+            ),
+            ("absent", original),
+        ] {
+            assert_eq!(serialize_without_field(fields, excluded).unwrap(), expected);
+            assert_eq!(serde_json::to_string(&value).unwrap(), original);
+        }
+        assert_eq!(
+            serialize_without_field(&serde_json::Map::new(), "missing").unwrap(),
+            "{}"
+        );
+        assert_eq!(
+            serialize_without_field(json!({"only": [1, 2]}).as_object().unwrap(), "only").unwrap(),
+            "{}"
+        );
+    }
     use sha2::Digest;
 
     pub(super) fn assert_overview_matches_detail(overview: &Value, detail: &Value) {
