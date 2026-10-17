@@ -70,3 +70,41 @@ node scripts/stress.mjs --case=burst --burst-rate=3000 --burst-seconds=10 \
 ```
 
 These small-payload tests establish recording-failure behavior for the recorded build and host. They do not cover every payload, query cardinality, retained-state configuration, disk failure, provider transport or operating system. See [performance measurements](performance.md) for representative mixed-payload sustained-load evidence.
+
+## Sustained retention and restart check
+
+`scripts/check-retention-soak.py` sends varied synthetic requests to its own
+loopback provider through a temporary encrypted Observer workspace. Each cycle
+checks forwarding bytes and capture counters, then waits 35 seconds for idle
+retention. It compares all retained request and group pages against JSONL exports,
+checks source-filter totals and token usage, and verifies that opted-out input
+state and synthetic credential echoes are absent. Periodic clean restarts must
+preserve complete exported records and summary totals.
+
+Build the bundled executable first, then run:
+
+```sh
+python3 scripts/check-retention-soak.py \
+  --binary target/release/jev-observer \
+  --output .jev-observer/retention-soak.json
+```
+
+Defaults are six five-minute load cycles at 50 requests/second, a 1,000-record
+retention cap, and a restart every three cycles: approximately 34 minutes plus
+validation time. For a short check that still exercises idle retention and a
+restart, use `--cycles 1 --seconds 3 --rate 50 --max-records 120 --restart-every 1`.
+For longer checks, adjust `--cycles`, `--seconds`, and `--restart-every`. Run
+without Python's `-O` option; assertions are required and optimized mode is rejected.
+
+The script uses the platform temporary directory (or `TMPDIR`), closes its child
+process before removing temporary history, and returns a nonzero status on a
+failed check. The JSON report records executable and harness hashes, completed
+cycles, load latency samples summarized per cycle, and failure context. An
+optional `--active-state PATH` publishes process generation, loopback origin and
+the temporary token-file path for a separate read-only monitor; it never writes
+the token value.
+
+This checks consistency under a specified synthetic workload. It is not a
+production capacity estimate. The generator bounds outstanding HTTP tasks to 32
+and fails if it falls behind; choose a lower rate when sharing a busy development
+host. Linux RSS values are checkpoints after retention, not peak memory usage.
