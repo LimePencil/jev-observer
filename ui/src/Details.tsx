@@ -6,24 +6,24 @@ import type { Answer, CredentialStatus, Filters, Group, GroupDetail, Health, Lab
 import { api, query, useResource } from './api';
 import { connectionSnippet } from './connection';
 import { ModelCatalog } from './ModelCatalog';
+import type { ReviewController, ReviewState } from './reviews';
 import { answerValue, bytes, costBasis, dateTime, money, ms, number, percent, shortId } from './format';
 import { Definition, Distribution, Empty, ErrorNotice, KindBadge, Loading, RequestTable, StatusBadge, Timeline } from './components';
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
 const DECISIONS_PER_PAGE = 50;
-type ReviewState = { pending: Label | null; error: string; saved: boolean };
 const emptyReview: ReviewState = { pending: null, error: '', saved: false };
-type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; changed: () => void; historyChanged: () => void; historyRevision: number; filterGroup: (id: string) => void; notify: (message: string) => void };
+type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; historyChanged: () => void; historyRevision: number; filterGroup: (id: string) => void; notify: (message: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
   return <div className="drawer-heading"><div className="eyebrow">{icon}{eyebrow}</div><Dialog.Title>{title}</Dialog.Title><Dialog.Description>{description}</Dialog.Description></div>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="detail-field"><dt>{label}</dt><dd>{children}</dd></div>; }
 
-export default function Details({ health, panel, setPanel, filters, changed, historyChanged, historyRevision, filterGroup, notify }: Props) {
+export default function Details({ health, panel, setPanel, filters, reviews, historyChanged, historyRevision, filterGroup, notify }: Props) {
   return <Dialog.Root open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className={`drawer ${panel?.type === 'import' || panel?.type === 'connect' ? 'drawer-small' : ''}`}>
     <Dialog.Close className="icon-button drawer-close" aria-label="Close detail panel"><X size={20} weight="bold" /></Dialog.Close>
-    {panel?.type === 'request' && <RequestDetails key={panel.id} id={panel.id} setPanel={setPanel} changed={changed} historyRevision={historyRevision} />}
+    {panel?.type === 'request' && <RequestDetails key={panel.id} id={panel.id} setPanel={setPanel} controller={reviews} historyRevision={historyRevision} />}
     {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} historyRevision={historyRevision} />}
     {panel?.type === 'settings' && <SettingsDetails changed={historyChanged} notify={notify} close={() => setPanel(null)} />}
     {panel?.type === 'import' && <ImportDetails changed={historyChanged} initialFormat={panel.format} />}
@@ -31,33 +31,22 @@ export default function Details({ health, panel, setPanel, filters, changed, his
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
 
-function RequestDetails({ id, setPanel, changed, historyRevision }: { id: string; setPanel: Props['setPanel']; changed: () => void; historyRevision: number }) {
+function RequestDetails({ id, setPanel, controller, historyRevision }: { id: string; setPanel: Props['setPanel']; controller: ReviewController; historyRevision: number }) {
   const { data: record, error, reload, update } = useResource<RequestRecord>(`/api/requests/${encodeURIComponent(id)}`, historyRevision);
   const [answerPage, setAnswerPage] = useState(0);
-  const [reviews, setReviews] = useState<Map<string, ReviewState>>(() => new Map());
-  const inFlightReviews = useRef(new Set<string>());
-  const revision = useRef(historyRevision);
-  revision.current = historyRevision;
-  const pendingReviews = [...reviews.values()].some(review => review.pending !== null);
+  const reviews = controller.states.get(id);
+  const latest = useRef({ historyRevision, reload, update });
+  latest.current = { historyRevision, reload, update };
+  useEffect(() => controller.register(id, (key, label, startedRevision) => {
+    // A history refresh can read labels before this save commits. Otherwise
+    // update the current drawer in place, even if the original drawer closed.
+    const current = latest.current;
+    if (current.historyRevision !== startedRevision) current.reload();
+    else current.update(previous => previous.id !== id ? previous : { ...previous, labels: [...previous.labels.filter(item => (item.key ?? item.answer_key) !== key), { key, label }] });
+  }), [id, controller.register]);
+  const pendingReviews = [...(reviews?.values() ?? [])].some(review => review.pending !== null);
   const page = Math.min(answerPage, Math.max(0, Math.ceil((record?.answers.length ?? 0) / DECISIONS_PER_PAGE) - 1));
   const answerStart = page * DECISIONS_PER_PAGE;
-  async function review(key: string, label: Label) {
-    if (inFlightReviews.current.has(key)) return;
-    inFlightReviews.current.add(key);
-    const startedRevision = revision.current;
-    setReviews(previous => new Map(previous).set(key, { pending: label, error: '', saved: false }));
-    try {
-      await api(`/api/requests/${encodeURIComponent(id)}/label`, { method: 'POST', body: JSON.stringify({ key, label }) });
-      // A history refresh can unmount the card and read labels before this save.
-      // Fetch after the commit instead of letting that older snapshot replace it.
-      if (revision.current !== startedRevision) reload();
-      else update(previous => previous.id !== id ? previous : { ...previous, labels: [...previous.labels.filter(item => (item.key ?? item.answer_key) !== key), { key, label }] });
-      changed();
-      setReviews(previous => new Map(previous).set(key, { pending: null, error: '', saved: true }));
-    } catch (error) {
-      setReviews(previous => new Map(previous).set(key, { pending: null, error: error instanceof Error ? error.message : 'Could not save label', saved: false }));
-    } finally { inFlightReviews.current.delete(key); }
-  }
   return <>
     <DetailHeading eyebrow="Request details" title={record?.source ?? 'Request'} description="Inspect the captured response and its individual decisions." icon={<Fingerprint size={15} />} />
     {error ? <ErrorNotice message={error} retry={reload} /> : !record ? <Loading label="Loading request" /> : <div className="drawer-body">
@@ -69,7 +58,7 @@ function RequestDetails({ id, setPanel, changed, historyRevision }: { id: string
       <div className="detail-section-title"><h3>Decisions</h3><span className="count-badge">{record.answers.length}</span></div>
       <p className="caption">Usage and cost belong to this request, across all its answers.</p>
       {record.answers.length > DECISIONS_PER_PAGE && <nav className="history-pagination" aria-label="Decision pages"><button className="text-button" aria-disabled={page === 0 || pendingReviews} onClick={() => { if (page > 0 && !pendingReviews) setAnswerPage(page - 1); }}>Previous decisions</button><span role="status">Decisions {number(answerStart + 1)}–{number(Math.min(answerStart + DECISIONS_PER_PAGE, record.answers.length))} of {number(record.answers.length)}{pendingReviews && ' · Saving reviews…'}</span><button className="text-button" aria-disabled={answerStart + DECISIONS_PER_PAGE >= record.answers.length || pendingReviews} onClick={() => { if (answerStart + DECISIONS_PER_PAGE < record.answers.length && !pendingReviews) setAnswerPage(page + 1); }}>Next decisions</button></nav>}
-      {!record.answers.length ? <Empty title="No captured answers">The provider response did not include a supported answer, or the capture was incomplete.</Empty> : record.answers.slice(answerStart, answerStart + DECISIONS_PER_PAGE).map(answer => <AnswerDetail key={`${record.id}-${answer.key}`} answer={answer} record={record} onGroup={() => setPanel({ type: 'group', id: answer.group_id })} review={reviews.get(answer.key) ?? emptyReview} onReview={label => void review(answer.key, label)} />)}
+      {!record.answers.length ? <Empty title="No captured answers">The provider response did not include a supported answer, or the capture was incomplete.</Empty> : record.answers.slice(answerStart, answerStart + DECISIONS_PER_PAGE).map(answer => <AnswerDetail key={`${record.id}-${answer.key}`} answer={answer} record={record} onGroup={() => setPanel({ type: 'group', id: answer.group_id })} review={reviews?.get(answer.key) ?? emptyReview} onReview={label => void controller.save(id, answer.key, label)} />)}
       <section className="detail-section"><h3>Request input state</h3><div className="inline-notice"><ShieldCheck size={18} weight="bold" />{record.state_retained ? 'Captured with local opt-in and configured redaction.' : 'This record has no retained request state.'}</div>{record.import_format && !!record.actions?.length && <p className="caption">Imported application data is shown under Application outcome.</p>}{record.state_retained && <details><summary>Inspect retained input</summary><Definition value={record.state} /></details>}</section>
       <section className="detail-section"><h3>Application outcome</h3>{record.actions?.length ? <Definition value={record.actions} /> : <p className="muted">Not collected. An API response does not establish whether an application action ran or succeeded.</p>}</section>
       {(record.source_event_id || record.import_format) && <section className="detail-section"><h3>Import provenance</h3><dl className="detail-grid"><Field label="Source event">{record.source_event_id ?? 'Not supplied'}</Field><Field label="Format">{record.import_format ?? 'Native capture'}</Field></dl></section>}
