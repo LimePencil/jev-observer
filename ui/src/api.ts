@@ -48,7 +48,7 @@ export function readFilters(search = window.location.search): Filters {
   return filters;
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function api<T>(path: string, init: RequestInit = {}, readTimeoutMs = 15_000): Promise<T> {
   // A stalled read must release its polling loop. Mutations keep their existing
   // behavior: a slow write can already have committed and must not be retried.
   const controller = !init.method || init.method.toUpperCase() === 'GET' ? new AbortController() : undefined;
@@ -58,10 +58,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     else init.signal?.addEventListener('abort', abort, { once: true });
   }
   const timeout = controller && setTimeout(() => {
-    const error = new Error('Request timed out after 15 seconds');
+    const error = new Error(`Request timed out after ${readTimeoutMs / 1000} seconds`);
     error.name = 'TimeoutError';
     controller.abort(error);
-  }, 15_000);
+  }, readTimeoutMs);
   try {
     const response = await fetch(path, { ...init, ...(controller && { signal: controller.signal }), headers: { ...((init.method && init.method !== 'GET') ? { 'Content-Type': 'application/json', 'X-Observer-Request': '1' } : {}), ...init.headers } });
     if (!response.ok) {
@@ -83,6 +83,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export function useDashboard(filters: Filters) {
   const [snapshot, setSnapshot] = useState<{ data: Dashboard; scope: string; requestOrder: number } | null>(null);
   const [failure, setFailure] = useState<{ scope: string; message: string; requestOrder: number } | null>(null);
+  const [slowRequest, setSlowRequest] = useState<{ scope: string; requestOrder: number } | null>(null);
   const [refresh, setRefresh] = useState(0);
   const generation = useRef(0);
   const scope = query(filters);
@@ -90,13 +91,15 @@ export function useDashboard(filters: Filters) {
   const invalidate = useCallback(() => setRefresh(value => value + 1), []);
   const reset = useCallback(() => {
     generation.current += 1;
-    setSnapshot(null); setFailure(null); setRefresh(value => value + 1);
+    setSnapshot(null); setFailure(null); setSlowRequest(null); setRefresh(value => value + 1);
   }, []);
   useEffect(() => {
     let stopped = false;
     let controller: AbortController | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let slowTimer: ReturnType<typeof setTimeout> | undefined;
     let inFlight = false;
+    setSlowRequest(null);
     async function tick() {
       if (stopped || inFlight || document.hidden) return;
       inFlight = true;
@@ -104,13 +107,20 @@ export function useDashboard(filters: Filters) {
       const currentGeneration = generation.current;
       const started = performance.now();
       const requestOrder = ++nextHealthRequestOrder;
+      slowTimer = setTimeout(() => {
+        if (!stopped && !controller?.signal.aborted && currentGeneration === generation.current) setSlowRequest({ scope, requestOrder });
+      }, 5000);
       let succeeded = false;
       try {
-        const data = await api<Dashboard>(`/api/dashboard?${scope}`, { signal: controller.signal });
+        // Full retained history can exceed the ordinary read budget. Keep this
+        // bounded while health and details retain their shorter deadlines.
+        const data = await api<Dashboard>(`/api/dashboard?${scope}`, { signal: controller.signal }, 45_000);
         if (!stopped && !controller.signal.aborted && currentGeneration === generation.current) { setSnapshot({ data, scope, requestOrder }); setFailure(null); succeeded = true; }
       } catch (error) {
         if (!stopped && !controller.signal.aborted && currentGeneration === generation.current) setFailure({ scope, requestOrder, message: error instanceof Error ? error.message : 'Unable to reach Observer' });
       } finally {
+        clearTimeout(slowTimer);
+        if (!stopped) setSlowRequest(previous => previous?.requestOrder === requestOrder ? null : previous);
         inFlight = false;
         // Count query time toward the live cadence. A slow query still gets a
         // brief idle period, and failures retain the full retry backoff.
@@ -118,12 +128,12 @@ export function useDashboard(filters: Filters) {
         if (!stopped && !document.hidden) timer = setTimeout(tick, delay);
       }
     }
-    const onVisibility = () => { if (timer) clearTimeout(timer); if (!document.hidden) void tick(); else controller?.abort(); };
+    const onVisibility = () => { if (timer) clearTimeout(timer); if (!document.hidden) void tick(); else { clearTimeout(slowTimer); setSlowRequest(null); controller?.abort(); } };
     document.addEventListener('visibilitychange', onVisibility);
     void tick();
-    return () => { stopped = true; if (timer) clearTimeout(timer); controller?.abort(); document.removeEventListener('visibilitychange', onVisibility); };
+    return () => { stopped = true; if (timer) clearTimeout(timer); clearTimeout(slowTimer); controller?.abort(); document.removeEventListener('visibilitychange', onVisibility); };
   }, [scope, refresh]);
-  return { snapshot, error, errorRequestOrder: failure?.requestOrder ?? 0, invalidate, reset, scope };
+  return { snapshot, error, errorRequestOrder: failure?.requestOrder ?? 0, slow: slowRequest?.scope === scope, invalidate, reset, scope };
 }
 
 export function useResource<T>(path: string | null, revision = 0) {
