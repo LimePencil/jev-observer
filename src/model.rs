@@ -57,6 +57,7 @@ fn sensitive_key(key: &str, options: &NormalizeOptions) -> bool {
         key.as_str(),
         "authorization"
             | "proxyauthorization"
+            | "xobserveraccess"
             | "apikey"
             | "xapikey"
             | "typesafeapikey"
@@ -1797,6 +1798,72 @@ mod tests {
                 .to_string()
                 .contains("imported-array-credential")
         );
+    }
+
+    #[test]
+    fn imported_workspace_access_headers_redact_echoes_before_grouping() {
+        let token = format!("jo_access_{}", "a".repeat(64));
+        let echo_key = format!("echo-{token}");
+        let definition = json!({
+            "type": "noul",
+            "instructions": format!("Does {token} apply?")
+        });
+        let response = json!({"type": "noul", "noul": 0.7});
+        let options = NormalizeOptions::default();
+        for format in ["observer-jsonl", "systemone-capture"] {
+            for (header, value) in [
+                ("X-Observer-Access", json!(token)),
+                ("x-observer-access", json!([token])),
+            ] {
+                let mut record = if format == "observer-jsonl" {
+                    let mut record = normalized(&noul());
+                    record["answers"][0]["definition"] = definition.clone();
+                    record["request_extra"] = json!({"echo": token});
+                    record["response_extra"] = json!({echo_key.clone(): token});
+                    record
+                } else {
+                    json!({
+                        "id": "first",
+                        "source": "imported-sdk",
+                        "provider": "typesafe",
+                        "timestamp": 1_000,
+                        "status": 200,
+                        "capture_complete": true,
+                        "duration_ms": 10.0,
+                        "request": {"questions": {"q": definition}, "echo": token},
+                        "response": {"answers": {"q": response}, echo_key.clone(): token}
+                    })
+                };
+                record["request_headers"] = json!({header: value});
+                let mut groups = Vec::new();
+                for id in ["first", "second"] {
+                    record["id"] = json!(id);
+                    let imported = import_records(&record.to_string(), format, &options).unwrap();
+                    let retained = &imported[0];
+                    assert!(
+                        !retained.to_string().contains(&token),
+                        "{format}: {retained}"
+                    );
+                    assert_eq!(retained["request_extra"]["echo"], REDACTED);
+                    assert_eq!(
+                        retained["response_extra"][format!("echo-{REDACTED}")],
+                        REDACTED
+                    );
+                    let answer = &retained["answers"][0];
+                    assert_eq!(
+                        answer["definition"]["instructions"],
+                        format!("Does {REDACTED} apply?")
+                    );
+                    assert_eq!(answer["definition_redacted"], true);
+                    assert!(answer["family_id"].is_null());
+                    groups.push(answer["group_id"].clone());
+                }
+                assert_ne!(
+                    groups[0], groups[1],
+                    "{format}: redacted definitions pooled"
+                );
+            }
+        }
     }
 
     #[test]
