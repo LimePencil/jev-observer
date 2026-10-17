@@ -136,17 +136,44 @@ fn collect_secrets(value: &Value, options: &NormalizeOptions, found: &mut Vec<St
     }
 }
 
-fn scrub_string(value: &str, secrets: &[String]) -> String {
-    secrets.iter().fold(value.to_owned(), |text, secret| {
+fn scrub_string(value: &str, secrets: &[&str]) -> String {
+    if secrets.is_empty() {
+        return value.to_owned();
+    }
+    // Only original text participates in later matches. Replacing into a
+    // String repeatedly can match the marker itself and amplify tiny inputs.
+    let mut fragments = vec![Some(value)];
+    for &secret in secrets {
         if secret.is_empty() {
-            text
-        } else {
-            text.replace(secret, REDACTED)
+            continue;
         }
-    })
+        let mut next = Vec::with_capacity(fragments.len());
+        for fragment in fragments {
+            let Some(text) = fragment else {
+                next.push(None);
+                continue;
+            };
+            let mut start = 0;
+            for (index, _) in text.match_indices(secret) {
+                if start < index {
+                    next.push(Some(&text[start..index]));
+                }
+                next.push(None);
+                start = index + secret.len();
+            }
+            if start < text.len() {
+                next.push(Some(&text[start..]));
+            }
+        }
+        fragments = next;
+    }
+    fragments
+        .into_iter()
+        .map(|fragment| fragment.unwrap_or(REDACTED))
+        .collect()
 }
 
-fn scrub(value: &Value, options: &NormalizeOptions, secrets: &[String]) -> Value {
+fn scrub(value: &Value, options: &NormalizeOptions, secrets: &[&str]) -> Value {
     match value {
         Value::String(s) => json!(scrub_string(s, secrets)),
         Value::Array(values) => {
@@ -176,15 +203,26 @@ fn scrub(value: &Value, options: &NormalizeOptions, secrets: &[String]) -> Value
     }
 }
 
+fn ordered_unique_secrets(secrets: &[String]) -> Vec<&str> {
+    // Preserve first-observed priority for equal-length overlapping secrets.
+    // Deduplication after a length-only sort misses interleaved duplicates.
+    let mut seen = BTreeSet::new();
+    let mut unique: Vec<_> = secrets
+        .iter()
+        .map(String::as_str)
+        .filter(|secret| !secret.is_empty() && seen.insert(*secret))
+        .collect();
+    unique.sort_by_key(|secret| std::cmp::Reverse(secret.len()));
+    unique
+}
+
 fn privacy(value: &Value, options: &NormalizeOptions, explicit: &[&str]) -> Value {
     let mut secrets = Vec::new();
     for secret in explicit {
         collect_secret_string(secret, &mut secrets);
     }
     collect_secrets(value, options, &mut secrets);
-    secrets.sort_by_key(|s| std::cmp::Reverse(s.len()));
-    secrets.dedup();
-    scrub(value, options, &secrets)
+    scrub(value, options, &ordered_unique_secrets(&secrets))
 }
 
 fn canonical(value: &Value) -> Value {
@@ -1761,6 +1799,64 @@ mod tests {
         assert_eq!(out["state_retained"], true);
         assert!(out["answers"][0]["definition"]["extra"].is_string());
         assert_eq!(out["response_extra"]["other"], REDACTED);
+    }
+
+    #[test]
+    fn credential_redaction_deduplicates_and_preserves_overlap_priority() {
+        let mut secrets = vec!["bcd".to_owned(), "abc".to_owned()];
+        for _ in 0..2048 {
+            secrets.extend(["bcd".to_owned(), "abc".to_owned()]);
+        }
+        secrets.extend(["long-secret".to_owned(), "long-secret".to_owned()]);
+        let unique = ordered_unique_secrets(&secrets);
+        assert_eq!(unique.len(), 3);
+        assert_eq!(unique, ["long-secret", "bcd", "abc"]);
+        assert_eq!(
+            scrub_string("abcd long-secret", &unique),
+            format!("a{REDACTED} {REDACTED}")
+        );
+        let reverse_secrets = ["abc".into(), "bcd".into()];
+        let reverse = ordered_unique_secrets(&reverse_secrets);
+        assert_eq!(scrub_string("abcd", &reverse), format!("{REDACTED}d"));
+        let longest_secrets = ["abc".into(), "abcd".into()];
+        let longest = ordered_unique_secrets(&longest_secrets);
+        assert_eq!(scrub_string("abcd", &longest), REDACTED);
+    }
+
+    #[test]
+    fn credential_redaction_bounds_markers_and_preserves_utf8() {
+        for (value, secrets, expected) in [
+            ("EDE", vec!["E", "D", "E", "D"], REDACTED.repeat(3)),
+            ("é秘密é", vec!["秘密", "é"], REDACTED.repeat(3)),
+            ("abcabc", vec!["abc"], REDACTED.repeat(2)),
+            ("", vec!["x"], String::new()),
+            ("unchanged", vec!["missing", ""], "unchanged".into()),
+        ] {
+            let output = scrub_string(value, &secrets);
+            assert_eq!(output.len(), expected.len());
+            assert_eq!(output, expected);
+            assert!(output.len() <= value.len() * REDACTED.len());
+        }
+    }
+
+    #[test]
+    fn normalization_never_rescans_generated_credential_markers() {
+        let mut c = capture(
+            json!({
+                "password": ["E", "D", "E", "D", "E", "D"],
+                "message": "E",
+                "questions": {"q": {"type": "noul", "instructions": "E"}}
+            }),
+            json!({"answers": {"q": {"type": "noul", "noul": 0.7}}, "E": "E"}),
+        );
+        c.secret = Some("E".into());
+        c.local_token = Some("D".into());
+        let output = normalized(&c);
+        assert!(output.to_string().len() < 4096);
+        assert_eq!(output["request_extra"]["message"], REDACTED);
+        assert_eq!(output["response_extra"][REDACTED], REDACTED);
+        assert_eq!(output["answers"][0]["definition"]["instructions"], REDACTED);
+        assert_eq!(output["answers"][0]["definition_redacted"], true);
     }
 
     #[test]

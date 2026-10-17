@@ -45,7 +45,7 @@ function RequestDetails({ id, setPanel, changed }: { id: string; setPanel: Props
       <div className="detail-section-title"><h3>Decisions</h3><span className="count-badge">{record.answers.length}</span></div>
       <p className="caption">Usage and cost belong to this request, across all its answers.</p>
       {!record.answers.length ? <Empty title="No captured answers">The provider response did not include a supported answer, or the capture was incomplete.</Empty> : record.answers.map(answer => <AnswerDetail key={`${record.id}-${answer.key}`} answer={answer} record={record} onGroup={() => setPanel({ type: 'group', id: answer.group_id })} changed={label => updateLabel(answer.key, label)} />)}
-      <section className="detail-section"><h3>Input state</h3><div className="inline-notice"><ShieldCheck size={18} weight="bold" />{record.state_retained ? 'Captured with local opt-in and configured redaction.' : 'Not retained. Raw input capture is off by default.'}</div>{record.state_retained && <details><summary>Inspect retained input</summary><Definition value={record.state} /></details>}</section>
+      <section className="detail-section"><h3>Request input state</h3><div className="inline-notice"><ShieldCheck size={18} weight="bold" />{record.state_retained ? 'Captured with local opt-in and configured redaction.' : 'This record has no retained request state.'}</div>{record.import_format && !!record.actions?.length && <p className="caption">Imported application data is shown under Application outcome.</p>}{record.state_retained && <details><summary>Inspect retained input</summary><Definition value={record.state} /></details>}</section>
       <section className="detail-section"><h3>Application outcome</h3>{record.actions?.length ? <Definition value={record.actions} /> : <p className="muted">Not collected. An API response does not establish whether an application action ran or succeeded.</p>}</section>
       {(record.source_event_id || record.import_format) && <section className="detail-section"><h3>Import provenance</h3><dl className="detail-grid"><Field label="Source event">{record.source_event_id ?? 'Not supplied'}</Field><Field label="Format">{record.import_format ?? 'Native capture'}</Field></dl></section>}
     </div>}
@@ -170,7 +170,12 @@ function ImportDetails({ changed, initialFormat }: { changed: () => void; initia
     setText(''); setFilename(file.name); setReading(false); setError(''); setResult(null);
     if (file.size > maxBytes) { setError('Choose a file no larger than 8 MiB. Split larger histories into separate imports.'); return; }
     setReading(true);
-    try { const value = await file.text(); if (revision === inputRevision.current) setText(value); }
+    try {
+      const buffer = await file.arrayBuffer();
+      if (revision !== inputRevision.current) return;
+      try { setText(new TextDecoder('utf-8', { fatal: true }).decode(buffer)); }
+      catch { setError('This file is not valid UTF-8. Save it as UTF-8 and try again.'); }
+    }
     catch { if (revision === inputRevision.current) setError('This file could not be read.'); }
     finally { if (revision === inputRevision.current) setReading(false); }
   }
@@ -203,6 +208,7 @@ function ConnectDetails({ health, importCaptures }: { health?: Health; importCap
   const { data: settings, error: settingsError, reload: reloadSettings } = useResource<Settings>('/api/settings');
   const [providerKey, setProviderKey] = useState('');
   const [persist, setPersist] = useState(false);
+  const persistEdited = useRef(false);
   const [clientToken, setClientToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -212,7 +218,7 @@ function ConnectDetails({ health, importCaptures }: { health?: Health; importCap
   const localModel = local || settings?.upstream.startsWith('http://127.0.0.1:') || settings?.provider?.toLowerCase() === 'laya';
   const snippet = connectionSnippet(language, baseUrl, local, model, localModel);
   const keyValid = providerKey.length > 0 && providerKey.length <= 4096 && /^[\x21-\x7e]+$/.test(providerKey);
-  useEffect(() => { if (credential) setPersist(credential.storage === 'system'); }, [credential?.storage]);
+  useEffect(() => { if (credential && !persistEdited.current) setPersist(credential.storage === 'system'); }, [credential?.storage]);
   async function copyUrl() {
     setCopyStatus('');
     try { await navigator.clipboard.writeText(baseUrl); setCopyStatus('Local base URL copied.'); }
@@ -257,7 +263,7 @@ function ConnectDetails({ health, importCaptures }: { health?: Health; importCap
       {credential && <p className="caption">{credential.configured ? `Registered key: ${credential.storage === 'system' ? 'saved in system credential store' : 'this session only'}` : 'No key registered in Observer.'}</p>}
         <label className="field-label">{settings.provider && settings.provider !== 'typesafe' ? `${settings.provider} API key` : 'TypeSafe API key'}<input type="password" value={providerKey} onChange={event => setProviderKey(event.target.value)} autoComplete="off" spellCheck={false} disabled={busy} maxLength={4096} /></label>
         {providerKey && !keyValid && <p className="error-text" role="status">Use a key with printable ASCII characters and no spaces.</p>}
-        <label className="credential-choice"><input type="checkbox" checked={persist} onChange={event => setPersist(event.target.checked)} disabled={busy} /> Save in this computer’s credential store</label>
+        <label className="credential-choice"><input type="checkbox" checked={persist} onChange={event => { persistEdited.current = true; setPersist(event.target.checked); }} disabled={busy} /> Save in this computer’s credential store</label>
         <p className="caption">Leave unchecked to keep the key only until Observer stops. System saving needs an unlocked desktop credential store. Replacing a key rotates its local token, so connected applications need the new token.</p>
         <div className="button-row"><button className="button primary" disabled={!keyValid || busy} onClick={() => void registerKey()}>{busy ? 'Working…' : credential?.configured ? 'Replace registered key' : 'Register key'}</button>{credential?.configured && (!confirmRemove ? <button className="button" disabled={busy} onClick={() => setConfirmRemove(true)}>Remove key</button> : <><button className="button" disabled={busy} onClick={() => setConfirmRemove(false)}>Keep key</button><button className="button danger-button" disabled={busy} onClick={() => void removeKey()}>Confirm removal</button></>)}</div>
       {credentialMessage && <p className="caption" role="status">{credentialMessage}</p>}

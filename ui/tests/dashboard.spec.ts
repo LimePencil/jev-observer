@@ -129,6 +129,42 @@ test('registers a provider key and shows only the local client token', async ({ 
   await expect(page.getByRole('dialog')).not.toContainText('jo_local_');
 });
 
+for (const { storage, choice } of [
+  { storage: 'system', choice: false },
+  { storage: 'session', choice: true },
+  { storage: 'system', choice: null },
+] as const) {
+  test(`delayed ${storage} credential status ${choice === null ? 'initializes an untouched storage choice' : `preserves the explicit ${choice ? 'system' : 'session'} storage choice`}`, async ({ page }) => {
+    const state = await harness(page);
+    state.credentials = { configured: true, storage };
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/credentials', async route => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      await pending;
+      await route.fulfill({ json: state.credentials });
+    });
+    try {
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      const checkbox = page.getByLabel('Save in this computer’s credential store');
+      await expect(checkbox).toBeVisible();
+      if (choice !== null) {
+        await checkbox.setChecked(!choice);
+        await checkbox.setChecked(choice);
+      }
+      release();
+      await expect(page.getByText(`Registered key: ${storage === 'system' ? 'saved in system credential store' : 'this session only'}`)).toBeVisible();
+      await page.getByLabel('TypeSafe API key').fill('provider-secret');
+      const expected = choice ?? storage === 'system';
+      await expect(checkbox).toBeChecked({ checked: expected });
+      await page.getByRole('button', { name: 'Replace registered key' }).click();
+      await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+      expect(state.credentials.storage).toBe(expected ? 'system' : 'session');
+      await expect(checkbox).toBeChecked({ checked: expected });
+    } finally { release(); }
+  });
+}
+
 test('sample mode explains how to start live collection without offering an unusable key form', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await harness(page, { demo: true });
@@ -510,6 +546,41 @@ test('imported actions and unknown transport facts stay distinct', async ({ page
   await expect(page.getByRole('dialog')).toContainText('cache_reuse');
 });
 
+for (const format of ['jevrouter-receipt', 'observer-jsonl']) {
+  test(`${format} application input stays distinct from absent request state`, async ({ page }) => {
+    const state = await harness(page);
+    state.record = { ...state.record, event_kind: 'application_action', import_format: format, source_event_id: 'synthetic-receipt', state_retained: false, state: null, answers: [], actions: [{ kind: 'policy_decision', source: 'jevrouter-receipt', decision: { input: 'synthetic retained input' } }] };
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const input = dialog.locator('section').filter({ has: page.getByRole('heading', { name: 'Request input state', exact: true }) });
+    await expect(input).toContainText('This record has no retained request state.');
+    await expect(input).toContainText('Imported application data is shown under Application outcome.');
+    await expect(input).not.toContainText('Raw input capture is off');
+    await expect(dialog.getByText('Inspect retained input', { exact: true })).toHaveCount(0);
+    const outcome = dialog.locator('section').filter({ has: page.getByRole('heading', { name: 'Application outcome', exact: true }) });
+    await expect(outcome).toContainText('synthetic retained input');
+    await expect(dialog).toContainText(format);
+  });
+}
+
+for (const retained of [false, true]) {
+  test(`ordinary request state copy describes ${retained ? 'retained' : 'absent'} input`, async ({ page }) => {
+    const state = await harness(page);
+    state.record = { ...state.record, state_retained: retained, state: retained ? { message: 'synthetic request state' } : null };
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    const input = page.getByRole('dialog').locator('section').filter({ has: page.getByRole('heading', { name: 'Request input state', exact: true }) });
+    await expect(input).not.toContainText('Imported application data');
+    if (retained) {
+      await expect(input).toContainText('Captured with local opt-in and configured redaction.');
+      await input.getByText('Inspect retained input', { exact: true }).click();
+      await expect(input).toContainText('synthetic request state');
+    } else {
+      await expect(input).toContainText('This record has no retained request state.');
+      await expect(input.getByText('Inspect retained input', { exact: true })).toHaveCount(0);
+    }
+  });
+}
+
 test('light and dark dashboard accessibility and assets stay local', async ({ page }) => {
   const requests: string[] = []; page.on('request', request => requests.push(request.url()));
   await harness(page);
@@ -623,6 +694,36 @@ test('delete and import replace paused history without resuming live updates', a
   await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
 });
 
+test('import files preserve valid Unicode and reject invalid UTF-8 without substituting bytes', async ({ page }) => {
+  await harness(page);
+  const imports: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/import') imports.push(request.postDataJSON().text);
+  });
+  await page.getByRole('button', { name: 'Import records', exact: true }).click();
+  const input = page.getByLabel('Choose import file');
+  const text = page.getByLabel('Or paste records');
+  const submit = page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true });
+  const unicode = JSON.stringify({ source: '한글 café 😀 �' });
+  await input.setInputFiles({ name: 'unicode.jsonl', mimeType: 'application/json', buffer: Buffer.from('\uFEFF' + unicode) });
+  await expect(text).toHaveValue(unicode);
+  await submit.click();
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('2 records imported');
+  expect(imports).toEqual([unicode]);
+
+  const invalid = Buffer.concat([Buffer.from('{"source":"'), Buffer.from([0xff]), Buffer.from('"}')]);
+  await input.setInputFiles({ name: 'invalid.jsonl', mimeType: 'application/json', buffer: invalid });
+  await expect(page.getByRole('alert')).toContainText('not valid UTF-8');
+  await expect(text).toHaveValue('');
+  await expect(submit).toBeDisabled();
+  expect(imports).toEqual([unicode]);
+
+  await input.setInputFiles({ name: 'unicode.jsonl', mimeType: 'application/json', buffer: Buffer.from(unicode) });
+  await expect(text).toHaveValue(unicode);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(submit).toBeEnabled();
+});
+
 test('an invalid replacement import file cannot submit the previous contents', async ({ page }) => {
   await harness(page);
   await page.getByRole('button', { name: 'Import records', exact: true }).click();
@@ -638,7 +739,7 @@ test('an invalid replacement import file cannot submit the previous contents', a
   await text.fill('{"pasted":true}');
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(submit).toBeEnabled();
-  await page.evaluate(() => { File.prototype.text = () => Promise.reject(new Error('Unavailable file')); });
+  await page.evaluate(() => { File.prototype.arrayBuffer = () => Promise.reject(new Error('Unavailable file')); });
   await input.setInputFiles({ name: 'unreadable.jsonl', mimeType: 'application/json', buffer: Buffer.from('unreadable') });
   await expect(page.getByRole('alert')).toContainText('could not be read');
   await expect(text).toHaveValue('');
@@ -649,9 +750,9 @@ test('late file reads cannot overwrite a newer file or pasted import text', asyn
   await harness(page);
   await page.getByRole('button', { name: 'Import records', exact: true }).click();
   await page.evaluate(() => {
-    const pending: Record<string, (text: string) => void> = {};
-    (window as unknown as { finishImportRead: (name: string, text: string) => void }).finishImportRead = (name, text) => pending[name](text);
-    File.prototype.text = function () { return new Promise<string>(resolve => { pending[this.name] = resolve; }); };
+    const pending: Record<string, (buffer: ArrayBuffer) => void> = {};
+    (window as unknown as { finishImportRead: (name: string, text: string) => void }).finishImportRead = (name, text) => pending[name](new TextEncoder().encode(text).buffer);
+    File.prototype.arrayBuffer = function () { return new Promise<ArrayBuffer>(resolve => { pending[this.name] = resolve; }); };
   });
   const input = page.getByLabel('Choose import file');
   const text = page.getByLabel('Or paste records');
@@ -732,6 +833,39 @@ test('custom date filters survive reloading a bookmarked view', async ({ page })
   await page.getByLabel('Time window').selectOption('24h');
   await expect(page.getByLabel('From date')).toHaveValue('');
   await expect(page).not.toHaveURL(/request_cursor|from=|to=/);
+});
+
+test.describe('date bookmarks in Asia/Seoul', () => {
+  test.use({ timezoneId: 'Asia/Seoul' });
+
+  test('valid epoch boundary bookmarks keep their scope without crashing the date picker', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const boundary = '8640000000000000';
+    const state = await harness(page, { path: `/?window=all&from=${boundary}&to=${boundary}` });
+    // A local value beyond the HTML control's range stays in the URL/API scope.
+    await expect(page.getByLabel('From date')).toHaveValue('');
+    await expect(page.getByLabel('To date')).toHaveValue('');
+    await expect(page.getByLabel('From date')).toHaveAccessibleDescription(/saved start date.*remains active/);
+    await expect(page.getByLabel('To date')).toHaveAccessibleDescription(/saved end date.*remains active/);
+    expect(state.dashboardQueries.some(query => {
+      const params = new URLSearchParams(query);
+      return params.get('from') === boundary && params.get('to') === boundary;
+    })).toBe(true);
+    await expect(page).toHaveURL(new RegExp(`from=${boundary}&to=${boundary}`));
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Request stream' })).toBeVisible();
+    expect(errors).toEqual([]);
+
+    await page.getByLabel('From date').fill('10000-01-15T09:30');
+    await page.getByLabel('To date').fill('10000-01-15T10:45');
+    await expect(page.getByLabel('From date')).toHaveValue('10000-01-15T09:30');
+    await expect(page.getByLabel('To date')).toHaveValue('10000-01-15T10:45');
+    const expected = await page.evaluate(() => ({ from: String(new Date('+010000-01-15T09:30').getTime()), to: String(new Date('+010000-01-15T10:45').getTime()) }));
+    await expect.poll(() => new URL(page.url()).searchParams.get('from')).toBe(expected.from);
+    await expect.poll(() => new URL(page.url()).searchParams.get('to')).toBe(expected.to);
+    await expect(page.locator('#from-date-range-note, #to-date-range-note')).toHaveCount(0);
+  });
 });
 
 test('question search reaches server history and stays editable after no matches', async ({ page }) => {

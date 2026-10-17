@@ -381,6 +381,18 @@ fn strip_hop_headers(headers: &mut HeaderMap) {
     // and removed, forwarding its stale length can truncate the streamed body.
     if headers.contains_key(header::TRANSFER_ENCODING) {
         headers.remove(header::CONTENT_LENGTH);
+    } else {
+        let mut lengths = headers.get_all(header::CONTENT_LENGTH).iter();
+        let combined = lengths
+            .next()
+            .is_some_and(|value| value.as_bytes().contains(&b',') || lengths.next().is_some());
+        if combined {
+            // The decoder accepts identical comma-separated or repeated lengths,
+            // but the outgoing stream encoder requires one decimal field value.
+            if let Some(length) = content_length(headers) {
+                headers.insert(header::CONTENT_LENGTH, HeaderValue::from(length));
+            }
+        }
     }
     let named: Vec<HeaderName> = headers
         .get_all(header::CONNECTION)
@@ -438,10 +450,21 @@ fn content_length(headers: &HeaderMap) -> Option<u64> {
     if headers.contains_key(header::TRANSFER_ENCODING) {
         return None;
     }
-    headers
-        .get(header::CONTENT_LENGTH)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.parse().ok())
+    let mut length = None;
+    for value in headers.get_all(header::CONTENT_LENGTH) {
+        for part in value.to_str().ok()?.split(',') {
+            let part = part.trim();
+            if part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+                return None;
+            }
+            let parsed = part.parse::<u64>().ok()?;
+            if length.is_some_and(|length| length != parsed) {
+                return None;
+            }
+            length = Some(parsed);
+        }
+    }
+    length
 }
 
 fn supported_transfer_encoding(headers: &HeaderMap) -> bool {
@@ -1736,6 +1759,109 @@ mod tests {
         );
         fixture.state.collector.shutdown().await;
         observer_task.abort();
+    }
+
+    #[test]
+    fn content_length_accepts_only_identical_decimal_values() {
+        for (values, expected) in [
+            (vec![], None),
+            (vec!["0"], Some(0)),
+            (vec!["5, 5"], Some(5)),
+            (vec![" 05 ", "5, 005"], Some(5)),
+            (vec!["18446744073709551615"], Some(u64::MAX)),
+            (vec!["5, 6"], None),
+            (vec!["5", "6"], None),
+            (vec!["5", ""], None),
+            (vec![",5"], None),
+            (vec!["5,"], None),
+            (vec!["+5"], None),
+            (vec!["-5"], None),
+            (vec!["5.0"], None),
+            (vec!["5 5"], None),
+            (vec!["18446744073709551616"], None),
+        ] {
+            let mut headers = HeaderMap::new();
+            for value in &values {
+                headers.append(
+                    header::CONTENT_LENGTH,
+                    HeaderValue::from_str(value).unwrap(),
+                );
+            }
+            assert_eq!(content_length(&headers), expected, "{values:?}");
+            if values.len() == 1 && !values[0].contains(',') {
+                strip_hop_headers(&mut headers);
+                assert_eq!(headers[header::CONTENT_LENGTH], values[0]);
+            }
+            headers.insert(
+                header::TRANSFER_ENCODING,
+                HeaderValue::from_static("chunked"),
+            );
+            assert_eq!(
+                content_length(&headers),
+                None,
+                "{values:?} with transfer coding"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn repeated_identical_lengths_are_forwarded_as_one_decimal_value() {
+        let payload = r#"{"message":"complete fixed-length response"}"#;
+        let length = payload.len();
+        for lengths in [
+            format!("Content-Length: {length}\r\n"),
+            format!("Content-Length: {length}, {length}\r\n"),
+            format!("Content-Length: {length}\r\nContent-Length: {length}\r\n"),
+            format!("Content-Length: 0{length}, {length}\r\nContent-Length: {length}\r\n"),
+        ] {
+            let response =
+                format!("HTTP/1.1 200 OK\r\n{lengths}Connection: close\r\n\r\n{payload}");
+            let (upstream, upstream_task) = raw_mock(response.into_bytes(), None).await;
+            let mut fixture = fixture(&upstream, 1024, false);
+            let (observer, observer_task) = serve_fixture(&mut fixture).await;
+            let response = tokio::time::timeout(
+                Duration::from_secs(3),
+                fixture
+                    .state
+                    .client
+                    .post(observer)
+                    .bearer_auth("test-secret")
+                    .header(header::CONTENT_LENGTH, "0")
+                    .body("")
+                    .send(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()[header::CONTENT_LENGTH],
+                length.to_string()
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get_all(header::CONTENT_LENGTH)
+                    .iter()
+                    .count(),
+                1
+            );
+            let body = tokio::time::timeout(Duration::from_secs(3), response.bytes())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(body.as_ref(), payload.as_bytes());
+            let record = saved(&fixture).await;
+            assert_eq!(record["capture_complete"], true);
+            assert!(record["transport_error"].is_null());
+            assert_eq!(
+                record["response_extra"]["message"],
+                "complete fixed-length response"
+            );
+            fixture.state.collector.shutdown().await;
+            observer_task.abort();
+            upstream_task.await.unwrap();
+        }
     }
 
     #[tokio::test]
