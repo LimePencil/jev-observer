@@ -132,6 +132,71 @@ fn version_token_coverage_counts_parents_within_the_selected_scope() {
 }
 
 #[test]
+fn sample_indicator_includes_actions_without_changing_inference_accounting() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("sample-actions.sqlite"), 7, 100).unwrap();
+    let options = crate::model::NormalizeOptions::default();
+    let receipt = include_str!("../fixtures/model/jevrouter-receipt.json");
+    let synthetic = crate::model::import_records(receipt, "jevrouter-receipt", &options).unwrap();
+    assert_eq!(synthetic[0]["sample"], true);
+    assert_eq!(synthetic[0]["event_kind"], "application_action");
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &synthetic)
+        .unwrap();
+    let all = Filter {
+        window: Some("all".into()),
+        ..Default::default()
+    };
+    let action_only = store.dashboard(&all).unwrap();
+    assert_eq!(action_only["sample"], true);
+    assert_eq!(action_only["summary"]["request_count"], 0);
+    assert_eq!(action_only["summary"]["action_count"], 1);
+    assert_eq!(action_only["summary"]["sample_count"], 0);
+    assert!(action_only["summary"]["input_tokens"].is_null());
+    assert!(action_only["summary"]["cost_usd"].is_null());
+
+    let mut ordinary_receipt: Value = serde_json::from_str(receipt).unwrap();
+    ordinary_receipt["decision_id"] = json!("ordinary-decision");
+    ordinary_receipt["provenance"]["jev_provider"] = json!("typesafe");
+    ordinary_receipt["raw_jev"]["model"] = json!("ordinary-action");
+    let mut more =
+        crate::model::import_records(&ordinary_receipt.to_string(), "jevrouter-receipt", &options)
+            .unwrap();
+    assert_eq!(more[0]["sample"], false);
+    let mut live = dashboard_record("live-request", Utc::now().timestamp_millis());
+    live["model"] = json!("ordinary-request");
+    more.push(live);
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &more)
+        .unwrap();
+    let mixed = store.dashboard(&all).unwrap();
+    assert_eq!(mixed["sample"], true);
+    assert_eq!(mixed["summary"]["request_count"], 1);
+    assert_eq!(mixed["summary"]["action_count"], 2);
+    assert_eq!(mixed["summary"]["sample_count"], 0);
+    assert_eq!(mixed["summary"]["input_tokens"], 100);
+    assert_eq!(mixed["summary"]["cost_usd"], 0.25);
+
+    for (model, sample, requests, actions) in [
+        ("jevrouter-demo", true, 0, 1),
+        ("ordinary-action", false, 0, 1),
+        ("ordinary-request", false, 1, 0),
+        ("absent", false, 0, 0),
+    ] {
+        let filtered = store
+            .dashboard(&Filter {
+                model: Some(model.into()),
+                ..all.clone()
+            })
+            .unwrap();
+        assert_eq!(filtered["sample"], sample, "{model}");
+        assert_eq!(filtered["summary"]["request_count"], requests);
+        assert_eq!(filtered["summary"]["action_count"], actions);
+        assert_eq!(filtered["summary"]["sample_count"], 0);
+    }
+}
+
+#[test]
 fn empty_and_extreme_timeline_ranges_are_bounded_without_overflow() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(&dir.path().join("empty-range.sqlite"), 7, 100).unwrap();

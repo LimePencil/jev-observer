@@ -79,6 +79,7 @@ impl Mean {
 }
 
 struct DashboardRequests {
+    sample: bool,
     summary: Value,
     timeline: Vec<Value>,
     parents: HashMap<String, i64>,
@@ -992,6 +993,7 @@ impl Store {
         ))?;
         let mut rows = stmt.query(params_from_iter(args))?;
         let mut parents = HashMap::new();
+        let mut sample = false;
         let mut buckets = BTreeMap::<i64, TimelineBucket>::new();
         let mut durations = Vec::new();
         let (mut count, mut answers, mut errors, mut actions, mut samples, mut incomplete) =
@@ -1002,6 +1004,11 @@ impl Store {
         while let Some(row) = rows.next()? {
             let timestamp: i64 = row.get(1)?;
             parents.insert(row.get::<_, String>(0)?, timestamp);
+            // Imported action receipts can also be synthetic. The overview
+            // flag covers every selected event; summary counts stay scoped
+            // to inference requests below.
+            let is_sample = row.get::<_, bool>(8)?;
+            sample |= is_sample;
             if row.get_ref(2)?.as_str()? != "request" {
                 actions += 1;
                 continue;
@@ -1025,7 +1032,7 @@ impl Store {
             if let Some(charge) = charge {
                 cost.add(charge);
             }
-            samples += i64::from(row.get::<_, bool>(8)?);
+            samples += i64::from(is_sample);
             incomplete += i64::from(!row.get::<_, bool>(9)?);
             let duration: Option<f64> = row.get(10)?;
             if let Some(duration) = duration {
@@ -1064,6 +1071,7 @@ impl Store {
         }
         let timeline = spec.finish(buckets);
         Ok(DashboardRequests {
+            sample,
             summary,
             timeline,
             parents,
@@ -1198,6 +1206,7 @@ impl Store {
         let tx = conn.transaction()?;
         let (predicate, args) = Self::dashboard_predicate(&tx, filter)?;
         let DashboardRequests {
+            sample,
             summary,
             timeline,
             parents,
@@ -1308,7 +1317,7 @@ impl Store {
             .query_map([], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(
-            json!({"generated_at":filter.as_of,"sample":summary["sample_count"].as_i64().unwrap_or(0)>0,"summary":summary,"timeline":timeline,"timeline_meta":timeline_meta,"groups":groups,"requests":requests,"sources":sources,"models":models,"health":{},"feed_limit":100,"group_limit":100,"feed_next_cursor":feed_next_cursor,"group_next_cursor":group_next_cursor}),
+            json!({"generated_at":filter.as_of,"sample":sample,"summary":summary,"timeline":timeline,"timeline_meta":timeline_meta,"groups":groups,"requests":requests,"sources":sources,"models":models,"health":{},"feed_limit":100,"group_limit":100,"feed_next_cursor":feed_next_cursor,"group_next_cursor":group_next_cursor}),
         )
     }
 
