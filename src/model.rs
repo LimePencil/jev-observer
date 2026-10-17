@@ -11,7 +11,7 @@ use crate::catalog::{self, Profile};
 use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const REDACTED: &str = "[REDACTED]";
 const MAX_IMPORT_RECORDS: usize = 10_000;
@@ -872,12 +872,15 @@ fn import_observer(record: &Value, options: &NormalizeOptions) -> Result<Value> 
         .context("answers must be an array")?;
     let mut questions = Map::new();
     let mut raw_answers = Map::new();
-    let mut seen = BTreeSet::new();
+    let mut original_answers = BTreeMap::new();
     for answer in answers {
         // Question map keys are arbitrary strings, including the empty string.
         // Preserve the same key domain as normalization and label creation.
         let key = answer["key"].as_str().context("key must be a string")?;
-        ensure!(seen.insert(key), "Duplicate answer key");
+        ensure!(
+            original_answers.insert(key, answer).is_none(),
+            "Duplicate answer key"
+        );
         ensure!(
             answer.get("definition").is_some() && answer.get("raw_answer").is_some(),
             "Answer must retain definition and raw_answer (null allowed)"
@@ -959,9 +962,11 @@ fn import_observer(record: &Value, options: &NormalizeOptions) -> Result<Value> 
     imported_options.provider = record["provider"].as_str().map(str::to_owned);
     let mut out = normalize(&capture, &imported_options);
     for derived in out["answers"].as_array_mut().expect("normalized answers") {
-        let original = answers
-            .iter()
-            .find(|answer| answer["key"] == derived["key"]);
+        // The same index validates uniqueness and retains per-answer privacy
+        // evidence without rescanning a potentially large export for each key.
+        let original = derived["key"]
+            .as_str()
+            .and_then(|key| original_answers.get(key));
         // Removed fields leave no marker. A conservative isolation flag can
         // only deny pooling; supplied fingerprints remain untrusted.
         if original.is_some_and(|answer| answer["definition_redacted"] == true)
@@ -2202,6 +2207,109 @@ mod tests {
             imported[0]["answers"][0]["group_id"],
             imported[1]["answers"][0]["group_id"]
         );
+    }
+
+    #[test]
+    #[ignore = "import scaling measurement; run explicitly with --ignored --nocapture"]
+    fn observer_import_large_answer_sets_benchmark() {
+        for count in [500, 2_000, 5_000] {
+            let questions: Map<String, Value> = (0..count)
+                .map(|i| {
+                    (
+                        format!("question-{i}"),
+                        json!({"type":"noul","instructions":"Check this?"}),
+                    )
+                })
+                .collect();
+            let answers: Map<String, Value> = questions
+                .keys()
+                .map(|key| (key.clone(), json!({"type":"noul","noul":0.7})))
+                .collect();
+            let capture = Capture {
+                id: "benchmark".into(),
+                source: "benchmark".into(),
+                timestamp: 1_800_000_000_000,
+                status: 200,
+                capture_complete: true,
+                request: serde_json::to_vec(&json!({"questions":questions})).unwrap(),
+                response: serde_json::to_vec(&json!({"answers":answers})).unwrap(),
+                ..Default::default()
+            };
+            let options = NormalizeOptions::default();
+            let text = normalize(&capture, &options).to_string();
+            let mut measurements = Vec::new();
+            for _ in 0..3 {
+                let started = std::time::Instant::now();
+                let result = import_records(&text, "observer-jsonl", &options).unwrap();
+                assert_eq!(result[0]["answers"].as_array().unwrap().len(), count);
+                measurements.push(started.elapsed().as_secs_f64() * 1_000.0);
+            }
+            eprintln!(
+                "IMPORT_BENCH {}",
+                json!({"answers":count,"bytes":text.len(),"ms":measurements})
+            );
+        }
+    }
+
+    #[test]
+    fn observer_import_matches_privacy_evidence_by_key_when_answers_reorder() {
+        let mut record = normalized(&capture(
+            json!({"questions":{
+                "":{"type":"noul","instructions":"Empty key?"},
+                "missing-definition":{"type":"noul","instructions":"Unavailable?"},
+                "한글":{"type":"noul","instructions":"Private rule?"},
+                "ordinary":{"type":"noul","instructions":"Visible rule?"}
+            }}),
+            json!({"answers":{
+                "":{"type":"noul","noul":0.1},
+                "missing-definition":{"type":"noul","noul":0.2},
+                "한글":{"type":"noul","noul":0.3},
+                "ordinary":{"type":"noul","noul":0.4}
+            }}),
+        ));
+        let answers = record["answers"].as_array_mut().unwrap();
+        answers[0]["definition_redacted"] = json!(true);
+        answers[1]["definition"] = Value::Null;
+        answers[2]["definition_redacted"] = json!(true);
+        answers.rotate_left(1);
+        let imported = import_records(
+            &record.to_string(),
+            "observer-jsonl",
+            &NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        let imported_answers = imported["answers"].as_array().unwrap();
+        assert_eq!(imported_answers.len(), 4);
+        // A definition-less answer is rebuilt after the question definitions,
+        // so input/output positions are deliberately different.
+        assert_eq!(record["answers"][0]["key"], "missing-definition");
+        assert_eq!(imported_answers[3]["key"], "missing-definition");
+        for answer in imported_answers {
+            let key = answer["key"].as_str().unwrap();
+            assert_eq!(answer["definition_redacted"], matches!(key, "" | "한글"));
+            assert_eq!(answer["valid"], key != "missing-definition");
+            let original = record["answers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|original| original["key"] == key)
+                .unwrap();
+            assert_eq!(answer["raw_answer"], original["raw_answer"]);
+            if matches!(key, "" | "한글") {
+                assert_ne!(answer["group_id"], original["group_id"]);
+                assert!(answer["family_id"].is_null());
+            }
+        }
+        let duplicate = record["answers"][0].clone();
+        record["answers"].as_array_mut().unwrap().push(duplicate);
+        let error = import_records(
+            &record.to_string(),
+            "observer-jsonl",
+            &NormalizeOptions::default(),
+        )
+        .unwrap_err();
+        assert!(format!("{error:#}").contains("Duplicate answer key"));
     }
 
     #[test]
