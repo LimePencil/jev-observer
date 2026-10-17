@@ -1700,6 +1700,25 @@ impl Store {
         after: i64,
         through: Option<i64>,
     ) -> Result<(String, i64, i64, bool)> {
+        self.export_page_with_limits(
+            filter,
+            format,
+            after,
+            through,
+            2 * 1024 * 1024,
+            32 * 1024 * 1024,
+        )
+    }
+
+    fn export_page_with_limits(
+        &self,
+        filter: &Filter,
+        format: &str,
+        after: i64,
+        through: Option<i64>,
+        target_bytes: usize,
+        max_bytes: usize,
+    ) -> Result<(String, i64, i64, bool)> {
         if !["jsonl", "csv"].contains(&format) {
             bail!("Export format must be jsonl or csv");
         }
@@ -1725,15 +1744,20 @@ impl Store {
         if format == "csv" && after == 0 {
             out.push_str("id,timestamp,source,model,status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,event_kind\n");
         }
+        // The fixed CSV header is outside the record-data cap. Even a first
+        // row exactly at the cap must advance the cursor, never emit only a
+        // header and retry the same row. Total bytes remain capped plus header.
+        let header_bytes = out.len();
         let mut cursor = after;
         for (id, seq) in ids {
-            if out.len() >= 2 * 1024 * 1024 {
+            if out.len() - header_bytes >= target_bytes {
                 return Ok((out, cursor, through, true));
             }
+            let mut row = String::new();
             if format == "jsonl" {
                 if let Some(record) = Self::request_from(&conn, &id)? {
-                    out.push_str(&serde_json::to_string(&record)?);
-                    out.push('\n');
+                    row = serde_json::to_string(&record)?;
+                    row.push('\n');
                 }
             } else if let Some((record, answer_count)) = Self::request_parent(&conn, &id)? {
                 // CSV contains parent metrics only. Its saved answer count is
@@ -1753,12 +1777,18 @@ impl Store {
                     json!(answer_count),
                     json!(record["event_kind"].as_str().unwrap_or("request")),
                 ];
-                out.push_str(&fields.iter().map(csv_cell).collect::<Vec<_>>().join(","));
-                out.push('\n');
+                row = fields.iter().map(csv_cell).collect::<Vec<_>>().join(",");
+                row.push('\n');
             }
-            if out.len() > 32 * 1024 * 1024 {
+            if row.len() > max_bytes {
                 bail!("An export record exceeds the 32 MiB page limit");
             }
+            if out.len() - header_bytes > max_bytes - row.len() {
+                // Keep this row for the next short read transaction. Only
+                // successfully appended records may advance the cursor.
+                return Ok((out, cursor, through, true));
+            }
+            out.push_str(&row);
             cursor = seq;
         }
         Ok((out, cursor, through, full_page))
@@ -3299,3 +3329,7 @@ mod dashboard_tests;
 #[cfg(test)]
 #[path = "group_detail_tests.rs"]
 mod group_detail_tests;
+
+#[cfg(test)]
+#[path = "export_tests.rs"]
+mod export_tests;
