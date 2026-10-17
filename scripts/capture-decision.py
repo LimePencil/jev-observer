@@ -134,15 +134,18 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     try:
-        request = json.loads(args.request.read_text())
-        response = json.loads(args.response.read_text())
+        request = json.loads(args.request.read_text(encoding='utf-8'))
+        response = json.loads(args.response.read_text(encoding='utf-8'))
         result = convert(request, response, dialect=args.dialect, event_id=args.id,
                          timestamp=args.timestamp, source=args.source, provider=args.provider,
                          status=args.status, duration_ms=args.duration_ms, state_id=args.state_id,
                          sample=args.sample)
+        # Validate and encode before creating the file so bad input cannot leave
+        # an empty capture that prevents a corrected conversion from succeeding.
+        payload = (json.dumps(result, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
         # Refuse overwrite so an earlier collection cannot be lost by rerunning.
-        with args.output.open('x') as output:
-            output.write(json.dumps(result, ensure_ascii=False, allow_nan=False) + '\n')
+        with args.output.open('xb') as output:
+            output.write(payload)
     except (ValueError, KeyError, TypeError, OSError) as error:
         parser.exit(1, f'Capture conversion failed: {error}\n')
 
