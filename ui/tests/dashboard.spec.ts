@@ -559,6 +559,25 @@ test('light and dark dashboard accessibility and assets stay local', async ({ pa
   expect(requests.every(url => new URL(url).hostname === '127.0.0.1')).toBe(true);
 });
 
+for (const dismiss of ['Escape', 'close button']) {
+  test(`Import from the Export menu restores keyboard focus after ${dismiss}`, async ({ page }) => {
+    await harness(page);
+    const trigger = page.getByRole('button', { name: 'Export', exact: true });
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('End');
+    await expect(page.getByRole('menuitem', { name: 'Import local records' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog')).toBeVisible();
+    if (dismiss === 'Escape') await page.keyboard.press('Escape');
+    else await page.getByRole('button', { name: 'Close detail panel' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Live updates', exact: true })).toBeFocused();
+  });
+}
+
 test('mobile navigation contains focus, closes with Escape, and returns focus from details', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await harness(page);
