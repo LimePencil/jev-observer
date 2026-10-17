@@ -922,6 +922,7 @@ impl Store {
         // narrow scopes keep per-parent lookups rather than scanning history.
         // Export/detail queries keep their existing paged/correlated strategy.
         let mut batch_search = false;
+        let mut narrow_date_scope = false;
         let mut retained = None;
         let has_group = filter.group.as_ref().is_some_and(|group| !group.is_empty());
         if !has_group && filter.search.as_ref().is_some_and(|s| !s.is_empty()) {
@@ -936,6 +937,14 @@ impl Store {
                 &format!("SELECT count(*)>{threshold} FROM (SELECT 1 FROM requests r WHERE {predicate} LIMIT {})", threshold + 1),
                 params_from_iter(&args), |row| row.get(0),
             )?;
+            // Reuse this bounded count only when dates alone made the parent
+            // scope narrow. A rare source/model/error filter does not prove
+            // that walking the timestamp range will avoid unrelated history.
+            narrow_date_scope = !batch_search
+                && (filter.from.is_some() || filter.to.is_some())
+                && filter.source.as_ref().is_none_or(|value| value.is_empty())
+                && filter.model.as_ref().is_none_or(|value| value.is_empty())
+                && filter.status.as_deref() != Some("error");
         }
         let (predicate, args) = Self::request_predicate(filter, batch_search)?;
         if !has_group
@@ -954,7 +963,7 @@ impl Store {
         )?;
         // All predicate fields live in these indexes. Reading the request body
         // table here would pull large saved JSON pages into every search poll.
-        let index = if filter.window.as_deref() == Some("all") {
+        let index = if filter.window.as_deref() == Some("all") && !narrow_date_scope {
             "request_join_scope"
         } else {
             "request_dashboard"

@@ -3,6 +3,7 @@ use super::*;
 #[derive(Default)]
 struct OverviewWork {
     overview: i64,
+    selection: i64,
     feed: i64,
     feed_statements: usize,
     catalogs: i64,
@@ -35,6 +36,9 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
             if sql.starts_with(b"SELECT id,timestamp,event_kind,answer_count") {
                 work.overview += steps;
             }
+            if sql.starts_with(b"INSERT INTO temp.dashboard_request_ids") {
+                work.selection += steps;
+            }
             if sql.starts_with(b"SELECT id,json_extract(data,'$.timestamp')") {
                 work.feed += steps;
                 work.feed_statements += 1;
@@ -64,6 +68,79 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
     let result = Store::dashboard_from(&mut connection, filter);
     drop(trace);
     (result, work)
+}
+
+#[test]
+fn explicit_narrow_dates_bound_search_selection_work_and_preserve_results() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("dated-search.sqlite"), 7, 5000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records: Vec<_> = (0..4096)
+        .map(|index| dashboard_record(&format!("dated-{index}"), now - index / 2))
+        .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+    for (from, to, expected) in [
+        (Some(now - 7), None, 16),
+        (None, Some(now - 2040), 16),
+        (Some(now - 100), Some(now - 96), 10),
+        (Some(now - 100), Some(now - 100), 2),
+        (Some(now + 1), None, 0),
+        (None, Some(now - 2048), 0),
+    ] {
+        let filter = Filter {
+            window: Some("all".into()),
+            from,
+            to,
+            as_of: Some(now),
+            ..Default::default()
+        };
+        let expected_snapshot = store.dashboard(&filter).unwrap();
+        assert_snapshot_counts(&expected_snapshot, expected);
+        let (actual, work) = measured_overview(
+            &store,
+            &Filter {
+                search: Some("urgent".into()),
+                ..filter
+            },
+        );
+        assert_eq!(actual.unwrap(), expected_snapshot, "{from:?}..{to:?}");
+        assert!(
+            (1..3000).contains(&work.selection),
+            "Narrow date search visited unrelated history: {} VM steps for {from:?}..{to:?}",
+            work.selection
+        );
+    }
+
+    // Wide explicit dates and an unbounded all-history search keep the same
+    // complete response, including the next page across tied timestamps.
+    for (from, to) in [(None, None), (Some(now - 4096), Some(now + 1))] {
+        let filter = Filter {
+            window: Some("all".into()),
+            from,
+            to,
+            as_of: Some(now),
+            ..Default::default()
+        };
+        let first = store.dashboard(&filter).unwrap();
+        let cursor = first["feed_next_cursor"].as_str().unwrap();
+        for request_cursor in [None, Some(cursor.to_owned())] {
+            let filter = Filter {
+                request_cursor,
+                ..filter.clone()
+            };
+            assert_eq!(
+                store
+                    .dashboard(&Filter {
+                        search: Some("urgent".into()),
+                        ..filter.clone()
+                    })
+                    .unwrap(),
+                store.dashboard(&filter).unwrap()
+            );
+        }
+    }
 }
 
 #[test]
