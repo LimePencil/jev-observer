@@ -692,16 +692,7 @@ impl Store {
         args: &[SqlValue],
         cursor: Option<&str>,
     ) -> Result<(Vec<Value>, Option<String>)> {
-        let mut scope = predicate.to_owned();
-        let mut values = args.to_vec();
-        if let Some(cursor) = cursor {
-            let (timestamp, seq) = cursor.split_once(':').context("Invalid request cursor")?;
-            let timestamp = timestamp.parse::<i64>().context("Invalid request cursor")?;
-            let seq = seq.parse::<i64>().context("Invalid request cursor")?;
-            scope.push_str(" AND (r.timestamp,r.seq)<(?,?)");
-            values.extend([timestamp.into(), seq.into()]);
-        }
-        let mut rows = Self::request_summaries_raw(conn, &scope, &values, 101)?;
+        let mut rows = Self::request_summaries_raw(conn, predicate, args, 101, cursor)?;
         let more = rows.len() > 100;
         rows.truncate(100);
         let next = if more {
@@ -723,11 +714,65 @@ impl Store {
         args: &[SqlValue],
         limit: usize,
     ) -> Result<Vec<Value>> {
-        let mut rows = Self::request_summaries_raw(conn, predicate, args, limit)?;
+        let mut rows = Self::request_summaries_raw(conn, predicate, args, limit, None)?;
         for row in &mut rows {
             row.as_object_mut().unwrap().remove("_cursor");
         }
         Ok(rows)
+    }
+
+    fn request_summary_query(
+        conn: &Connection,
+        predicate: &str,
+        args: &[SqlValue],
+        limit: usize,
+        cursor: Option<&str>,
+    ) -> Result<(String, Vec<SqlValue>)> {
+        // Dense selections can stop after a short newest-first index walk.
+        // Sparse selections keep direct rowid lookups: even a page with only
+        // two matches left could otherwise cross a large gap in the history.
+        // These counts read only integer IDs and the narrow timestamp index.
+        let broad_selection = if predicate == DASHBOARD_SELECTION {
+            let selected: i64 = conn.query_row(
+                "SELECT count(*) FROM temp.dashboard_request_ids",
+                [],
+                |row| row.get(0),
+            )?;
+            if selected > limit as i64 {
+                let retained: i64 = conn.query_row(
+                    "SELECT count(*) FROM requests INDEXED BY request_time",
+                    [],
+                    |row| row.get(0),
+                )?;
+                selected >= retained / 4
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        let scan = if broad_selection {
+            "requests r INDEXED BY request_time"
+        } else {
+            "requests r"
+        };
+        // Choose the scan from the parent selection before a cursor changes
+        // the predicate. Later pages need the same bounded index walk.
+        let mut scope = predicate.to_owned();
+        let mut values = args.to_vec();
+        if let Some(cursor) = cursor {
+            let (timestamp, seq) = cursor.split_once(':').context("Invalid request cursor")?;
+            let timestamp = timestamp.parse::<i64>().context("Invalid request cursor")?;
+            let seq = seq.parse::<i64>().context("Invalid request cursor")?;
+            scope.push_str(" AND (r.timestamp,r.seq)<(?,?)");
+            values.extend([timestamp.into(), seq.into()]);
+        }
+        Ok((
+            format!(
+                "SELECT id,json_extract(data,'$.timestamp'),source,NULLIF(model,''),status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,capture_complete,sample,event_kind,json_extract(data,'$.imported_at'),json_extract(data,'$.transport_error'),coalesce({FAILED},0),timestamp,seq FROM {scan} WHERE {scope} ORDER BY timestamp DESC,seq DESC LIMIT {limit}"
+            ),
+            values,
+        ))
     }
 
     fn request_summaries_raw(
@@ -735,21 +780,11 @@ impl Store {
         predicate: &str,
         args: &[SqlValue],
         limit: usize,
+        cursor: Option<&str>,
     ) -> Result<Vec<Value>> {
-        // For broad searches, walk newest-first and stop at the feed limit,
-        // instead of fetching/sorting every matching request's saved JSON.
-        // Tiny selections retain direct rowid lookup, even for very old rows.
-        let broad_selection = predicate == DASHBOARD_SELECTION && conn.query_row(
-            &format!("SELECT count(*)>{limit} FROM (SELECT 1 FROM temp.dashboard_request_ids LIMIT {})", limit + 1),
-            [], |row| row.get::<_, bool>(0),
-        )?;
-        let scan = if broad_selection {
-            "requests r INDEXED BY request_time"
-        } else {
-            "requests r"
-        };
-        let mut stmt = conn.prepare(&format!("SELECT id,json_extract(data,'$.timestamp'),source,NULLIF(model,''),status,duration_ms,input_tokens,output_tokens,cost_usd,cost_basis,answer_count,capture_complete,sample,event_kind,json_extract(data,'$.imported_at'),json_extract(data,'$.transport_error'),coalesce({FAILED},0),timestamp,seq FROM {scan} WHERE {predicate} ORDER BY timestamp DESC,seq DESC LIMIT {limit}"))?;
-        Ok(stmt.query_map(params_from_iter(args), |r| Ok(json!({"id":r.get::<_,String>(0)?,"timestamp":r.get::<_,Option<i64>>(1)?,"source":r.get::<_,String>(2)?,"model":r.get::<_,Option<String>>(3)?,"status":r.get::<_,Option<i64>>(4)?,"duration_ms":r.get::<_,Option<f64>>(5)?,"input_tokens":r.get::<_,Option<i64>>(6)?,"output_tokens":r.get::<_,Option<i64>>(7)?,"cost_usd":r.get::<_,Option<f64>>(8)?,"cost_basis":r.get::<_,String>(9)?,"answer_count":r.get::<_,i64>(10)?,"capture_complete":r.get::<_,bool>(11)?,"sample":r.get::<_,bool>(12)?,"event_kind":r.get::<_,String>(13)?,"imported_at":r.get::<_,Option<i64>>(14)?,"transport_error":r.get::<_,Option<String>>(15)?,"failed":r.get::<_,bool>(16)?,"_cursor":format!("{}:{}",r.get::<_,i64>(17)?,r.get::<_,i64>(18)?)})))?.collect::<rusqlite::Result<Vec<_>>>()?)
+        let (query, values) = Self::request_summary_query(conn, predicate, args, limit, cursor)?;
+        let mut stmt = conn.prepare(&query)?;
+        Ok(stmt.query_map(params_from_iter(&values), |r| Ok(json!({"id":r.get::<_,String>(0)?,"timestamp":r.get::<_,Option<i64>>(1)?,"source":r.get::<_,String>(2)?,"model":r.get::<_,Option<String>>(3)?,"status":r.get::<_,Option<i64>>(4)?,"duration_ms":r.get::<_,Option<f64>>(5)?,"input_tokens":r.get::<_,Option<i64>>(6)?,"output_tokens":r.get::<_,Option<i64>>(7)?,"cost_usd":r.get::<_,Option<f64>>(8)?,"cost_basis":r.get::<_,String>(9)?,"answer_count":r.get::<_,i64>(10)?,"capture_complete":r.get::<_,bool>(11)?,"sample":r.get::<_,bool>(12)?,"event_kind":r.get::<_,String>(13)?,"imported_at":r.get::<_,Option<i64>>(14)?,"transport_error":r.get::<_,Option<String>>(15)?,"failed":r.get::<_,bool>(16)?,"_cursor":format!("{}:{}",r.get::<_,i64>(17)?,r.get::<_,i64>(18)?)})))?.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     /// Expensive answer-key/group filters select parent requests once per
