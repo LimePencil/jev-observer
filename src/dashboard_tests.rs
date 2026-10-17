@@ -7,6 +7,7 @@ struct OverviewWork {
     feed: i64,
     feed_statements: usize,
     catalogs: i64,
+    timeline_bounds: i64,
 }
 
 fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, OverviewWork) {
@@ -33,6 +34,9 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
                 rusqlite::ffi::SQLITE_STMTSTATUS_VM_STEP,
                 1,
             ));
+            if sql.starts_with(b"SELECT min(timestamp),max(timestamp) FROM requests") {
+                work.timeline_bounds += steps;
+            }
             if sql.starts_with(b"SELECT id,timestamp,event_kind,answer_count") {
                 work.overview += steps;
             }
@@ -68,6 +72,103 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
     let result = Store::dashboard_from(&mut connection, filter);
     drop(trace);
     (result, work)
+}
+
+#[test]
+fn explicit_timeline_limits_skip_history_bounds_and_preserve_eligibility() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("explicit-bounds.sqlite"), 7, 5000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut records: Vec<_> = (0..4096)
+        .map(|index| dashboard_record(&format!("bounds-{index}"), now - index / 2))
+        .collect();
+    let mut action = dashboard_record("bounds-action", now + 1);
+    action["event_kind"] = json!("action");
+    action["answers"] = json!([]);
+    records.push(action);
+    let mut unknown_time = dashboard_record("bounds-unknown", now);
+    unknown_time["timestamp"] = Value::Null;
+    unknown_time["imported_at"] = json!(now + 2);
+    records.push(unknown_time);
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+    let base = Filter {
+        window: Some("all".into()),
+        as_of: Some(now),
+        ..Default::default()
+    };
+    // The tracer must observe the retained history scan for all three fallbacks.
+    for (from, to) in [
+        (None, None),
+        (Some(now - 3000), None),
+        (None, Some(now + 3)),
+    ] {
+        let (snapshot, work) = measured_overview(
+            &store,
+            &Filter {
+                from,
+                to,
+                ..base.clone()
+            },
+        );
+        let snapshot = snapshot.unwrap();
+        assert!(work.timeline_bounds > 4096);
+        assert_eq!(
+            snapshot["timeline_meta"]["start"],
+            from.unwrap_or(now - 2047)
+        );
+        assert_eq!(snapshot["timeline_meta"]["end"], to.unwrap_or(now) + 1);
+    }
+    // Public validation rejects inverted dates; the internal specification still
+    // preserves its existing clamp for callers that already have a predicate.
+    let inverted = Filter {
+        from: Some(now + 20),
+        to: Some(now + 10),
+        ..base.clone()
+    };
+    assert!(store.dashboard(&inverted).is_err());
+    let spec = Store::timeline_spec(&store.reader().unwrap(), "1=1", &[], &inverted).unwrap();
+    assert_eq!((spec.start, spec.end), (now + 20, now + 20));
+    for (from, to, expected) in [
+        (now - 3000, now + 3, 4096),
+        (now - 100, now - 96, 10),
+        (now - 100, now - 100, 2),
+        (now + 1, now + 2, 0), // action and unknown original time are not timeline evidence
+        (now + 10, now + 20, 0),
+        (i64::MIN, i64::MAX, 4096),
+        (i64::MAX, i64::MAX, 0),
+    ] {
+        let filter = Filter {
+            from: Some(from),
+            to: Some(to),
+            ..base.clone()
+        };
+        let (snapshot, work) = measured_overview(&store, &filter);
+        let snapshot = snapshot.unwrap();
+        assert!(
+            work.timeline_bounds < 100,
+            "Explicit bounds visited history: {} VM steps",
+            work.timeline_bounds
+        );
+        assert_eq!(snapshot["timeline_meta"]["start"], from);
+        assert_eq!(
+            snapshot["timeline_meta"]["end"],
+            to.max(from).saturating_add(1)
+        );
+        let timeline = snapshot["timeline"].as_array().unwrap();
+        assert!(!timeline.is_empty() && timeline.len() <= 168);
+        assert_eq!(
+            timeline
+                .iter()
+                .map(|bin| bin["requests"].as_i64().unwrap())
+                .sum::<i64>(),
+            expected
+        );
+        let detail = store.group("dashboard-group", &filter).unwrap().unwrap();
+        assert_eq!(detail["timeline"], snapshot["timeline"]);
+        assert_eq!(detail["timeline_meta"], snapshot["timeline_meta"]);
+    }
 }
 
 #[test]
