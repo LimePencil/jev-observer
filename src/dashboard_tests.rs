@@ -1313,3 +1313,75 @@ fn version_counts_preserve_sources_and_families_with_bounded_lookup_work() {
         );
     }
 }
+
+#[test]
+fn malformed_capture_definitions_survive_stored_jsonl_export_and_reimport() {
+    use crate::model::{Capture, NormalizeOptions, import_records, normalize};
+
+    let options = NormalizeOptions::default();
+    let now = Utc::now().timestamp_millis();
+    let capture = Capture {
+        id: "live-malformed".into(),
+        timestamp: now,
+        source: "malformed-fixture".into(),
+        status: 200,
+        capture_complete: true,
+        request: serde_json::to_vec(&json!({"questions": {"q": 42}})).unwrap(),
+        response: serde_json::to_vec(&json!({"answers": {"q": {"type": "noul", "noul": 0.8}}}))
+            .unwrap(),
+        ..Default::default()
+    };
+    let envelope = json!({
+        "id": "imported-malformed", "timestamp": now, "source": "malformed-fixture",
+        "provider": "typesafe", "status": 200, "capture_complete": true,
+        "request": {"questions": {"q": [null, 1]}},
+        "response": {"answers": {"q": {"type": "noul", "noul": 0.8}}}
+    });
+    let records = vec![
+        normalize(&capture, &options),
+        import_records(&envelope.to_string(), "systemone-capture", &options)
+            .unwrap()
+            .remove(0),
+    ];
+    let dir = tempfile::tempdir().unwrap();
+    let original = Store::open(&dir.path().join("original.sqlite"), 7, 100).unwrap();
+    let restored = Store::open(&dir.path().join("restored.sqlite"), 7, 100).unwrap();
+    original
+        .write_batch(&mut original.writer_connection().unwrap(), &records)
+        .unwrap();
+    let filter = Filter {
+        window: Some("all".into()),
+        ..Default::default()
+    };
+    let exported = original.export(&filter, "jsonl").unwrap();
+    let imported = import_records(&exported, "observer-jsonl", &options).unwrap();
+    assert_eq!(imported.len(), 2);
+    for record in &imported {
+        let before = records
+            .iter()
+            .find(|before| before["id"] == record["id"])
+            .unwrap();
+        assert_eq!(record["answers"], before["answers"]);
+        assert_eq!(record["answers"][0]["valid"], false);
+    }
+    let mut writer = restored.writer_connection().unwrap();
+    assert_eq!(restored.write_batch(&mut writer, &imported).unwrap(), 2);
+    let again = import_records(
+        &restored.export(&filter, "jsonl").unwrap(),
+        "observer-jsonl",
+        &options,
+    )
+    .unwrap();
+    assert_eq!(restored.write_batch(&mut writer, &again).unwrap(), 0);
+    for record in again {
+        let before = imported
+            .iter()
+            .find(|before| before["id"] == record["id"])
+            .unwrap();
+        assert_eq!(record["answers"], before["answers"]);
+        assert_eq!(record["source_event_id"], before["source_event_id"]);
+    }
+    let dashboard = restored.dashboard(&filter).unwrap();
+    assert_eq!(dashboard["summary"]["request_count"], 2);
+    assert_eq!(dashboard["groups"].as_array().unwrap().len(), 2);
+}
