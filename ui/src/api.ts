@@ -49,13 +49,35 @@ export function readFilters(search = window.location.search): Filters {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, { ...init, headers: { ...((init.method && init.method !== 'GET') ? { 'Content-Type': 'application/json', 'X-Observer-Request': '1' } : {}), ...init.headers } });
-  if (!response.ok) {
-    let message = `Request failed (${response.status})`;
-    try { const error = await response.json(); message = typeof error.error === 'string' ? error.error : typeof error.message === 'string' ? error.message : message; } catch { /* Do not expose arbitrary response bodies. */ }
-    throw new Error(message);
+  // A stalled read must release its polling loop. Mutations keep their existing
+  // behavior: a slow write can already have committed and must not be retried.
+  const controller = !init.method || init.method.toUpperCase() === 'GET' ? new AbortController() : undefined;
+  const abort = () => controller?.abort(init.signal?.reason);
+  if (controller) {
+    if (init.signal?.aborted) abort();
+    else init.signal?.addEventListener('abort', abort, { once: true });
   }
-  return response.json();
+  const timeout = controller && setTimeout(() => {
+    const error = new Error('Request timed out after 15 seconds');
+    error.name = 'TimeoutError';
+    controller.abort(error);
+  }, 15_000);
+  try {
+    const response = await fetch(path, { ...init, ...(controller && { signal: controller.signal }), headers: { ...((init.method && init.method !== 'GET') ? { 'Content-Type': 'application/json', 'X-Observer-Request': '1' } : {}), ...init.headers } });
+    if (!response.ok) {
+      let message = `Request failed (${response.status})`;
+      try { const error = await response.json(); message = typeof error.error === 'string' ? error.error : typeof error.message === 'string' ? error.message : message; } catch { /* Do not expose arbitrary response bodies. */ }
+      throw new Error(message);
+    }
+    // Keep the deadline active until the response body finishes, too.
+    return await response.json();
+  } catch (error) {
+    if (controller?.signal.aborted) throw controller.signal.reason;
+    throw error;
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    init.signal?.removeEventListener('abort', abort);
+  }
 }
 
 export function useDashboard(filters: Filters) {
