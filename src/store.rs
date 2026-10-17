@@ -1595,12 +1595,12 @@ impl Store {
                 Ok(value)
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        record["answers"] = json!(answers);
+        record["answers"] = Value::Array(answers);
         let mut stmt = conn.prepare(
             "SELECT key,label,timestamp,source FROM labels WHERE request_id=? ORDER BY key",
         )?;
         let labels=stmt.query_map([id],|r|Ok(json!({"key":r.get::<_,String>(0)?,"label":r.get::<_,String>(1)?,"timestamp":r.get::<_,i64>(2)?,"source":r.get::<_,String>(3)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
-        record["labels"] = json!(labels);
+        record["labels"] = Value::Array(labels);
         record["failed"] = json!(
             record["status"]
                 .as_i64()
