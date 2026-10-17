@@ -777,7 +777,14 @@ for (const parentGroup of ['selected-group', 'selected-family']) {
     await drawer.getByLabel('Inspect request shared-request', { exact: true }).click();
     await drawer.getByRole('button', { name: 'View recurring group' }).click();
     await expect(drawer.getByRole('heading', { name: 'department', exact: true })).toBeVisible();
-    expect(detailQueries).toHaveLength(3);
+    // Development StrictMode remounts effects, so each visit can issue an
+    // aborted duplicate request. Assert the visited groups, not fetch counts.
+    const visitedPaths = detailQueries.map(url => url.pathname).filter((path, index, paths) => index === 0 || path !== paths[index - 1]);
+    expect(visitedPaths).toEqual([
+      `/api/groups/${scopedGroup.id}`,
+      `/api/groups/${otherVersion.id}`,
+      `/api/groups/${scopedGroup.id}`,
+    ]);
     for (const url of detailQueries) {
       expect(url.searchParams.get('group')).toBe(parentGroup);
       expect(url.searchParams.get('source')).toBe('Test inbox');
