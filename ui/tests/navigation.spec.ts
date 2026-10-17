@@ -20,6 +20,28 @@ test('local date values round-trip without shifting the selected instant', () =>
   expect(dateFilter('')).toBe('');
 });
 
+for (const timezone of ['UTC', 'Asia/Seoul', 'America/Los_Angeles']) {
+  test(`date controls preserve normal and extended-year local values in ${timezone}`, () => {
+    const previous = process.env.TZ;
+    process.env.TZ = timezone;
+    try {
+      for (const local of ['0001-01-15T09:30', '2026-01-15T09:30', '2026-07-15T23:45', '9999-12-31T23:45', '10000-01-15T09:30']) {
+        expect(dateInput(dateFilter(local))).toBe(local);
+      }
+      expect(() => dateInput('-8640000000000000')).not.toThrow();
+      expect(dateInput('-8640000000000000')).toBe('');
+      expect(dateInput('8640000000000001')).toBe('');
+      expect(dateFilter('999999-01-01T00:00')).toBe('');
+      const maximum = dateInput('8640000000000000');
+      if (timezone === 'Asia/Seoul') expect(maximum).toBe('');
+      else expect(dateFilter(maximum)).toBe('8640000000000000');
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
+  });
+}
+
 test('SDK examples keep credentials in environment variables and model strings escaped', () => {
   for (const language of ['python', 'javascript'] as const) {
     const local = connectionSnippet(language, 'http://127.0.0.1:8765', true, 'model"\\name');

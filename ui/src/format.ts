@@ -15,13 +15,24 @@ export const shortId = (id: string | null | undefined) => id ? id.replace(/^(?:p
 export const answerValue = (value: unknown, kind: string) => value == null ? 'Unknown' : kind === 'noul' && typeof value === 'number' ? percent(value) : typeof value === 'number' ? String(Number(value.toFixed(3))) : String(value);
 
 export const costBasis = (value: string | null | undefined) => value === 'provider_reported' ? 'Provider-reported charge' : value === 'configured_estimate' || value === 'configured_rates' || value === 'configured-estimate' || value === 'estimated' ? 'Configured estimate' : value === 'synthetic' ? 'Synthetic sample' : value || 'Unknown';
+// HTML date controls use unsigned extended years; JavaScript's ISO parser
+// requires a sign and six digits for years beyond the usual four digits.
+const htmlDateToIso = (value: string) => value.replace(/^(\d{5,})-/, (_, year: string) => `+${year.padStart(6, '0')}-`);
 export const dateInput = (value: string | undefined) => {
   if (!value || !Number.isFinite(Number(value))) return '';
   const date = new Date(Number(value));
-  if (!Number.isFinite(date.getTime())) return '';
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  if (!Number.isFinite(date.getTime()) || date.getFullYear() < 1) return '';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  const local = `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  // The native control also bounds its timezone-free calendar value. A valid
+  // epoch at the Date limit can have an unrepresentable local calendar value.
+  return Number.isFinite(new Date(`${htmlDateToIso(local)}Z`).getTime()) ? local : '';
 };
-export const dateFilter = (value: string) => value && Number.isFinite(new Date(value).getTime()) ? String(new Date(value).getTime()) : '';
+export const dateFilter = (value: string) => {
+  if (!value) return '';
+  const timestamp = new Date(htmlDateToIso(value)).getTime();
+  return Number.isFinite(timestamp) ? String(timestamp) : '';
+};
 export const chartTime = (value: number, showDate: boolean) => new Date(value).toLocaleString([], { ...(showDate ? { month: 'short', day: 'numeric' } as const : {}), hour: '2-digit', minute: '2-digit', hour12: false });
 
 export const storageHint = (category: string) => ({
