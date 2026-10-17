@@ -703,6 +703,34 @@ impl Store {
             };
             let excess = if within_cap {
                 0
+            } else if let Ok(keep) = i64::try_from(self.max_records) {
+                // Counting the narrow time index avoids visiting saved bodies.
+                // Then walk whichever end has fewer ordinal entries: a small
+                // newly appended excess, or the records kept after a large cut.
+                let retained: i64 = tx.query_row(
+                    "SELECT count(*) FROM requests INDEXED BY request_time",
+                    [],
+                    |row| row.get(0),
+                )?;
+                let cutoff = if retained > keep {
+                    let removed = retained - keep;
+                    let (query, offset) = if removed <= keep {
+                        (
+                            "SELECT seq FROM requests ORDER BY seq LIMIT 1 OFFSET ?",
+                            removed - 1,
+                        )
+                    } else {
+                        (
+                            "SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?",
+                            keep,
+                        )
+                    };
+                    tx.query_row(query, [offset], |row| row.get::<_, i64>(0))?
+                } else {
+                    // Preserve the existing cutoff for legacy nonpositive IDs.
+                    -1
+                };
+                tx.execute("DELETE FROM requests WHERE seq <= ?", [cutoff])?
             } else {
                 tx.execute("DELETE FROM requests WHERE seq <= COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?),-1)", [self.max_records as i64])?
             };

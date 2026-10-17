@@ -336,3 +336,59 @@ fn count_retention_handles_sparse_and_extreme_row_ids() {
         assert_no_orphans(&connection);
     }
 }
+
+#[test]
+fn small_excess_retention_does_not_walk_the_kept_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("small-excess.sqlite"), 7, 4095).unwrap();
+    let mut connection = store.writer_connection().unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records = (0..4096)
+        .map(|index| record(&index.to_string(), now, 0))
+        .collect::<Vec<_>>();
+    store.write_batch(&mut connection, &records).unwrap();
+    make_due(&connection);
+    let (ran, steps) = measured_maintenance(&store, &mut connection);
+    assert!(ran);
+    assert!(
+        (1..1_000).contains(&steps),
+        "Small-excess maintenance used {steps} VM steps"
+    );
+    assert_eq!(counts(&connection), [4095, 0, 0, 0]);
+    assert!(store.request("0").unwrap().is_none());
+    for id in ["1", "4095"] {
+        assert!(store.request(id).unwrap().is_some());
+    }
+    assert_no_orphans(&connection);
+}
+
+#[test]
+fn large_cap_reductions_keep_the_newest_parent_metadata() {
+    for cap in [0, 1, 16, 64, 128] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("large-reduction.sqlite"), 7, 256).unwrap();
+        let mut connection = store.writer_connection().unwrap();
+        let now = Utc::now().timestamp_millis();
+        let records = (0..128)
+            .map(|index| record(&format!("r{index:03}"), now, 2))
+            .collect::<Vec<_>>();
+        store.write_batch(&mut connection, &records).unwrap();
+        store.max_records = cap;
+        make_due(&connection);
+        assert!(store.maintenance(&mut connection, false).unwrap());
+        let expected = ((128 - cap)..128)
+            .map(|index| format!("r{index:03}"))
+            .collect::<Vec<_>>();
+        let actual = connection
+            .prepare("SELECT id FROM requests ORDER BY seq")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(actual, expected, "cap={cap}");
+        let kept = cap as i64;
+        assert_eq!(counts(&connection), [kept, kept * 2, kept * 2, kept * 2]);
+        assert_no_orphans(&connection);
+    }
+}
