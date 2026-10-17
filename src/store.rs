@@ -258,16 +258,25 @@ fn migrate_plaintext(path: &Path, key: &str) -> Result<()> {
     Ok(())
 }
 
-fn add_integer_sum(total: &mut Option<i64>, value: Option<i64>) -> Result<()> {
-    if let Some(value) = value {
-        *total = Some(
-            total
-                .unwrap_or(0)
-                .checked_add(value)
-                .context("integer overflow")?,
-        );
+/// Token counts are nonnegative signed 64-bit integers. Keep ordinary totals
+/// exact, and distinguish an unrepresentable sum from missing reported usage.
+#[derive(Default)]
+struct TokenSum {
+    total: Option<i64>,
+    known: i64,
+    overflow: bool,
+}
+
+impl TokenSum {
+    fn add(&mut self, value: Option<i64>) {
+        if let Some(value) = value {
+            self.known += 1;
+            if !self.overflow {
+                self.total = self.total.unwrap_or(0).checked_add(value);
+                self.overflow = self.total.is_none();
+            }
+        }
     }
-    Ok(())
 }
 
 impl Store {
@@ -986,16 +995,58 @@ impl Store {
         let parent_scope = format!(
             "{parent_predicate} AND r.id IN (SELECT aa.request_id FROM answers aa JOIN groups gg ON gg.id=aa.group_id WHERE {parent_selector})"
         );
-        let metrics: Value = conn.query_row(
+        let metrics = conn.query_row(
             &format!("SELECT avg(duration_ms),sum(cost_usd),count(cost_usd),sum(input_tokens),sum(output_tokens),coalesce(sum({FAILED}),0),count(input_tokens),count(output_tokens) FROM requests r WHERE {parent_scope}"),
             params_from_iter(&parent_args), |row| Ok(json!({
                 "mean_latency_ms":row.get::<_,Option<f64>>(0)?, "cost_usd":row.get::<_,Option<f64>>(1)?,
                 "cost_known_requests":row.get::<_,i64>(2)?, "input_tokens":row.get::<_,Option<i64>>(3)?,
                 "output_tokens":row.get::<_,Option<i64>>(4)?, "error_count":row.get::<_,i64>(5)?,
                 "input_tokens_known_requests":row.get::<_,i64>(6)?,
-                "output_tokens_known_requests":row.get::<_,i64>(7)?
+                "output_tokens_known_requests":row.get::<_,i64>(7)?,
+                "input_tokens_overflow":false, "output_tokens_overflow":false
             })),
-        )?;
+        );
+        let metrics = match metrics {
+            Ok(metrics) => metrics,
+            // Bundled SQLite reports SUM integer overflow with this exact code
+            // and message. Keep its faster aggregate for all ordinary queries;
+            // other database errors must still propagate to the caller.
+            Err(rusqlite::Error::SqliteFailure(error, Some(message)))
+                if error.extended_code == rusqlite::ffi::SQLITE_ERROR
+                    && message == "integer overflow" =>
+            {
+                let mut parent_stmt = conn.prepare(&format!(
+                    "SELECT duration_ms,cost_usd,input_tokens,output_tokens,{FAILED} FROM requests r WHERE {parent_scope}"
+                ))?;
+                let mut parents = parent_stmt.query(params_from_iter(&parent_args))?;
+                let (mut latency, mut cost) = (Mean::default(), Mean::default());
+                let (mut input, mut output) = (TokenSum::default(), TokenSum::default());
+                let mut errors = 0_i64;
+                // The parent subquery deduplicates requests shared by multiple answers.
+                // Keep coverage and unrelated metrics even when a token sum overflows.
+                while let Some(row) = parents.next()? {
+                    if let Some(value) = row.get::<_, Option<f64>>(0)? {
+                        latency.add(value);
+                    }
+                    if let Some(value) = row.get::<_, Option<f64>>(1)? {
+                        cost.add(value);
+                    }
+                    input.add(row.get(2)?);
+                    output.add(row.get(3)?);
+                    errors += i64::from(row.get::<_, Option<bool>>(4)?.unwrap_or(false));
+                }
+                json!({
+                    "mean_latency_ms":latency.value(), "cost_usd":cost.total(),
+                    "cost_known_requests":cost.count, "input_tokens":input.total,
+                    "output_tokens":output.total, "error_count":errors,
+                    "input_tokens_known_requests":input.known,
+                    "output_tokens_known_requests":output.known,
+                    "input_tokens_overflow":input.overflow,
+                    "output_tokens_overflow":output.overflow
+                })
+            }
+            Err(error) => return Err(error.into()),
+        };
         // Labels are unique by (request_id,key), so this join preserves answer
         // multiplicity while computing reviews and warnings in the same pass.
         let answer_metrics: Value = conn.query_row(
@@ -1033,8 +1084,7 @@ impl Store {
         let mut durations = Vec::new();
         let (mut count, mut answers, mut errors, mut actions, mut samples, mut incomplete) =
             (0_i64, 0_i64, 0_i64, 0_i64, 0_i64, 0_i64);
-        let (mut input, mut output) = (None, None);
-        let (mut input_known, mut output_known) = (0_i64, 0_i64);
+        let (mut input, mut output) = (TokenSum::default(), TokenSum::default());
         let mut cost = Mean::default();
         while let Some(row) = rows.next()? {
             let timestamp: i64 = row.get(1)?;
@@ -1059,10 +1109,8 @@ impl Store {
             errors += i64::from(error);
             let input_tokens: Option<i64> = row.get(5)?;
             let output_tokens: Option<i64> = row.get(6)?;
-            input_known += i64::from(input_tokens.is_some());
-            output_known += i64::from(output_tokens.is_some());
-            add_integer_sum(&mut input, input_tokens)?;
-            add_integer_sum(&mut output, output_tokens)?;
+            input.add(input_tokens);
+            output.add(output_tokens);
             let charge: Option<f64> = row.get(7)?;
             if let Some(charge) = charge {
                 cost.add(charge);
@@ -1089,8 +1137,9 @@ impl Store {
         }
         let mut summary = json!({
             "request_count":count,"answer_count":answers,"error_count":errors,
-            "input_tokens":input,"output_tokens":output,"cost_usd":cost.total(),
-            "input_tokens_known_requests":input_known,"output_tokens_known_requests":output_known,
+            "input_tokens":input.total,"output_tokens":output.total,"cost_usd":cost.total(),
+            "input_tokens_known_requests":input.known,"output_tokens_known_requests":output.known,
+            "input_tokens_overflow":input.overflow,"output_tokens_overflow":output.overflow,
             "cost_known_requests":cost.count,"sample_count":samples,"incomplete_count":incomplete,
             "action_count":actions
         });
@@ -1665,6 +1714,8 @@ mod tests {
             "output_tokens",
             "input_tokens_known_requests",
             "output_tokens_known_requests",
+            "input_tokens_overflow",
+            "output_tokens_overflow",
             "error_count",
         ] {
             assert!(overview.get(field).is_none(), "detail-only field {field}");

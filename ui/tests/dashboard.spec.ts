@@ -110,6 +110,36 @@ test('token totals disclose independently missing usage and preserve known zero 
   await expect(metric).toContainText('Output: 2 / 2 requests');
 });
 
+test('overflowing token totals stay distinct from unknown and normal usage after refresh', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await harness(page);
+  const metric = page.getByRole('group', { name: 'Token usage', exact: true });
+  for (const usage of [
+    { input_tokens: null, output_tokens: 20, input_tokens_overflow: true, output_tokens_overflow: false, input_tokens_known_requests: 2, output_tokens_known_requests: 1, detail: 'Exceeds range in / 20 out' },
+    { input_tokens: 100, output_tokens: null, input_tokens_overflow: false, output_tokens_overflow: true, input_tokens_known_requests: 1, output_tokens_known_requests: 2, detail: '100 in / Exceeds range out' },
+    { input_tokens: null, output_tokens: null, input_tokens_overflow: true, output_tokens_overflow: true, input_tokens_known_requests: 2, output_tokens_known_requests: 2, detail: 'Exceeds range in / Exceeds range out' },
+  ]) {
+    const { detail, ...summary } = usage;
+    Object.assign(state.dashboard.summary, summary);
+    await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+    await expect(metric.locator('.metric-value')).toHaveText('Total exceeds range');
+    await expect(metric).toContainText(detail);
+    await expect(metric).toContainText(`Input: ${summary.input_tokens_known_requests} / 2 requests`);
+    await expect(metric).toContainText(`Output: ${summary.output_tokens_known_requests} / 2 requests`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  Object.assign(state.dashboard.summary, { input_tokens_overflow: false, output_tokens_overflow: false, input_tokens_known_requests: 0, output_tokens_known_requests: 0 });
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(metric.locator('.metric-value')).toHaveText('Unknown');
+  await expect(metric).not.toContainText('Exceeds range');
+
+  Object.assign(state.dashboard.summary, { input_tokens: 100, output_tokens: 20, input_tokens_known_requests: 2, output_tokens_known_requests: 2 });
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(metric.locator('.metric-label')).toHaveText('Reported tokens');
+  await expect(metric.locator('.metric-value')).toHaveText('120');
+  await expect(metric).toContainText('100 in / 20 out');
+});
+
 test('registers a provider key and shows only the local client token', async ({ page }) => {
   const state = await harness(page);
   await page.getByRole('button', { name: 'Connect an application' }).click();
@@ -975,6 +1005,47 @@ test('version comparisons show token coverage independently for partial unknown 
   await page.getByLabel('Compare with').selectOption('zero');
   await expect(input.getByRole('cell').nth(1)).toHaveText('02 / 2 requests covered');
   await expect(output.getByRole('cell').nth(1)).toHaveText('02 / 2 requests covered');
+});
+
+test('version comparisons preserve per-direction overflow and coverage within their selected scope', async ({ page }) => {
+  await harness(page, { path: '/?window=all&group=selected-family&source=Test+inbox&model=test-model' });
+  const current = { ...group, request_count: 3, input_tokens: null, output_tokens: 20, input_tokens_overflow: true, output_tokens_overflow: false, input_tokens_known_requests: 3, output_tokens_known_requests: 2 };
+  const versions = [
+    current,
+    { ...group, id: 'output-overflow', input_tokens: 100, output_tokens: null, input_tokens_overflow: false, output_tokens_overflow: true, input_tokens_known_requests: 1, output_tokens_known_requests: 2 },
+    { ...group, id: 'both-overflow', input_tokens: null, output_tokens: null, input_tokens_overflow: true, output_tokens_overflow: true, input_tokens_known_requests: 2, output_tokens_known_requests: 2 },
+    { ...group, id: 'unknown', input_tokens: null, output_tokens: null, input_tokens_overflow: false, output_tokens_overflow: false, input_tokens_known_requests: 0, output_tokens_known_requests: 0 },
+    { ...group, id: 'normal', input_tokens: 100, output_tokens: 0, input_tokens_overflow: false, output_tokens_overflow: false, input_tokens_known_requests: 2, output_tokens_known_requests: 2 },
+  ];
+  const queries: URL[] = [];
+  await page.route('**/api/groups/**', route => {
+    queries.push(new URL(route.request().url()));
+    return route.fulfill({ json: { group: current, versions, timeline: [], requests: [], answers: [] } });
+  });
+  await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+  await page.getByLabel('Compare with').selectOption('output-overflow');
+  const comparison = page.getByLabel('Version outcome comparison');
+  const input = comparison.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Reported input tokens', exact: true }) });
+  const output = comparison.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Reported output tokens', exact: true }) });
+  await expect(input.getByRole('cell').nth(0)).toHaveText('Total exceeds range3 / 3 requests covered');
+  await expect(output.getByRole('cell').nth(0)).toHaveText('202 / 3 requests covered');
+  await expect(input.getByRole('cell').nth(1)).toHaveText('1001 / 2 requests covered');
+  await expect(output.getByRole('cell').nth(1)).toHaveText('Total exceeds range2 / 2 requests covered');
+  await page.getByLabel('Compare with').selectOption('both-overflow');
+  await expect(input.getByRole('cell').nth(1)).toHaveText('Total exceeds range2 / 2 requests covered');
+  await expect(output.getByRole('cell').nth(1)).toHaveText('Total exceeds range2 / 2 requests covered');
+  await page.getByLabel('Compare with').selectOption('unknown');
+  await expect(input.getByRole('cell').nth(1)).toHaveText('Unknown0 / 2 requests covered');
+  await expect(output.getByRole('cell').nth(1)).toHaveText('Unknown0 / 2 requests covered');
+  await page.getByLabel('Compare with').selectOption('normal');
+  await expect(input.getByRole('cell').nth(1)).toHaveText('1002 / 2 requests covered');
+  await expect(output.getByRole('cell').nth(1)).toHaveText('02 / 2 requests covered');
+  expect(queries.length).toBeGreaterThan(0);
+  for (const url of queries) {
+    expect(url.searchParams.get('group')).toBe('selected-family');
+    expect(url.searchParams.get('source')).toBe('Test inbox');
+    expect(url.searchParams.get('model')).toBe('test-model');
+  }
 });
 
 test('version comparisons show observed outcomes and judged review coverage', async ({ page }) => {
