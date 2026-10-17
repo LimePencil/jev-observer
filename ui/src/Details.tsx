@@ -203,6 +203,7 @@ function ConnectDetails({ health, importCaptures }: { health?: Health; importCap
   const { data: settings, error: settingsError, reload: reloadSettings } = useResource<Settings>('/api/settings');
   const [providerKey, setProviderKey] = useState('');
   const [persist, setPersist] = useState(false);
+  const persistEdited = useRef(false);
   const [clientToken, setClientToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -212,7 +213,7 @@ function ConnectDetails({ health, importCaptures }: { health?: Health; importCap
   const localModel = local || settings?.upstream.startsWith('http://127.0.0.1:') || settings?.provider?.toLowerCase() === 'laya';
   const snippet = connectionSnippet(language, baseUrl, local, model, localModel);
   const keyValid = providerKey.length > 0 && providerKey.length <= 4096 && /^[\x21-\x7e]+$/.test(providerKey);
-  useEffect(() => { if (credential) setPersist(credential.storage === 'system'); }, [credential?.storage]);
+  useEffect(() => { if (credential && !persistEdited.current) setPersist(credential.storage === 'system'); }, [credential?.storage]);
   async function copyUrl() {
     setCopyStatus('');
     try { await navigator.clipboard.writeText(baseUrl); setCopyStatus('Local base URL copied.'); }
@@ -257,7 +258,7 @@ function ConnectDetails({ health, importCaptures }: { health?: Health; importCap
       {credential && <p className="caption">{credential.configured ? `Registered key: ${credential.storage === 'system' ? 'saved in system credential store' : 'this session only'}` : 'No key registered in Observer.'}</p>}
         <label className="field-label">{settings.provider && settings.provider !== 'typesafe' ? `${settings.provider} API key` : 'TypeSafe API key'}<input type="password" value={providerKey} onChange={event => setProviderKey(event.target.value)} autoComplete="off" spellCheck={false} disabled={busy} maxLength={4096} /></label>
         {providerKey && !keyValid && <p className="error-text" role="status">Use a key with printable ASCII characters and no spaces.</p>}
-        <label className="credential-choice"><input type="checkbox" checked={persist} onChange={event => setPersist(event.target.checked)} disabled={busy} /> Save in this computer’s credential store</label>
+        <label className="credential-choice"><input type="checkbox" checked={persist} onChange={event => { persistEdited.current = true; setPersist(event.target.checked); }} disabled={busy} /> Save in this computer’s credential store</label>
         <p className="caption">Leave unchecked to keep the key only until Observer stops. System saving needs an unlocked desktop credential store. Replacing a key rotates its local token, so connected applications need the new token.</p>
         <div className="button-row"><button className="button primary" disabled={!keyValid || busy} onClick={() => void registerKey()}>{busy ? 'Working…' : credential?.configured ? 'Replace registered key' : 'Register key'}</button>{credential?.configured && (!confirmRemove ? <button className="button" disabled={busy} onClick={() => setConfirmRemove(true)}>Remove key</button> : <><button className="button" disabled={busy} onClick={() => setConfirmRemove(false)}>Keep key</button><button className="button danger-button" disabled={busy} onClick={() => void removeKey()}>Confirm removal</button></>)}</div>
       {credentialMessage && <p className="caption" role="status">{credentialMessage}</p>}

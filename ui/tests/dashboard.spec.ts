@@ -129,6 +129,42 @@ test('registers a provider key and shows only the local client token', async ({ 
   await expect(page.getByRole('dialog')).not.toContainText('jo_local_');
 });
 
+for (const { storage, choice } of [
+  { storage: 'system', choice: false },
+  { storage: 'session', choice: true },
+  { storage: 'system', choice: null },
+] as const) {
+  test(`delayed ${storage} credential status ${choice === null ? 'initializes an untouched storage choice' : `preserves the explicit ${choice ? 'system' : 'session'} storage choice`}`, async ({ page }) => {
+    const state = await harness(page);
+    state.credentials = { configured: true, storage };
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/credentials', async route => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      await pending;
+      await route.fulfill({ json: state.credentials });
+    });
+    try {
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      const checkbox = page.getByLabel('Save in this computer’s credential store');
+      await expect(checkbox).toBeVisible();
+      if (choice !== null) {
+        await checkbox.setChecked(!choice);
+        await checkbox.setChecked(choice);
+      }
+      release();
+      await expect(page.getByText(`Registered key: ${storage === 'system' ? 'saved in system credential store' : 'this session only'}`)).toBeVisible();
+      await page.getByLabel('TypeSafe API key').fill('provider-secret');
+      const expected = choice ?? storage === 'system';
+      await expect(checkbox).toBeChecked({ checked: expected });
+      await page.getByRole('button', { name: 'Replace registered key' }).click();
+      await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+      expect(state.credentials.storage).toBe(expected ? 'system' : 'session');
+      await expect(checkbox).toBeChecked({ checked: expected });
+    } finally { release(); }
+  });
+}
+
 test('sample mode explains how to start live collection without offering an unusable key form', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await harness(page, { demo: true });
