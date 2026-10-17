@@ -455,6 +455,105 @@ for (const endpoint of ['dashboard', 'health'] as const) {
   });
 }
 
+function manyDecisionRecord(id = 'request-one') {
+  return { ...structuredClone(record), id, answer_count: 53,
+    answers: Array.from({ length: 53 }, (_, index) => ({ ...structuredClone(record.answers[0]), key: `decision-${index + 1}` })),
+  };
+}
+
+test('decision pages bound mounted cards and keep every answer reachable by keyboard', async ({ page }) => {
+  const state = await harness(page);
+  state.record = manyDecisionRecord();
+  let detailReads = 0;
+  await page.route('**/api/requests/*', route => { detailReads += 1; return route.fulfill({ json: state.record }); });
+  await page.getByLabel('Inspect request request-one', { exact: true }).click();
+  await expect(page.locator('.answer-card')).toHaveCount(50);
+  const pages = page.getByRole('navigation', { name: 'Decision pages' });
+  await expect(pages).toContainText('1–50 of 53');
+  await expect(pages.getByRole('button', { name: 'Previous decisions' })).toBeDisabled();
+  const readsBeforeNavigation = detailReads;
+  await pages.getByRole('button', { name: 'Next decisions' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(pages).toContainText('51–53 of 53');
+  await expect(page.locator('.answer-card')).toHaveCount(3);
+  await expect(page.getByRole('heading', { name: 'decision-53', exact: true })).toBeVisible();
+  await expect(pages.getByRole('button', { name: 'Next decisions' })).toBeDisabled();
+  await expect(pages.getByRole('button', { name: 'Next decisions' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
+  await pages.getByRole('button', { name: 'Next decisions' }).click({ force: true });
+  await expect(pages).toContainText('51–53 of 53');
+  await page.locator('.answer-card').last().getByText('Definition and context', { exact: true }).click();
+  await expect(page.locator('.answer-card').last().locator('.json-view')).toContainText('Choose a department');
+  await pages.getByRole('button', { name: 'Previous decisions' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(pages).toContainText('1–50 of 53');
+  await expect(page.getByRole('heading', { name: 'decision-1', exact: true })).toBeVisible();
+  await expect(pages.getByRole('button', { name: 'Previous decisions' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
+  await pages.getByRole('button', { name: 'Previous decisions' }).click({ force: true });
+  await expect(pages).toContainText('1–50 of 53');
+  expect(detailReads).toBe(readsBeforeNavigation);
+  await pages.getByRole('button', { name: 'Next decisions' }).click();
+  await expect(pages).toContainText('51–53 of 53');
+  await page.keyboard.press('Escape');
+  await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeFocused();
+  state.record = manyDecisionRecord('request-failed');
+  await page.getByLabel('Inspect request request-failed', { exact: true }).click();
+  await expect(pages).toContainText('1–50 of 53');
+  await expect(page.getByRole('heading', { name: 'decision-1', exact: true })).toBeVisible();
+});
+
+test('decision paging waits for every pending review and preserves saved labels after failures', async ({ page }) => {
+  const state = await harness(page);
+  state.record = manyDecisionRecord();
+  let releaseFirst!: () => void, releaseSecond!: () => void;
+  const first = new Promise<void>(resolve => { releaseFirst = resolve; });
+  const second = new Promise<void>(resolve => { releaseSecond = resolve; });
+  let failSecond = true, saves = 0;
+  await page.route('**/api/requests/*/label', async route => {
+    saves += 1;
+    const payload = route.request().postDataJSON();
+    await (payload.key === 'decision-1' ? first : second);
+    if (payload.key === 'decision-2' && failSecond) return route.fulfill({ status: 503, json: { error: 'Second decision review failed' } });
+    state.record.labels = [...state.record.labels.filter(item => item.key !== payload.key), payload];
+    await route.fulfill({ json: { ok: true } });
+  });
+  try {
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    const pages = page.getByRole('navigation', { name: 'Decision pages' });
+    const firstCard = page.locator('.answer-card').filter({ has: page.getByRole('heading', { name: 'decision-1', exact: true }) });
+    const secondCard = page.locator('.answer-card').filter({ has: page.getByRole('heading', { name: 'decision-2', exact: true }) });
+    await page.getByLabel('Review decision-1', { exact: true }).selectOption('correct');
+    await page.getByLabel('Review decision-2', { exact: true }).selectOption('incorrect');
+    await expect.poll(() => saves).toBe(2);
+    await expect(pages.getByRole('button', { name: 'Next decisions' })).toBeDisabled();
+    await pages.getByRole('button', { name: 'Next decisions' }).focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
+    await pages.getByRole('button', { name: 'Next decisions' }).click({ force: true });
+    await expect(pages).toContainText('1–50 of 53');
+    releaseFirst();
+    await expect(firstCard.getByRole('status')).toHaveText('Saved');
+    await expect(pages.getByRole('button', { name: 'Next decisions' })).toBeDisabled();
+    releaseSecond();
+    await expect(secondCard.getByRole('alert')).toContainText('Second decision review failed');
+    await expect(pages.getByRole('button', { name: 'Next decisions' })).toBeEnabled();
+    await expect(page.getByLabel('Review decision-1', { exact: true })).toHaveValue('correct');
+    failSecond = false;
+    await page.getByLabel('Review decision-2', { exact: true }).selectOption('correct');
+    await expect(secondCard.getByRole('status')).toHaveText('Saved');
+    await expect(secondCard.getByRole('alert')).toHaveCount(0);
+    await pages.getByRole('button', { name: 'Next decisions' }).click();
+    await expect(pages).toContainText('51–53 of 53');
+    await pages.getByRole('button', { name: 'Previous decisions' }).click();
+    await expect(page.getByLabel('Review decision-1', { exact: true })).toHaveValue('correct');
+    await expect(page.getByLabel('Review decision-2', { exact: true })).toHaveValue('correct');
+    expect(saves).toBe(3);
+  } finally { releaseFirst(); releaseSecond(); }
+});
+
 test('request labels persist through API and versions remain separate', async ({ page }) => {
   const state = await harness(page);
   await page.getByLabel('Inspect request request-one', { exact: true }).click();
@@ -1310,7 +1409,7 @@ for (const parentGroup of ['selected-group', 'selected-family']) {
 }
 
 
-test('the researched catalog keeps setup separate from active credentials and opens mapped capture import', async ({ page }) => {
+test('the researched catalog keeps setup separate from active credentials and opens mapped capture import', async ({ page }, testInfo) => {
   await harness(page, { settings: { provider: 'kev', upstream_auth: 'none', upstream: 'http://127.0.0.1:8009/v1/systemone', model_catalog: catalog as Settings['model_catalog'] } });
   await page.getByRole('button', { name: 'Connect an application', exact: true }).click();
   await expect(page.getByLabel('Model integration')).toHaveValue('kev');
@@ -1326,7 +1425,7 @@ test('the researched catalog keeps setup separate from active credentials and op
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations).toEqual([]);
-  await page.screenshot({ path: '/tmp/jev-model-catalog-mobile.png', fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('jev-model-catalog-mobile.png'), fullPage: true });
   await page.getByRole('button', { name: 'Import mapped decisions' }).click();
   await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
   await expect(page.getByLabel('Or paste records')).toHaveAttribute('placeholder', /id, timestamp, source, provider/);

@@ -6,7 +6,7 @@
   button, input, select, textarea { font: inherit; }
   button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
   button { cursor: pointer; }
-  button:disabled { cursor: not-allowed; opacity: .5; }
+  button:disabled, button[aria-disabled="true"] { cursor: not-allowed; opacity: .5; }
   button, select { touch-action: manipulation; }
   a { color: inherit; text-decoration: none; }
   svg { flex-shrink: 0; }
