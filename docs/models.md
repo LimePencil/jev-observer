@@ -39,6 +39,8 @@ One JSON object per line represents one original call:
 
 Imports accept at most 8 MiB of decoded text and 10,000 records. Normalization has separate budgets of 16 MiB per record and 64 MiB per batch, applied to both generated JSON and work such as copying task versions into answers or filling annotation provenance. Excessive expansion returns 413 and saves none of the batch. Metadata and identities are never shortened to fit; reduce a single oversized observation at its source, or split a large batch. Some historical captures or exports may exceed these import limits. These limits do not change live forwarding or its capture settings.
 
+Observer JSONL records allow up to 144 nested objects or arrays, counting the record itself. This bounded allowance includes Observer's added wrappers around retained raw fields. Excessive nesting returns 400 and saves none of the batch. Raw provider bodies and System One capture/receipt imports keep their existing parser depth limit.
+
 `request.questions` must retain the named System One definitions, including the complete candidate domain and ordered rubric. `response.answers` uses `type` plus `choice`, `noul` or `score`. Choice and Score need the complete reported probability map; a winning label or truncated top-k logprobs do not establish that distribution. Known mapped-model profiles allow omitted confidence and legends with visible warnings. Malformed fields that are present still fail validation. Unknown provider IDs need the full strict response contract.
 
 The offline converter handles System One envelopes and the reviewed NanoJev, AgentJev, AnyJev, SemIf and AutoTrust result shapes:

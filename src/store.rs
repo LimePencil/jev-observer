@@ -51,7 +51,7 @@ fn optional_text<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v[key].as_str()
 }
 fn parse(s: String) -> rusqlite::Result<Value> {
-    serde_json::from_str(&s).map_err(|e| {
+    crate::normalized_json::from_slice(s.as_bytes()).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
     })
 }

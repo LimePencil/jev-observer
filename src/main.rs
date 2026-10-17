@@ -4,6 +4,7 @@ mod collector;
 mod config;
 mod credentials;
 mod model;
+mod normalized_json;
 mod server;
 mod store;
 #[cfg(windows)]

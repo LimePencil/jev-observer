@@ -142,6 +142,7 @@ impl ImportRecordBudget<'_> {
     }
 
     fn finish(&mut self, record: &Value) -> Result<()> {
+        crate::normalized_json::check_value(record)?;
         let bytes = json_size(record, self.batch.limits.record, "normalized output")?;
         self.batch.normalized = limited_add(
             self.batch.normalized,
@@ -717,7 +718,13 @@ fn normalize_import(
     budget: &mut ImportRecordBudget<'_>,
     charge_input: bool,
 ) -> Result<Value> {
-    let (raw_request, safe) = prepare_capture(capture, options, import_secrets);
+    // Imported Observer envelopes may contain the additional wrappers our
+    // own output adds. Never silently replace their reconstructed bodies with
+    // null because a raw-provider parser has a smaller recursion allowance.
+    let raw_request = crate::normalized_json::from_slice(&capture.request)?;
+    let response = crate::normalized_json::from_slice(&capture.response)?;
+    let (raw_request, safe) =
+        prepare_values(capture, options, import_secrets, raw_request, response);
     if charge_input {
         budget.value(&safe)?;
     }
@@ -748,6 +755,16 @@ fn prepare_capture(
 ) -> (Value, Value) {
     let raw_request: Value = serde_json::from_slice(&capture.request).unwrap_or(Value::Null);
     let response: Value = serde_json::from_slice(&capture.response).unwrap_or(Value::Null);
+    prepare_values(capture, options, import_secrets, raw_request, response)
+}
+
+fn prepare_values(
+    capture: &Capture,
+    options: &NormalizeOptions,
+    import_secrets: &[String],
+    raw_request: Value,
+    response: Value,
+) -> (Value, Value) {
     let explicit_secrets: Vec<&str> = [
         capture.secret.as_deref(),
         capture.local_token.as_deref(),
@@ -1551,10 +1568,12 @@ fn import_records_with_limits(
                 values.len() < MAX_IMPORT_RECORDS,
                 ImportLimitError("record count")
             );
-            values.push(
+            let record = if format == "observer-jsonl" {
+                crate::normalized_json::from_slice(line.as_bytes())
+            } else {
                 serde_json::from_str(line)
-                    .with_context(|| format!("Invalid JSON at line {}", index + 1))?,
-            );
+            };
+            values.push(record.with_context(|| format!("Invalid JSON at line {}", index + 1))?);
         }
     }
     ensure!(!values.is_empty(), "Import contains no records");
