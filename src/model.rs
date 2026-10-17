@@ -927,7 +927,7 @@ fn normalize_prepared(
     } else {
         None
     };
-    json!({
+    let mut record = json!({
         "schema_version": 1, "event_kind": "request", "id": safe["id"], "timestamp": capture.timestamp,
         "source": source, "provider": options.provider.as_deref().unwrap_or("typesafe"),
         "model": response.get("model").filter(|v| v.is_string()),
@@ -942,12 +942,14 @@ fn normalize_prepared(
         "state_retained": options.capture_state && request.get("state").is_some_and(|v| !v.is_null()),
         "state": if options.capture_state { request.get("state").cloned().unwrap_or(Value::Null) } else { Value::Null },
         "transport_error": safe["transport_error"], "sample": false,
-        "answers": answers, "actions": [], "labels": [],
+        "answers": [], "actions": [], "labels": [],
         "normalization_error": normalization_error,
         "request_extra": extras(request, &["model", "state", "questions"]),
         "response_extra": extras(response, &["model", "answers", "usage"]),
         "usage_extra": extras(&response["usage"], &["input_tokens", "output_tokens"])
-    })
+    });
+    record["answers"] = Value::Array(answers);
+    record
 }
 
 fn required_string<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
