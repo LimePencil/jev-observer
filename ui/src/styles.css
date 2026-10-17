@@ -395,7 +395,6 @@
   .toast { position: fixed; bottom: 22px; left: calc(50% + 104px); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; max-width: min(600px, 90vw); background: var(--text); color: var(--surface); padding: 10px 13px; border-radius: 7px; z-index: 100; font-size: 11px; box-shadow: var(--shadow); }
   .toast .icon-button { color: inherit; width: 23px; height: 23px; }
   .toast .icon-button:hover { background: color-mix(in srgb, var(--surface) 15%, transparent); }
-  .lazy-detail-loading { position: fixed; right: 20px; bottom: 20px; padding: 12px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; z-index: 62; }
   .mobile-menu, .mobile-shade { display: none; }
   .navigation-close { position: absolute; top: 8px; right: 8px; }
   .sidebar.is-open.mobile-navigation { padding-top: 46px; overflow-y: auto; }
