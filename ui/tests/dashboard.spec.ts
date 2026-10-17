@@ -1054,7 +1054,7 @@ for (const outcome of ['success', 'failure'] as const) {
     await review.press('ArrowDown');
     await expect(review).toHaveValue('correct');
     // Exercise a stale change event too; Playwright refuses aria-disabled selects.
-    await review.evaluate(select => { select.value = 'incorrect'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    await review.evaluate(select => { (select as HTMLSelectElement).value = 'incorrect'; select.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(writes).toBe(1);
     finish();
     await expect(drawer.getByText(outcome === 'success' ? 'Saved' : 'Review could not be stored', { exact: true })).toBeVisible();
