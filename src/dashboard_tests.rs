@@ -136,6 +136,154 @@ fn version_token_coverage_counts_parents_within_the_selected_scope() {
 }
 
 #[test]
+fn group_parent_metrics_do_not_scan_unrelated_source_or_model_history() {
+    // Count actual parent-aggregate VM steps independently of host speed.
+    // Other group queries keep their own plans. Reset the trace before its
+    // stack context goes away, including when a query or assertion fails.
+    struct ParentWorkTrace<'a>(&'a Connection);
+    impl Drop for ParentWorkTrace<'_> {
+        fn drop(&mut self) {
+            unsafe {
+                rusqlite::ffi::sqlite3_trace_v2(self.0.handle(), 0, None, std::ptr::null_mut());
+            }
+        }
+    }
+    unsafe extern "C" fn count_parent_work(
+        _: u32,
+        context: *mut std::ffi::c_void,
+        statement: *mut std::ffi::c_void,
+        _: *mut std::ffi::c_void,
+    ) -> i32 {
+        let statement = statement.cast::<rusqlite::ffi::sqlite3_stmt>();
+        let sql = unsafe { std::ffi::CStr::from_ptr(rusqlite::ffi::sqlite3_sql(statement)) };
+        if sql.to_bytes().starts_with(b"SELECT avg(duration_ms)")
+            || sql
+                .to_bytes()
+                .starts_with(b"SELECT duration_ms,cost_usd,input_tokens")
+        {
+            unsafe {
+                *context.cast::<i64>() += i64::from(rusqlite::ffi::sqlite3_stmt_status(
+                    statement,
+                    rusqlite::ffi::SQLITE_STMTSTATUS_VM_STEP,
+                    0,
+                ));
+            }
+        }
+        0
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("group-parent-metrics.sqlite"), 7, 3000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut first = dashboard_record("first", now);
+    first["answers"][0]["family_id"] = json!("metrics-family");
+    first["answers"][0]["family_name"] = json!("Metrics family");
+    let mut companion = first["answers"][0].clone();
+    companion["key"] = json!("companion");
+    companion["group_id"] = json!("companion-group");
+    first["answers"].as_array_mut().unwrap().push(companion);
+    let mut second = first.clone();
+    second["id"] = json!("second");
+    second["timestamp"] = json!(now + 1);
+    second["input_tokens"] = Value::Null;
+    second["output_tokens"] = json!(20);
+    second["duration_ms"] = json!(8.0);
+    second["cost_usd"] = json!(0.5);
+    second["status"] = json!(500);
+    let mut records = vec![first, second];
+    records.extend((0..2048).map(|index| {
+        let mut unrelated = dashboard_record(&format!("unrelated-{index:04}"), now);
+        unrelated["answers"] = json!([]);
+        unrelated
+    }));
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+    let connection = store.reader().unwrap();
+    for (scope, first_matches, second_matches) in [
+        (json!({}), true, true),
+        (json!({"source":"dashboard-test"}), true, true),
+        (json!({"model":"test-model"}), true, true),
+        (
+            json!({"source":"dashboard-test","model":"test-model","search":"first"}),
+            true,
+            false,
+        ),
+        (
+            json!({"source":"dashboard-test","status":"error"}),
+            false,
+            true,
+        ),
+        (
+            json!({"source":"dashboard-test","group":"companion-group"}),
+            true,
+            true,
+        ),
+        (
+            json!({"source":"dashboard-test","group":"missing"}),
+            false,
+            false,
+        ),
+        (json!({"source":"missing"}), false, false),
+        (
+            json!({"source":"dashboard-test","from":now+1,"to":now+1}),
+            false,
+            true,
+        ),
+    ] {
+        let first = i64::from(first_matches);
+        let second = i64::from(second_matches);
+        let count = first + second;
+        let input = first_matches.then_some(100);
+        let output = (count > 0).then_some(first * 3 + second * 20);
+        let latency = (count > 0).then(|| (first * 4 + second * 8) as f64 / count as f64);
+        let cost = (count > 0).then_some(first as f64 * 0.25 + second as f64 * 0.5);
+        let mut filter: Filter = serde_json::from_value(scope.clone()).unwrap();
+        filter.window = Some("all".into());
+        for family in [false, true] {
+            let mut parent_steps = 0_i64;
+            unsafe {
+                rusqlite::ffi::sqlite3_trace_v2(
+                    connection.handle(),
+                    rusqlite::ffi::SQLITE_TRACE_PROFILE,
+                    Some(count_parent_work),
+                    std::ptr::from_mut(&mut parent_steps).cast(),
+                );
+            }
+            let trace = ParentWorkTrace(&connection);
+            let metrics = Store::group_metrics(
+                &connection,
+                if family {
+                    "metrics-family"
+                } else {
+                    "dashboard-group"
+                },
+                family,
+                &filter,
+            );
+            drop(trace);
+            let metrics = metrics.unwrap();
+            assert!(
+                (1..4000).contains(&parent_steps),
+                "Parent aggregate visited unrelated history: {parent_steps} VM steps for {scope} (family={family})"
+            );
+            assert_eq!(metrics["input_tokens"], json!(input));
+            assert_eq!(metrics["output_tokens"], json!(output));
+            assert_eq!(metrics["input_tokens_known_requests"], first);
+            assert_eq!(metrics["output_tokens_known_requests"], count);
+            assert_eq!(metrics["error_count"], second);
+            assert_eq!(metrics["mean_latency_ms"], json!(latency));
+            assert_eq!(metrics["cost_usd"], json!(cost));
+            assert_eq!(metrics["cost_known_requests"], count);
+            assert_eq!(
+                metrics["review_counts"]["unlabeled"],
+                count * if family { 2 } else { 1 }
+            );
+        }
+    }
+}
+
+#[test]
 fn sample_indicator_includes_actions_without_changing_inference_accounting() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(&dir.path().join("sample-actions.sqlite"), 7, 100).unwrap();
