@@ -17,6 +17,153 @@ const REDACTED: &str = "[REDACTED]";
 const MAX_IMPORT_RECORDS: usize = 10_000;
 const PROBABILITY_TOLERANCE: f64 = 0.0001;
 
+#[derive(Debug)]
+pub struct ImportLimitError(&'static str);
+
+impl std::fmt::Display for ImportLimitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Import exceeds the {} limit", self.0)
+    }
+}
+
+impl std::error::Error for ImportLimitError {}
+
+#[derive(Clone, Copy)]
+struct ImportLimits {
+    record: usize,
+    batch: usize,
+}
+
+const IMPORT_LIMITS: ImportLimits = ImportLimits {
+    record: 16 * 1024 * 1024,
+    batch: 64 * 1024 * 1024,
+};
+
+fn limited_add(
+    current: usize,
+    additional: usize,
+    limit: usize,
+    kind: &'static str,
+) -> Result<usize> {
+    current
+        .checked_add(additional)
+        .filter(|total| *total <= limit)
+        .ok_or_else(|| ImportLimitError(kind).into())
+}
+
+/// Count serialized bytes without allocating a second copy of the JSON.
+fn json_size<T: serde::Serialize + ?Sized>(
+    value: &T,
+    limit: usize,
+    kind: &'static str,
+) -> Result<usize> {
+    struct Counter {
+        bytes: usize,
+        limit: usize,
+    }
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.bytes = self
+                .bytes
+                .checked_add(bytes.len())
+                .filter(|total| *total <= self.limit)
+                .ok_or_else(|| std::io::Error::other("JSON budget exceeded"))?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter { bytes: 0, limit };
+    serde_json::to_writer(&mut counter, value).map_err(|_| ImportLimitError(kind))?;
+    Ok(counter.bytes)
+}
+
+struct ImportBudget {
+    limits: ImportLimits,
+    work: usize,
+    normalized: usize,
+}
+
+struct ImportRecordBudget<'a> {
+    batch: &'a mut ImportBudget,
+    work: usize,
+}
+
+impl ImportRecordBudget<'_> {
+    fn charge(&mut self, bytes: usize) -> Result<()> {
+        let record = limited_add(
+            self.work,
+            bytes,
+            self.batch.limits.record,
+            "normalization work",
+        )?;
+        let batch = limited_add(
+            self.batch.work,
+            bytes,
+            self.batch.limits.batch,
+            "normalization work",
+        )?;
+        self.work = record;
+        self.batch.work = batch;
+        Ok(())
+    }
+
+    fn repeated(&mut self, bytes: usize, count: usize) -> Result<()> {
+        let bytes = bytes
+            .checked_mul(count)
+            .ok_or(ImportLimitError("normalization work"))?;
+        self.charge(bytes)
+    }
+
+    fn size<T: serde::Serialize + ?Sized>(&self, value: &T) -> Result<usize> {
+        json_size(value, self.batch.limits.record, "normalization work")
+    }
+
+    fn value(&mut self, value: &Value) -> Result<()> {
+        self.charge(self.size(value)?)
+    }
+
+    fn structure(&mut self, record: &Value, format: &str) -> Result<()> {
+        self.charge(512)?;
+        if format == "systemone-capture" {
+            for _ in answer_keys(&record["request"], &record["response"]) {
+                self.charge(512)?;
+            }
+        } else if format == "observer-jsonl" {
+            self.repeated(512, record["answers"].as_array().map_or(0, Vec::len))?;
+            for key in ["actions", "labels"] {
+                self.repeated(128, record[key].as_array().map_or(0, Vec::len))?;
+            }
+        }
+        // Receipt answers are retained as provenance but never normalized into
+        // inference answers, so their bytes are covered by the retained copies.
+        Ok(())
+    }
+
+    fn finish(&mut self, record: &Value) -> Result<()> {
+        let bytes = json_size(record, self.batch.limits.record, "normalized output")?;
+        self.batch.normalized = limited_add(
+            self.batch.normalized,
+            bytes,
+            self.batch.limits.batch,
+            "normalized output",
+        )?;
+        Ok(())
+    }
+}
+
+fn answer_keys<'a>(request: &'a Value, response: &'a Value) -> impl Iterator<Item = &'a String> {
+    let questions = request["questions"].as_object();
+    questions.into_iter().flat_map(|map| map.keys()).chain(
+        response["answers"]
+            .as_object()
+            .into_iter()
+            .flat_map(|map| map.keys())
+            .filter(move |key| questions.is_none_or(|map| !map.contains_key(*key))),
+    )
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Capture {
     pub id: String,
@@ -559,6 +706,46 @@ fn normalize_with_secrets(
     options: &NormalizeOptions,
     import_secrets: &[String],
 ) -> Value {
+    let (raw_request, safe) = prepare_capture(capture, options, import_secrets);
+    normalize_prepared(capture, options, &raw_request, &safe)
+}
+
+fn normalize_import(
+    capture: &Capture,
+    options: &NormalizeOptions,
+    import_secrets: &[String],
+    budget: &mut ImportRecordBudget<'_>,
+    charge_input: bool,
+) -> Result<Value> {
+    let (raw_request, safe) = prepare_capture(capture, options, import_secrets);
+    if charge_input {
+        budget.value(&safe)?;
+    }
+    // Use the sanitized lengths: short secrets can expand to redaction markers.
+    // Charge before fingerprints and the answer Vec replicate this context.
+    let source = safe["source"].as_str().unwrap_or("default");
+    let context = limited_add(
+        budget.size(source)?,
+        budget.size(&safe["task_version"])?,
+        budget.batch.limits.record,
+        "normalization work",
+    )?;
+    let context_redacted = context_redacted(capture, &safe);
+    let isolation = budget.size(&safe["id"])?;
+    for key in answer_keys(&safe["request"], &safe["response"]) {
+        budget.charge(context)?;
+        if definition_redacted(&raw_request, &safe, key, context_redacted) {
+            budget.charge(isolation)?;
+        }
+    }
+    Ok(normalize_prepared(capture, options, &raw_request, &safe))
+}
+
+fn prepare_capture(
+    capture: &Capture,
+    options: &NormalizeOptions,
+    import_secrets: &[String],
+) -> (Value, Value) {
     let raw_request: Value = serde_json::from_slice(&capture.request).unwrap_or(Value::Null);
     let response: Value = serde_json::from_slice(&capture.response).unwrap_or(Value::Null);
     let explicit_secrets: Vec<&str> = [
@@ -592,10 +779,44 @@ fn normalize_with_secrets(
             clear_input_fields(metadata);
         }
     }
+    (raw_request, safe)
+}
+
+fn context_redacted(capture: &Capture, safe: &Value) -> bool {
+    safe["source"]
+        .as_str()
+        .is_some_and(|source| source.contains(REDACTED))
+        || safe["task_version"].to_string().contains(REDACTED)
+        || safe["source"] != capture.source
+        || safe["task_version"] != json!(capture.task_version)
+}
+
+fn definition_redacted(
+    raw_request: &Value,
+    safe: &Value,
+    key: &str,
+    context_redacted: bool,
+) -> bool {
+    let definition = &safe["request"]["questions"][key];
+    context_redacted
+        || key.contains(REDACTED)
+        || raw_request["questions"]
+            .get(key)
+            .is_some_and(|original| original != definition)
+        || definition.to_string().contains(REDACTED)
+}
+
+fn normalize_prepared(
+    capture: &Capture,
+    options: &NormalizeOptions,
+    raw_request: &Value,
+    safe: &Value,
+) -> Value {
     let request = &safe["request"];
     let response = &safe["response"];
     let source = safe["source"].as_str().unwrap_or("default");
     let task = &safe["task_version"];
+    let context_redacted = context_redacted(capture, safe);
     let questions = request["questions"].as_object();
     let raw_answers = response["answers"].as_object();
     let profile = catalog::profile(options.provider.as_deref().unwrap_or("typesafe"));
@@ -616,11 +837,7 @@ fn normalize_with_secrets(
         let kind = kind(definition, raw);
         let definition_id = fingerprint("def_v1", definition);
         let presentation_id = fingerprint("presentation_v1", &json!(serde_json::to_string(definition).expect("JSON value")));
-        let definition_redacted = raw_request["questions"].get(key).is_some_and(|original| original != definition)
-            || definition.to_string().contains(REDACTED)
-            || key.contains(REDACTED) || source.contains(REDACTED) || task.to_string().contains(REDACTED)
-            || safe["source"] != capture.source
-            || safe["task_version"] != json!(capture.task_version);
+        let definition_redacted = definition_redacted(raw_request, safe, key, context_redacted);
         // Hidden semantic differences must not collapse into one series.
         // Request isolation remains recomputable after redacted export.
         let isolation = if definition_redacted { safe["id"].clone() } else { Value::Null };
@@ -731,6 +948,30 @@ fn nullable_number(value: &Value, key: &str) -> Result<()> {
     Ok(())
 }
 
+fn charge_annotations(
+    record: &Value,
+    key: &str,
+    source: &str,
+    event_id: &str,
+    budget: &mut ImportRecordBudget<'_>,
+) -> Result<()> {
+    let annotations = record[key]
+        .as_array()
+        .with_context(|| format!("{key} must be an array"))?;
+    let source_bytes = budget.size(source)?;
+    let event_bytes = budget.size(event_id)?;
+    budget.value(&record[key])?;
+    for annotation in annotations {
+        if annotation.get("source").is_none() {
+            budget.charge(source_bytes)?;
+        }
+        if annotation.get("source_event_id").is_none() {
+            budget.charge(event_bytes)?;
+        }
+    }
+    Ok(())
+}
+
 fn imported_annotations(record: &Value, key: &str, source: &str, event_id: &str) -> Result<Value> {
     let annotations = record[key]
         .as_array()
@@ -750,8 +991,9 @@ fn imported_annotations(record: &Value, key: &str, source: &str, event_id: &str)
         }
         let mut annotation = annotation.clone();
         let obj = annotation.as_object_mut().expect("checked object");
-        obj.entry("source").or_insert(json!(source));
-        obj.entry("source_event_id").or_insert(json!(event_id));
+        obj.entry("source").or_insert_with(|| json!(source));
+        obj.entry("source_event_id")
+            .or_insert_with(|| json!(event_id));
         out.push(annotation);
     }
     Ok(json!(out))
@@ -786,7 +1028,11 @@ fn remove_receipt_inputs(receipt: &mut Value) {
     }
 }
 
-fn import_observer(record: &Value, options: &NormalizeOptions) -> Result<Value> {
+fn import_observer(
+    record: &Value,
+    options: &NormalizeOptions,
+    budget: &mut ImportRecordBudget<'_>,
+) -> Result<Value> {
     ensure!(
         record["schema_version"] == 1,
         "Unsupported Observer schema_version"
@@ -867,6 +1113,24 @@ fn import_observer(record: &Value, options: &NormalizeOptions) -> Result<Value> 
         .as_str()
         .filter(|s| !s.is_empty())
         .unwrap_or(id);
+    // Charge retained provenance and defaults before reconstructing question
+    // maps. Derived export fields are not themselves normalization inputs.
+    for key in [
+        "provider",
+        "cost_basis",
+        "price",
+        "receipt",
+        "imported_at",
+        "timestamp_basis",
+        "observation_origin",
+        "normalization_error",
+    ] {
+        budget.value(&record[key])?;
+    }
+    budget.charge(budget.size(event_id)?)?;
+    for key in ["actions", "labels"] {
+        charge_annotations(record, key, "observer-jsonl", event_id, budget)?;
+    }
     let answers = record["answers"]
         .as_array()
         .context("answers must be an array")?;
@@ -958,7 +1222,7 @@ fn import_observer(record: &Value, options: &NormalizeOptions) -> Result<Value> 
     };
     let mut imported_options = options.clone();
     imported_options.provider = record["provider"].as_str().map(str::to_owned);
-    let mut out = normalize(&capture, &imported_options);
+    let mut out = normalize_import(&capture, &imported_options, &[], budget, true)?;
     for derived in out["answers"].as_array_mut().expect("normalized answers") {
         // The same index validates uniqueness and retains per-answer privacy
         // evidence without rescanning a potentially large export for each key.
@@ -970,6 +1234,9 @@ fn import_observer(record: &Value, options: &NormalizeOptions) -> Result<Value> 
         if original.is_some_and(|answer| answer["definition_redacted"] == true)
             && derived["definition_redacted"] != true
         {
+            budget.charge(budget.size(source)?)?;
+            budget.value(&derived["task_version"])?;
+            budget.charge(budget.size(id)?)?;
             derived["definition_redacted"] = json!(true);
             derived["group_id"] = json!(group_fingerprint(
                 &json!(source),
@@ -1051,7 +1318,11 @@ fn import_observer(record: &Value, options: &NormalizeOptions) -> Result<Value> 
     Ok(privacy(&out, options, &[]))
 }
 
-fn import_receipt(record: &Value, options: &NormalizeOptions) -> Result<Value> {
+fn import_receipt(
+    record: &Value,
+    options: &NormalizeOptions,
+    budget: &mut ImportRecordBudget<'_>,
+) -> Result<Value> {
     let decision_id = required_string(record, "decision_id")?;
     required_string(record, "request_id")?;
     ensure!(
@@ -1080,10 +1351,29 @@ fn import_receipt(record: &Value, options: &NormalizeOptions) -> Result<Value> {
     );
     let source = "jevrouter";
     let provider = &record["provenance"]["jev_provider"];
+    // The original receipt and its action retain overlapping provenance. Charge
+    // the second copy before cloning, including discarded input fields (a safe
+    // conservative bound), then charge envelope extensions retained a third time.
+    budget.value(record)?;
+    if let Some(raw) = record["raw_jev"].as_object() {
+        for (key, value) in raw {
+            if !matches!(key.as_str(), "model" | "answers" | "usage") {
+                budget.charge(budget.size(key)?)?;
+                budget.value(value)?;
+            }
+        }
+    }
     let response = record
         .get("raw_jev")
-        .filter(|r| r.is_object())
-        .cloned()
+        .and_then(Value::as_object)
+        .map(|raw| {
+            Value::Object(
+                raw.iter()
+                    .filter(|(key, _)| key.as_str() != "answers")
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect(),
+            )
+        })
         .unwrap_or(json!({}));
     let capture = Capture {
         id: fingerprint("receipt", &json!([source, decision_id])),
@@ -1095,7 +1385,9 @@ fn import_receipt(record: &Value, options: &NormalizeOptions) -> Result<Value> {
         // status, original definitions, model call, or capture completeness.
         ..Capture::default()
     };
-    let mut out = normalize(&capture, options);
+    // Receipt answers are provenance, not inference observations. They were
+    // already included in the global privacy pass and are preserved below.
+    let mut out = normalize_import(&capture, options, &[], budget, false)?;
     out["timestamp"] = Value::Null;
     out["timestamp_basis"] = json!("import");
     out["imported_at"] = json!(chrono::Utc::now().timestamp_millis());
@@ -1135,7 +1427,11 @@ fn import_receipt(record: &Value, options: &NormalizeOptions) -> Result<Value> {
 
 /// A raw, explicitly identified call, including mapped library decisions. The
 /// envelope records observations; supplied validity, cost and group IDs are ignored.
-fn import_capture(record: &Value, options: &NormalizeOptions) -> Result<Value> {
+fn import_capture(
+    record: &Value,
+    options: &NormalizeOptions,
+    budget: &mut ImportRecordBudget<'_>,
+) -> Result<Value> {
     let event_id = required_string(record, "id")?;
     let source = required_string(record, "source")?;
     let provider = required_string(record, "provider")?;
@@ -1189,7 +1485,7 @@ fn import_capture(record: &Value, options: &NormalizeOptions) -> Result<Value> {
     imported_options.provider = Some(provider.to_ascii_lowercase());
     let mut import_secrets = Vec::new();
     collect_secrets(record, options, &mut import_secrets);
-    let mut out = normalize_with_secrets(&capture, &imported_options, &import_secrets);
+    let mut out = normalize_import(&capture, &imported_options, &import_secrets, budget, true)?;
     // Use the sanitized ID for deduplication, without retaining unsanitized
     // caller metadata. Export/reimport preserves this identity.
     out["source_event_id"] = out["id"].clone();
@@ -1205,6 +1501,15 @@ fn import_capture(record: &Value, options: &NormalizeOptions) -> Result<Value> {
 /// Import is all-or-nothing validation. Storage owns deduplication by explicit
 /// source event identity; equal payloads are never presumed to be the same call.
 pub fn import_records(text: &str, format: &str, options: &NormalizeOptions) -> Result<Vec<Value>> {
+    import_records_with_limits(text, format, options, IMPORT_LIMITS)
+}
+
+fn import_records_with_limits(
+    text: &str,
+    format: &str,
+    options: &NormalizeOptions,
+    limits: ImportLimits,
+) -> Result<Vec<Value>> {
     ensure!(
         matches!(
             format,
@@ -1228,7 +1533,7 @@ pub fn import_records(text: &str, format: &str, options: &NormalizeOptions) -> R
             {
                 ensure!(
                     values.len() < MAX_IMPORT_RECORDS,
-                    "Import exceeds {MAX_IMPORT_RECORDS} records"
+                    ImportLimitError("record count")
                 );
                 values.push(
                     serde_json::from_str(line)
@@ -1244,7 +1549,7 @@ pub fn import_records(text: &str, format: &str, options: &NormalizeOptions) -> R
         {
             ensure!(
                 values.len() < MAX_IMPORT_RECORDS,
-                "Import exceeds {MAX_IMPORT_RECORDS} records"
+                ImportLimitError("record count")
             );
             values.push(
                 serde_json::from_str(line)
@@ -1255,21 +1560,40 @@ pub fn import_records(text: &str, format: &str, options: &NormalizeOptions) -> R
     ensure!(!values.is_empty(), "Import contains no records");
     ensure!(
         values.len() <= MAX_IMPORT_RECORDS,
-        "Import exceeds {MAX_IMPORT_RECORDS} records"
+        ImportLimitError("record count")
     );
+    let mut batch = ImportBudget {
+        limits,
+        work: 0,
+        normalized: 0,
+    };
     values
         .iter()
         .enumerate()
         .map(|(index, record)| {
+            let mut budget = ImportRecordBudget {
+                batch: &mut batch,
+                work: 0,
+            };
+            budget.structure(record, format)?;
             if format == "systemone-capture" {
                 // normalize must see the original definition to detect redaction
                 // and isolate hidden semantic changes before fingerprints are made.
-                return import_capture(record, options)
-                    .with_context(|| format!("Invalid record {}", index + 1));
+                let out = import_capture(record, options, &mut budget)
+                    .with_context(|| format!("Invalid record {}", index + 1))?;
+                budget.finish(&out)?;
+                return Ok(out);
             }
             // Scrub before normalization so all recomputed identities describe the
             // retained definition, and credential echoes cannot leak into metadata.
             let mut safe = privacy(record, options, &[]);
+            // Before reconstruction/cloning, bound even privacy-expanded input.
+            // Observer derived answer fields are not retained wholesale: its
+            // reconstructed input and provenance are charged by import_observer.
+            budget.size(&safe)?;
+            if format == "jevrouter-receipt" {
+                budget.value(&safe)?;
+            }
             if format == "observer-jsonl"
                 && let (Some(original), Some(retained)) = (
                     record.get("answers").and_then(Value::as_array),
@@ -1288,11 +1612,13 @@ pub fn import_records(text: &str, format: &str, options: &NormalizeOptions) -> R
                 }
             }
             let result = if format == "observer-jsonl" {
-                import_observer(&safe, options)
+                import_observer(&safe, options, &mut budget)
             } else {
-                import_receipt(&safe, options)
+                import_receipt(&safe, options, &mut budget)
             };
-            result.with_context(|| format!("Invalid record {}", index + 1))
+            let out = result.with_context(|| format!("Invalid record {}", index + 1))?;
+            budget.finish(&out)?;
+            Ok(out)
         })
         .collect()
 }
@@ -2695,3 +3021,7 @@ mod tests {
 #[cfg(test)]
 #[path = "model_compatibility_tests.rs"]
 mod compatibility_tests;
+
+#[cfg(test)]
+#[path = "import_budget_tests.rs"]
+mod import_budget_tests;

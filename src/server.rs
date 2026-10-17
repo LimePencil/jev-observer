@@ -1138,8 +1138,14 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
             ) {
                 return Err(StatusCode::BAD_REQUEST);
             }
-            let records = model::import_records(&body.text, &body.format, &options)
-                .map_err(|_| StatusCode::BAD_REQUEST)?;
+            let records =
+                model::import_records(&body.text, &body.format, &options).map_err(|error| {
+                    if error.is::<model::ImportLimitError>() {
+                        StatusCode::PAYLOAD_TOO_LARGE
+                    } else {
+                        StatusCode::BAD_REQUEST
+                    }
+                })?;
             if records.len() > 10_000 {
                 return Err(StatusCode::PAYLOAD_TOO_LARGE);
             }
@@ -1165,7 +1171,7 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
         ),
         Ok(Err(StatusCode::PAYLOAD_TOO_LARGE)) => error(
             StatusCode::PAYLOAD_TOO_LARGE,
-            "Import text must not exceed 8 MiB or 10,000 records",
+            "Import exceeds a size or normalization limit. Use smaller records or batches.",
         ),
         _ => error(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -2706,6 +2712,67 @@ mod tests {
                 assert_eq!(body["imported"], 1);
             }
         }
+        fixture.state.collector.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn import_normalization_limits_are_atomic_and_release_the_import_slot() {
+        let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+        let first = model::sample_records().remove(0);
+        let id = first["id"].as_str().unwrap();
+        let mut oversized = first.clone();
+        oversized["id"] = json!("oversized-synthetic-event");
+        oversized["source_event_id"] = json!("event-id".repeat(1024));
+        oversized["actions"] = json!(vec![json!({}); 2100]);
+        let text = format!("{}\n{}", first, oversized);
+        assert!(text.len() < 64 * 1024);
+        for (text, status, counts) in [
+            (text, StatusCode::PAYLOAD_TOO_LARGE, None),
+            ("{}".into(), StatusCode::BAD_REQUEST, None),
+            (first.to_string(), StatusCode::OK, Some((1, 0))),
+            (first.to_string(), StatusCode::OK, Some((0, 1))),
+        ] {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/api/import")
+                .header("host", "127.0.0.1:8765")
+                .header("x-observer-request", "1")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"format":"observer-jsonl", "text":text}).to_string(),
+                ))
+                .unwrap();
+            let response = router(fixture.state.clone())
+                .oneshot(request)
+                .await
+                .unwrap();
+            assert_eq!(response.status(), status);
+            let body: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                    .unwrap();
+            if let Some((imported, duplicates)) = counts {
+                assert_eq!(body, json!({"imported":imported, "duplicates":duplicates}));
+            } else {
+                assert!(fixture.state.store.request(id).unwrap().is_none());
+                if status == StatusCode::PAYLOAD_TOO_LARGE {
+                    assert!(
+                        body["error"]
+                            .as_str()
+                            .unwrap()
+                            .contains("normalization limit")
+                    );
+                    assert!(!body.to_string().contains("oversized-synthetic-event"));
+                }
+            }
+        }
+        assert!(
+            fixture
+                .state
+                .store
+                .request("oversized-synthetic-event")
+                .unwrap()
+                .is_none()
+        );
         fixture.state.collector.shutdown().await;
     }
 
