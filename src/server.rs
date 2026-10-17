@@ -444,6 +444,22 @@ fn content_length(headers: &HeaderMap) -> Option<u64> {
         .and_then(|s| s.parse().ok())
 }
 
+fn supported_transfer_encoding(headers: &HeaderMap) -> bool {
+    let mut chunked = false;
+    for value in headers.get_all(header::TRANSFER_ENCODING) {
+        let Ok(value) = value.to_str() else {
+            return false;
+        };
+        for coding in value.split(',') {
+            if chunked || !coding.trim().eq_ignore_ascii_case("chunked") {
+                return false;
+            }
+            chunked = true;
+        }
+    }
+    true
+}
+
 fn encoded(headers: &HeaderMap) -> bool {
     headers.get_all(header::CONTENT_ENCODING).iter().any(|v| {
         v.to_str().map_or(true, |s| {
@@ -722,6 +738,14 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
             "Authorization must contain a Bearer credential",
         );
     }
+    // Hyper decodes chunk framing, but leaves other transfer codings intact.
+    // Removing their header would silently change the meaning of the body.
+    if !supported_transfer_encoding(&headers) {
+        return error(
+            StatusCode::NOT_IMPLEMENTED,
+            "Request transfer encoding is not supported",
+        );
+    }
     let guard = state.collector.reserve_capture().map(|permit| {
         let request_length = content_length(&headers);
         CaptureGuard {
@@ -839,6 +863,16 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
             || status == StatusCode::NOT_MODIFIED;
         c.capture.capture_complete &= !encoded(&response_headers);
     });
+    if !supported_transfer_encoding(&response_headers) {
+        with_capture(&capture, |c| {
+            c.capture.transport_error = Some("Unsupported upstream transfer encoding".into());
+        });
+        drop(guard);
+        return error(
+            StatusCode::BAD_GATEWAY,
+            "Unsupported upstream transfer encoding",
+        );
+    }
     strip_hop_headers(&mut response_headers);
     // A provider must not set cookies for the local dashboard origin.
     response_headers.remove(header::SET_COOKIE);
@@ -1581,6 +1615,127 @@ mod tests {
             "capture not persisted: {}",
             fixture.state.collector.health()
         );
+    }
+
+    #[test]
+    fn transfer_coding_support_requires_absent_or_single_chunked() {
+        for (values, supported) in [
+            (vec![], true),
+            (vec!["chunked"], true),
+            (vec![" ChUnKeD "], true),
+            (vec![""], false),
+            (vec!["identity"], false),
+            (vec!["gzip"], false),
+            (vec!["gzip, chunked"], false),
+            (vec!["chunked, gzip"], false),
+            (vec!["chunked, chunked"], false),
+            (vec!["chunked", "chunked"], false),
+            (vec!["gzip", "chunked"], false),
+            (vec!["chunked,"], false),
+            (vec![",chunked"], false),
+        ] {
+            let mut headers = HeaderMap::new();
+            for value in &values {
+                headers.append(
+                    header::TRANSFER_ENCODING,
+                    HeaderValue::from_str(value).unwrap(),
+                );
+            }
+            assert_eq!(
+                supported_transfer_encoding(&headers),
+                supported,
+                "{values:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn unsupported_response_transfer_coding_is_a_visible_gateway_failure() {
+        // A valid gzip stream containing `{}`; Hyper removes only chunk framing.
+        let gzip = [
+            0x1f_u8, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3, 171, 174, 5, 0, 67, 191, 166, 163, 2, 0, 0, 0,
+        ];
+        let mut raw = format!(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\nConnection: close\r\n\r\n{:x}\r\n", gzip.len()
+        ).into_bytes();
+        raw.extend_from_slice(&gzip);
+        raw.extend_from_slice(b"\r\n0\r\n\r\n");
+        let (upstream, upstream_task) = raw_mock(raw, None).await;
+        let mut fixture = fixture(&upstream, 1024, false);
+        let (observer, observer_task) = serve_fixture(&mut fixture).await;
+        let response = tokio::time::timeout(
+            Duration::from_secs(3),
+            fixture
+                .state
+                .client
+                .post(observer)
+                .bearer_auth("test-secret")
+                .header(header::CONTENT_LENGTH, "0")
+                .body("")
+                .send(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        let body = tokio::time::timeout(Duration::from_secs(3), response.text())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(body.contains("Unsupported upstream transfer encoding"));
+        let record = saved(&fixture).await;
+        assert_eq!(record["status"], 200);
+        assert_eq!(record["capture_complete"], false);
+        assert_eq!(
+            record["transport_error"],
+            "Unsupported upstream transfer encoding"
+        );
+        fixture.state.collector.shutdown().await;
+        observer_task.abort();
+        upstream_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn unsupported_request_transfer_coding_does_not_contact_upstream() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut fixture = fixture(
+            &format!("http://{}/v1/systemone", upstream.local_addr().unwrap()),
+            1024,
+            false,
+        );
+        let (observer, observer_task) = serve_fixture(&mut fixture).await;
+        let url = reqwest::Url::parse(&observer).unwrap();
+        let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", url.port().unwrap()))
+            .await
+            .unwrap();
+        let gzip = [
+            0x1f_u8, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3, 171, 174, 5, 0, 67, 191, 166, 163, 2, 0, 0, 0,
+        ];
+        let mut request = format!(
+            "POST /v1/systemone HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer test-secret\r\nTransfer-Encoding: gzip, chunked\r\nConnection: close\r\n\r\n{:x}\r\n",
+            url.port().unwrap(), gzip.len(),
+        ).into_bytes();
+        request.extend_from_slice(&gzip);
+        request.extend_from_slice(b"\r\n0\r\n\r\n");
+        let response = tokio::time::timeout(Duration::from_secs(3), async {
+            socket.write_all(&request).await.unwrap();
+            let mut response = Vec::new();
+            socket.read_to_end(&mut response).await.unwrap();
+            response
+        })
+        .await
+        .unwrap();
+        assert!(response.starts_with(b"HTTP/1.1 501 Not Implemented\r\n"));
+        assert_eq!(fixture.state.collector.health()["forwarded"], 0);
+        assert_eq!(fixture.state.collector.health()["captured"], 0);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), upstream.accept())
+                .await
+                .is_err()
+        );
+        fixture.state.collector.shutdown().await;
+        observer_task.abort();
     }
 
     #[tokio::test]
