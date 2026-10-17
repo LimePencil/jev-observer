@@ -162,6 +162,8 @@
   .metric-value small { font-size: 10px; letter-spacing: 0; color: var(--text-tertiary); }
   .metric-foot { font-size: 9px; color: var(--text-secondary); margin-top: 10px; white-space: nowrap; }
   .metric-coverage { display: flex; flex-direction: column; gap: 2px; margin-top: 5px; white-space: normal; }
+  .metric-token-overflow .metric-value { font-size: 16px; line-height: 1.2; letter-spacing: 0; white-space: normal; }
+  .metric-token-overflow .metric-foot { white-space: normal; }
   .metric-error .metric-value { color: var(--danger); }
   .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px 13px; }
   .section-heading p { color: var(--text-secondary); font-size: 10px; margin-top: 4px; }

@@ -51,6 +51,8 @@ fn token_coverage_counts_requests_and_preserves_unknown_and_zero_usage() {
         assert_eq!(summary["output_tokens"], json!(output));
         assert_eq!(summary["input_tokens_known_requests"], input_known);
         assert_eq!(summary["output_tokens_known_requests"], output_known);
+        assert_eq!(summary["input_tokens_overflow"], false);
+        assert_eq!(summary["output_tokens_overflow"], false);
     }
 }
 
@@ -126,6 +128,8 @@ fn version_token_coverage_counts_parents_within_the_selected_scope() {
                 assert_eq!(group["output_tokens"], json!(output));
                 assert_eq!(group["input_tokens_known_requests"], input_known);
                 assert_eq!(group["output_tokens_known_requests"], output_known);
+                assert_eq!(group["input_tokens_overflow"], false);
+                assert_eq!(group["output_tokens_overflow"], false);
             }
         }
     }
@@ -194,6 +198,180 @@ fn sample_indicator_includes_actions_without_changing_inference_accounting() {
         assert_eq!(filtered["summary"]["action_count"], actions);
         assert_eq!(filtered["summary"]["sample_count"], 0);
     }
+}
+
+#[test]
+fn overflowing_token_totals_preserve_other_metrics_coverage_and_filtered_exactness() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("token-overflow.sqlite"), 7, 100).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records: Vec<_> = [
+        (Some(i64::MAX), Some(0), Some(4.0), Some(0.25)),
+        (Some(1), Some(i64::MAX), None, None),
+        (Some(0), Some(1), Some(8.0), Some(0.5)),
+        (None, None, Some(0.0), Some(0.0)),
+        (Some(0), Some(0), Some(2.0), Some(0.25)),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, (input, output, duration, cost))| {
+        let mut record = dashboard_record(&format!("overflow-{index}"), now + index as i64);
+        record["input_tokens"] = json!(input);
+        record["output_tokens"] = json!(output);
+        record["duration_ms"] = json!(duration);
+        record["cost_usd"] = json!(cost);
+        // Unknown status and explicit failure exercise SQL's nullable predicate.
+        record["status"] = json!([Some(200), None, Some(500), Some(200), Some(200)][index]);
+        record["answers"][0]["family_id"] = json!("overflow-family");
+        record["answers"][0]["family_name"] = json!("Overflow family");
+        let mut second = record["answers"][0].clone();
+        second["key"] = json!("second");
+        second["group_id"] = json!("second-group");
+        record["answers"].as_array_mut().unwrap().push(second);
+        record
+    })
+    .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+
+    // Directional overflow, both overflowed, exact boundary, zeros, unknowns,
+    // and empty scopes remain distinct. Later zero/unknown rows cannot reset it.
+    for (start, end, input, output, input_overflow, output_overflow, known, count) in [
+        (0, 0, Some(i64::MAX), Some(0), false, false, 1, 1),
+        (0, 1, None, Some(i64::MAX), true, false, 2, 2),
+        (1, 2, Some(1), None, false, true, 2, 2),
+        (0, 4, None, None, true, true, 4, 5),
+        (3, 3, None, None, false, false, 0, 1),
+        (4, 4, Some(0), Some(0), false, false, 1, 1),
+        (6, 6, None, None, false, false, 0, 0),
+    ] {
+        let filter = Filter {
+            window: Some("all".into()),
+            from: Some(now + start),
+            to: Some(now + end),
+            ..Default::default()
+        };
+        let dashboard = store.dashboard(&filter).unwrap();
+        let check_usage = |metrics: &Value| {
+            assert_eq!(metrics["request_count"], count);
+            assert_eq!(metrics["input_tokens"], json!(input));
+            assert_eq!(metrics["output_tokens"], json!(output));
+            assert_eq!(metrics["input_tokens_overflow"], input_overflow);
+            assert_eq!(metrics["output_tokens_overflow"], output_overflow);
+            assert_eq!(metrics["input_tokens_known_requests"], known);
+            assert_eq!(metrics["output_tokens_known_requests"], known);
+        };
+        check_usage(&dashboard["summary"]);
+        assert_eq!(dashboard["summary"]["answer_count"], count * 2);
+        assert_eq!(
+            dashboard["requests"].as_array().unwrap().len(),
+            count as usize
+        );
+        let connection = store.reader().unwrap();
+        let (predicate, args) = Store::predicate(&filter).unwrap();
+        // Independent SQL reference checks the unaffected parent metrics.
+        let (latency, cost, cost_known, errors): (Option<f64>, Option<f64>, i64, i64) = connection.query_row(
+            &format!("SELECT avg(duration_ms),sum(cost_usd),count(cost_usd),coalesce(sum({FAILED}),0) FROM requests r WHERE {predicate}"),
+            params_from_iter(&args), |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
+        ).unwrap();
+        assert_eq!(dashboard["summary"]["cost_usd"], json!(cost));
+        assert_eq!(dashboard["summary"]["cost_known_requests"], cost_known);
+        assert_eq!(dashboard["summary"]["error_count"], errors);
+        for id in ["dashboard-group", "overflow-family"] {
+            let detail = store.group(id, &filter).unwrap().unwrap();
+            for group in
+                std::iter::once(&detail["group"]).chain(detail["versions"].as_array().unwrap())
+            {
+                check_usage(group);
+                assert_eq!(group["mean_latency_ms"], json!(latency));
+                assert_eq!(group["cost_usd"], json!(cost));
+                assert_eq!(group["cost_known_requests"], cost_known);
+                assert_eq!(group["error_count"], errors);
+            }
+        }
+    }
+    assert_eq!(
+        store.request("overflow-0").unwrap().unwrap()["input_tokens"],
+        i64::MAX
+    );
+    let exported = store
+        .export(
+            &Filter {
+                window: Some("all".into()),
+                ..Default::default()
+            },
+            "jsonl",
+        )
+        .unwrap();
+    let exported: Vec<Value> = exported
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(exported[0]["input_tokens"], i64::MAX);
+}
+
+#[test]
+fn group_metrics_preserve_unrelated_database_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("metrics-error.sqlite"), 7, 100).unwrap();
+    let connection = store.writer_connection().unwrap();
+    connection.execute("DROP TABLE requests", []).unwrap();
+    let error =
+        Store::group_metrics(&connection, "missing-group", false, &Filter::default()).unwrap_err();
+    let Some(rusqlite::Error::SqliteFailure(code, Some(message))) =
+        error.downcast_ref::<rusqlite::Error>()
+    else {
+        panic!("expected original SQLite failure: {error}")
+    };
+    assert_eq!(code.extended_code, rusqlite::ffi::SQLITE_ERROR);
+    assert_eq!(message, "no such table: requests");
+}
+
+#[test]
+fn individually_valid_imported_token_counts_cannot_break_aggregates() {
+    let options = crate::model::NormalizeOptions::default();
+    let records: Vec<_> = ["large-a", "large-b"].into_iter().map(|id| {
+        crate::model::normalize(&crate::model::Capture {
+            id: id.into(), source: "large-import".into(),
+            timestamp: Utc::now().timestamp_millis(), status: 200,
+            request: br#"{"questions":{"q":{"type":"noul","instructions":"Proceed?"}}}"#.to_vec(),
+            response: serde_json::to_vec(&json!({"answers":{"q":{"type":"noul","noul":0.7}},"usage":{"input_tokens":i64::MAX,"output_tokens":1}})).unwrap(),
+            capture_complete: true, ..Default::default()
+        }, &options).to_string()
+    }).collect();
+    let imported =
+        crate::model::import_records(&records.join("\n"), "observer-jsonl", &options).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("valid-large-import.sqlite"), 7, 100).unwrap();
+    assert_eq!(
+        store
+            .write_batch(&mut store.writer_connection().unwrap(), &imported)
+            .unwrap(),
+        2
+    );
+    let filter = Filter {
+        window: Some("all".into()),
+        ..Default::default()
+    };
+    let dashboard = store.dashboard(&filter).unwrap();
+    assert_eq!(dashboard["summary"]["input_tokens"], Value::Null);
+    assert_eq!(dashboard["summary"]["input_tokens_overflow"], true);
+    assert_eq!(dashboard["summary"]["input_tokens_known_requests"], 2);
+    assert_eq!(dashboard["summary"]["output_tokens"], 2);
+    assert_eq!(dashboard["summary"]["output_tokens_overflow"], false);
+    let detail = store
+        .group(
+            imported[0]["answers"][0]["group_id"].as_str().unwrap(),
+            &filter,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(detail["group"]["input_tokens"], Value::Null);
+    assert_eq!(detail["group"]["input_tokens_overflow"], true);
+    assert_eq!(detail["group"]["input_tokens_known_requests"], 2);
+    assert_eq!(detail["group"]["output_tokens"], 2);
+    assert_eq!(detail["group"]["output_tokens_overflow"], false);
 }
 
 #[test]
@@ -717,7 +895,9 @@ fn sql_request_aggregates(
             "sample_count": row.get::<_, i64>(7)?,
             "incomplete_count": row.get::<_, i64>(8)?,
             "input_tokens_known_requests": row.get::<_, i64>(9)?,
-            "output_tokens_known_requests": row.get::<_, i64>(10)?
+            "output_tokens_known_requests": row.get::<_, i64>(10)?,
+            "input_tokens_overflow": false,
+            "output_tokens_overflow": false
         })),
     ).unwrap();
     summary["action_count"] =

@@ -34,12 +34,13 @@ export function TokenMetric({ summary }: { summary: Summary }) {
   const outputCoverage = summary.output_tokens_known_requests;
   const coverageKnown = inputCoverage != null && outputCoverage != null;
   const complete = coverageKnown && inputCoverage === summary.request_count && outputCoverage === summary.request_count;
+  const overflow = summary.input_tokens_overflow || summary.output_tokens_overflow;
   const total = summary.input_tokens == null && summary.output_tokens == null
     ? null : (summary.input_tokens ?? 0) + (summary.output_tokens ?? 0);
-  return <div className="metric" role="group" aria-label="Token usage">
+  return <div className={`metric${overflow ? ' metric-token-overflow' : ''}`} role="group" aria-label="Token usage">
     <span className="metric-label">{complete ? 'Reported tokens' : 'Known tokens'}<Pulse size={14} /></span>
-    <span className="metric-value">{compact(total)}</span>
-    <span className="metric-foot">{compact(summary.input_tokens)} in / {compact(summary.output_tokens)} out</span>
+    <span className="metric-value">{overflow ? 'Total exceeds range' : compact(total)}</span>
+    <span className="metric-foot">{summary.input_tokens_overflow ? 'Exceeds range' : compact(summary.input_tokens)} in / {summary.output_tokens_overflow ? 'Exceeds range' : compact(summary.output_tokens)} out</span>
     <span className="metric-foot metric-coverage">{coverageKnown ? <>
       <span>Input: {number(inputCoverage)} / {number(summary.request_count)} requests</span>
       <span>Output: {number(outputCoverage)} / {number(summary.request_count)} requests</span>
