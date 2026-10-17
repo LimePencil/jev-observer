@@ -49,7 +49,7 @@ python3 scripts/capture-decision.py \
   --state-id original-state-id --output capture.jsonl
 ```
 
-The request file must be the corresponding named definitions expressed as System One questions. For NanoJev/AgentJev, map the original `boolean` question to Noul and retain its original wording and criteria; do not substitute its thresholded boolean for the probability. Batch files require a state ID unless they contain exactly one result. The converter joins by explicit question IDs, keeps original results, refuses duplicate/mismatched IDs and never calls a model. It refuses overwriting an existing output file. Raw converter files can contain input and model content; imported history follows Observer's capture and redaction settings.
+The request file must be the corresponding named definitions expressed as System One questions. For NanoJev/AgentJev, map the original `boolean` question to Noul and retain its original wording and criteria; do not substitute its thresholded boolean for the probability. Batch files require a state ID unless they contain exactly one result. The converter joins by explicit question IDs, keeps original results, refuses duplicate/mismatched IDs and never calls a model. It refuses overwriting an existing output file. Raw converter files can contain input and model content; imported history follows Observer's capture and redaction settings. The converter keeps response input fields (`state`, `images`, `image`, `audio`, `video`) in the response envelope so input capture controls them. Imports also apply that preference to these fields in older converters' `original_metadata`, including when reimporting Observer exports.
 
 Other mappings are explicit application work:
 

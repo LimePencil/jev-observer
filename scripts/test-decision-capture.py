@@ -22,6 +22,20 @@ def request():
 
 
 class CaptureTests(unittest.TestCase):
+    def test_converter_keeps_input_fields_in_the_capture_envelope(self):
+        original = {'questions': {'check': {'type': 'noul', 'instructions': 'Check'}}}
+        inputs = {'state': 'private text', 'images': ['private images'],
+                  'image': 'private image', 'audio': 'private audio', 'video': 'private video'}
+        raw = {'answers': {'check': {'p_true': .7}}, 'usage': {'questions': 1},
+               'runtime': {'state': 'ready'}, **inputs}
+        out = capture.convert(original, raw, dialect='autotrust', event_id='event-1',
+                              timestamp=1, source='app', provider='autotrust')
+        for field, value in inputs.items():
+            self.assertEqual(out['response'][field], value)
+            self.assertNotIn(field, out['response']['original_metadata'])
+        self.assertEqual(out['response']['original_metadata']['usage'], {'questions': 1})
+        self.assertEqual(out['response']['original_metadata']['runtime'], {'state': 'ready'})
+
     def test_nanojev_keeps_probability_instead_of_thresholded_boolean(self):
         raw = {'states': [{'id': 'one', 'answers': {
             'route': {'type': 'choice', 'choice': 'b', 'probabilities': {'a': .2, 'b': .8}},

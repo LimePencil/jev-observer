@@ -10,6 +10,8 @@ import copy
 import json
 from pathlib import Path
 
+INPUT_FIELDS = ('state', 'images', 'image', 'audio', 'video')
+
 
 def named_results(response, dialect, state_id=None):
     if dialect in ('nanojev', 'agentjev'):
@@ -112,7 +114,12 @@ def convert(request, response, *, dialect, event_id, timestamp, source, provider
         # Custom "usage" often counts paths or questions. Preserve it as metadata,
         # not as billed input/output tokens. A local import never estimates usage.
         output['original_metadata'] = {k: v for k, v in response.items()
-                                       if k not in ('answers', 'questions', 'states', 'results')}
+                                       if k not in ('answers', 'questions', 'states', 'results') + INPUT_FIELDS}
+        # Keep input snapshots where Observer's capture-state preference applies.
+        # Nesting them in arbitrary metadata would conceal them from that filter.
+        for field in INPUT_FIELDS:
+            if field in response:
+                output[field] = copy.deepcopy(response[field])
     return {'id': event_id, 'timestamp': timestamp, 'source': source, 'provider': provider,
             'status': status, 'duration_ms': duration_ms, 'capture_complete': True,
             'sample': sample, 'request': request, 'response': output}
