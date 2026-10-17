@@ -377,6 +377,11 @@ fn metadata(headers: &HeaderMap, key: &'static str) -> Option<String> {
 }
 
 fn strip_hop_headers(headers: &mut HeaderMap) {
+    // Transfer framing overrides Content-Length. Once that framing is decoded
+    // and removed, forwarding its stale length can truncate the streamed body.
+    if headers.contains_key(header::TRANSFER_ENCODING) {
+        headers.remove(header::CONTENT_LENGTH);
+    }
     let named: Vec<HeaderName> = headers
         .get_all(header::CONNECTION)
         .iter()
@@ -430,6 +435,9 @@ fn strip_local_request_headers(headers: &mut HeaderMap) {
 }
 
 fn content_length(headers: &HeaderMap) -> Option<u64> {
+    if headers.contains_key(header::TRANSFER_ENCODING) {
+        return None;
+    }
     headers
         .get(header::CONTENT_LENGTH)
         .and_then(|h| h.to_str().ok())
@@ -1402,6 +1410,37 @@ mod tests {
         (format!("http://{address}/v1/systemone"), task)
     }
 
+    async fn raw_mock(
+        response: Vec<u8>,
+        finish: Option<Arc<tokio::sync::Notify>>,
+    ) -> (String, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                assert!(request.len() < 8192);
+                assert!(socket.read_buf(&mut request).await.unwrap() > 0);
+            }
+            socket.write_all(&response).await.unwrap();
+            if let Some(finish) = finish {
+                finish.notified().await;
+            }
+        });
+        (format!("http://{address}/v1/systemone"), task)
+    }
+
+    async fn serve_fixture(fixture: &mut Fixture) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        Arc::make_mut(&mut fixture.state.config).port = address.port();
+        let app = router(fixture.state.clone());
+        let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (format!("http://{address}/v1/systemone"), task)
+    }
+
     fn native(body: impl Into<Body>) -> Request {
         Request::builder()
             .method(Method::POST)
@@ -1542,6 +1581,100 @@ mod tests {
             "capture not persisted: {}",
             fixture.state.collector.health()
         );
+    }
+
+    #[tokio::test]
+    async fn chunked_responses_discard_conflicting_lengths_before_forwarding() {
+        let payload = r#"{"message":"complete chunked response"}"#;
+        for length in [0, 2, 999] {
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{payload}\r\n0\r\n\r\n",
+                payload.len()
+            );
+            let (upstream, upstream_task) = raw_mock(response.into_bytes(), None).await;
+            let mut fixture = fixture(&upstream, 1024, false);
+            let (observer, observer_task) = serve_fixture(&mut fixture).await;
+            let response = tokio::time::timeout(
+                Duration::from_secs(3),
+                fixture
+                    .state
+                    .client
+                    .post(observer)
+                    .bearer_auth("test-secret")
+                    .header(header::CONTENT_LENGTH, "0")
+                    .body("")
+                    .send(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
+            let body = tokio::time::timeout(Duration::from_secs(3), response.bytes())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(body.as_ref(), payload.as_bytes());
+            let record = saved(&fixture).await;
+            assert_eq!(record["capture_complete"], true);
+            assert!(record["transport_error"].is_null());
+            assert_eq!(
+                record["response_extra"]["message"],
+                "complete chunked response"
+            );
+            fixture.state.collector.shutdown().await;
+            observer_task.abort();
+            upstream_task.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn chunked_response_cancellation_cannot_complete_at_a_conflicting_length() {
+        let first = "{\"message\":";
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{first}\r\n",
+            first.len()
+        );
+        let finish = Arc::new(tokio::sync::Notify::new());
+        let (upstream, upstream_task) = raw_mock(response.into_bytes(), Some(finish.clone())).await;
+        let mut fixture = fixture(&upstream, 1024, false);
+        let (observer, observer_task) = serve_fixture(&mut fixture).await;
+        let response = tokio::time::timeout(
+            Duration::from_secs(3),
+            fixture
+                .state
+                .client
+                .post(observer)
+                .bearer_auth("test-secret")
+                .header(header::CONTENT_LENGTH, "0")
+                .body("")
+                .send(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let mut body = response.bytes_stream();
+        let observed = tokio::time::timeout(Duration::from_secs(3), async {
+            let mut observed = Vec::new();
+            while observed.len() < first.len() {
+                let Some(chunk) = body.next().await else {
+                    break;
+                };
+                observed.extend_from_slice(&chunk.unwrap());
+            }
+            observed
+        })
+        .await
+        .unwrap();
+        assert_eq!(observed, first.as_bytes());
+        drop(body);
+        let record = saved(&fixture).await;
+        assert_eq!(record["capture_complete"], false);
+        assert!(record["transport_error"].is_string());
+        fixture.state.collector.shutdown().await;
+        finish.notify_one();
+        observer_task.abort();
+        upstream_task.await.unwrap();
     }
 
     #[tokio::test]
