@@ -260,6 +260,7 @@ fn group_parent_metrics_do_not_scan_unrelated_source_or_model_history() {
                 },
                 family,
                 &filter,
+                false,
             );
             drop(trace);
             let metrics = metrics.unwrap();
@@ -465,8 +466,14 @@ fn group_metrics_preserve_unrelated_database_errors() {
     let store = Store::open(&dir.path().join("metrics-error.sqlite"), 7, 100).unwrap();
     let connection = store.writer_connection().unwrap();
     connection.execute("DROP TABLE requests", []).unwrap();
-    let error =
-        Store::group_metrics(&connection, "missing-group", false, &Filter::default()).unwrap_err();
+    let error = Store::group_metrics(
+        &connection,
+        "missing-group",
+        false,
+        &Filter::default(),
+        false,
+    )
+    .unwrap_err();
     let Some(rusqlite::Error::SqliteFailure(code, Some(message))) =
         error.downcast_ref::<rusqlite::Error>()
     else {
