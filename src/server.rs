@@ -2715,8 +2715,16 @@ mod tests {
         oversized["actions"] = json!(vec![json!({}); 2100]);
         let text = format!("{}\n{}", first, oversized);
         assert!(text.len() < 64 * 1024);
+        let mut deep = first.clone();
+        deep["id"] = json!("overdepth-synthetic-event");
+        deep["request_extra"] = json!({"nested":
+            (0..crate::normalized_json::MAX_DEPTH - 1).fold(json!(0), |v, _| json!([v]))
+        });
+        let deep_text = format!("{}\n{}", first, deep);
+        assert!(deep_text.len() < 64 * 1024);
         for (text, status, counts) in [
             (text, StatusCode::PAYLOAD_TOO_LARGE, None),
+            (deep_text, StatusCode::BAD_REQUEST, None),
             ("{}".into(), StatusCode::BAD_REQUEST, None),
             (first.to_string(), StatusCode::OK, Some((1, 0))),
             (first.to_string(), StatusCode::OK, Some((0, 1))),
@@ -2759,6 +2767,14 @@ mod tests {
                 .state
                 .store
                 .request("oversized-synthetic-event")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            fixture
+                .state
+                .store
+                .request("overdepth-synthetic-event")
                 .unwrap()
                 .is_none()
         );

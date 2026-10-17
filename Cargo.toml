@@ -22,7 +22,7 @@ mime_guess = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "stream", "json"] }
 rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "unbounded_depth"] }
 sha2 = "0.10"
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }

@@ -48,6 +48,29 @@ fn observer() -> Value {
 }
 
 #[test]
+fn final_output_depth_rejection_does_not_charge_the_batch() {
+    let mut batch = ImportBudget {
+        limits: IMPORT_LIMITS,
+        work: 0,
+        normalized: 0,
+    };
+    let mut budget = ImportRecordBudget {
+        batch: &mut batch,
+        work: 0,
+    };
+    let value = (0..crate::normalized_json::MAX_DEPTH).fold(json!(0), |v, _| json!([v]));
+    budget.finish(&value).unwrap();
+    let charged = budget.batch.normalized;
+    let wrapped = json!({"derived_wrapper": value});
+    let error = budget.finish(&wrapped).unwrap_err();
+    assert!(error.to_string().contains("nesting limit"));
+    assert!(!error.is::<ImportLimitError>());
+    assert_eq!(budget.batch.normalized, charged);
+    budget.finish(&json!({"after_rejection": true})).unwrap();
+    assert!(budget.batch.normalized > charged);
+}
+
+#[test]
 fn tiny_answer_fanout_is_rejected_by_work_preflight() {
     let mut record = raw_capture(0, None);
     record["request"]["questions"] = Value::Object(
