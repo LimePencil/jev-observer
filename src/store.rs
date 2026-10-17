@@ -674,12 +674,17 @@ impl Store {
             .optional()?
             .unwrap_or(0);
         if force || now < last || now - last >= 30_000 {
-            tx.execute(
+            let expired = tx.execute(
                 "DELETE FROM requests WHERE timestamp < ?",
                 [now - i64::from(self.retention_days) * 86_400_000],
             )?;
-            tx.execute("DELETE FROM requests WHERE seq <= COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?),-1)", [self.max_records as i64])?;
-            tx.execute("DELETE FROM groups WHERE NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id)", [])?;
+            let excess = tx.execute("DELETE FROM requests WHERE seq <= COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?),-1)", [self.max_records as i64])?;
+            // Parent/answer/group writes and cascading deletions are atomic.
+            // A periodic pass that removed no parents cannot orphan a group.
+            // Forced startup maintenance still repairs pre-existing orphans.
+            if force || expired > 0 || excess > 0 {
+                tx.execute("DELETE FROM groups WHERE NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id)", [])?;
+            }
             tx.execute(
                 "INSERT OR REPLACE INTO maintenance(key,value) VALUES('pruned_at',?)",
                 [now],
@@ -3389,3 +3394,7 @@ mod group_detail_tests;
 #[cfg(test)]
 #[path = "export_tests.rs"]
 mod export_tests;
+
+#[cfg(test)]
+#[path = "retention_tests.rs"]
+mod retention_tests;
