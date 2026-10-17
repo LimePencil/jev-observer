@@ -19,6 +19,7 @@ export default function App() {
   const [datesOpen, setDatesOpen] = useState(() => Boolean(filters.from || filters.to));
   const [paused, setPaused] = useState(false), [panel, updatePanel] = useState<Panel>(null);
   const [displayed, setDisplayed] = useState<{ data: Dashboard; scope: string } | null>(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
   const [selectedGroup, setSelectedGroup] = useState('');
   const [metric, setMetric] = useState<'requests' | 'latency' | 'cost'>('requests');
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'light');
@@ -83,7 +84,7 @@ export default function App() {
   function pageGroups(cursor: string) { setGroupPages(previous => [...previous, filters.group_cursor ?? '']); setFilters(previous => ({ ...previous, group_cursor: cursor })); }
   function newerRequests() { const cursor = requestPages.at(-1) ?? ''; setRequestPages(previous => previous.slice(0, -1)); setFilters(previous => ({ ...previous, request_cursor: cursor })); }
   function newerGroups() { const cursor = groupPages.at(-1) ?? ''; setGroupPages(previous => previous.slice(0, -1)); setFilters(previous => ({ ...previous, group_cursor: cursor })); }
-  function historyChanged() { setDisplayed(null); setSelectedGroup(''); setRequestPages([]); setGroupPages([]); setFilters(previous => ({ ...previous, request_cursor: '', group_cursor: '' })); reset(); }
+  function historyChanged() { setHistoryRevision(value => value + 1); setDisplayed(null); setSelectedGroup(''); setRequestPages([]); setGroupPages([]); setFilters(previous => ({ ...previous, request_cursor: '', group_cursor: '' })); reset(); }
   function resetFilters() { setFilters(defaults); setSearch(''); setGroupSearch(''); setRequestPages([]); setGroupPages([]); setDatesOpen(false); }
   function navigate(section: string) { setActiveNav(section); setSidebarOpen(false); document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   const explorerLoading = Boolean(displayed && displayed.scope !== scope && parentScope(displayed.scope) === parentScope(scope));
@@ -164,7 +165,7 @@ export default function App() {
       </>}
       </main>
     </div>
-    {panel && <DetailBoundary close={() => setPanel(null)}><Suspense fallback={<DetailFallback close={() => setPanel(null)} />}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} changed={invalidate} historyChanged={historyChanged} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests'); }} notify={notify} /></Suspense></DetailBoundary>}
+    {panel && <DetailBoundary close={() => setPanel(null)}><Suspense fallback={<DetailFallback close={() => setPanel(null)} />}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} changed={invalidate} historyChanged={historyChanged} historyRevision={historyRevision} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests'); }} notify={notify} /></Suspense></DetailBoundary>}
     {toast && <div className="toast" role="status"><Info size={18} /><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast('')}><X size={15} /></button></div>}
   </div></Dialog.Root>;
 }

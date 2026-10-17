@@ -125,7 +125,7 @@ export function useDashboard(filters: Filters) {
   return { snapshot, error, invalidate, reset, scope };
 }
 
-export function useResource<T>(path: string | null) {
+export function useResource<T>(path: string | null, revision = 0) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
@@ -137,7 +137,7 @@ export function useResource<T>(path: string | null) {
     const controller = new AbortController();
     api<T>(path, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setData(value); }).catch(error => { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Unable to load details'); });
     return () => controller.abort();
-  }, [path, version]);
+  }, [path, version, revision]);
   return { data, error, reload, update };
 }
 
