@@ -30,7 +30,7 @@ use crate::{
     config::{Config, UpstreamAuth},
     credentials::{Credentials, LOCAL_TOKEN_PREFIX, validate_key},
     model::{self, Capture},
-    store::{Filter, Store},
+    store::{Filter, LabelOutcome, Store},
 };
 
 static UI: Dir<'_> = include_dir!("$OUT_DIR/ui");
@@ -1295,24 +1295,13 @@ async fn label(
         );
     }
     match database(state.database_slots.clone(), move || {
-        let Some(record) = state.store.request(&id)? else {
-            return Ok(None);
-        };
-        if !record["answers"].as_array().is_some_and(|answers| {
-            answers
-                .iter()
-                .any(|answer| answer["key"].as_str() == Some(body.key.as_str()))
-        }) {
-            return Ok(Some(false));
-        }
-        state.store.add_label(&id, &body.key, &body.label)?;
-        Ok(Some(true))
+        state.store.add_label(&id, &body.key, &body.label)
     })
     .await
     {
-        Ok(Some(true)) => Json(json!({"ok": true})).into_response(),
-        Ok(Some(false)) => error(StatusCode::NOT_FOUND, "Answer key not found"),
-        Ok(None) => error(StatusCode::NOT_FOUND, "Request not found"),
+        Ok(LabelOutcome::Saved) => Json(json!({"ok": true})).into_response(),
+        Ok(LabelOutcome::AnswerNotFound) => error(StatusCode::NOT_FOUND, "Answer key not found"),
+        Ok(LabelOutcome::RequestNotFound) => error(StatusCode::NOT_FOUND, "Request not found"),
         Err(response) => response.into_response(),
     }
 }
@@ -3067,6 +3056,70 @@ mod tests {
         assert_eq!(canceled.status(), StatusCode::OK);
         drop(canceled);
         assert_eq!(fixture.state.export_slots.available_permits(), 1);
+        fixture.state.collector.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn label_outcomes_preserve_distinct_not_found_errors_and_replacement() {
+        let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+        let record = model::sample_records().into_iter().next().unwrap();
+        let id = record["id"].as_str().unwrap();
+        let key = record["answers"][0]["key"].as_str().unwrap();
+        fixture
+            .state
+            .store
+            .write_batch(
+                &mut fixture.state.store.writer_connection().unwrap(),
+                std::slice::from_ref(&record),
+            )
+            .unwrap();
+        for (request_id, answer, label, status, body) in [
+            (
+                "absent",
+                key,
+                "correct",
+                StatusCode::NOT_FOUND,
+                json!({"error":"Request not found"}),
+            ),
+            (
+                id,
+                "absent",
+                "correct",
+                StatusCode::NOT_FOUND,
+                json!({"error":"Answer key not found"}),
+            ),
+            (
+                id,
+                key,
+                "invalid",
+                StatusCode::BAD_REQUEST,
+                json!({"error":"Choose correct, incorrect, or unknown for an answer key"}),
+            ),
+            (id, key, "correct", StatusCode::OK, json!({"ok":true})),
+            (id, key, "incorrect", StatusCode::OK, json!({"ok":true})),
+        ] {
+            let request = Request::builder()
+                .method("POST")
+                .uri(format!("/api/requests/{request_id}/label"))
+                .header("host", "127.0.0.1:8765")
+                .header("x-observer-request", "1")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"key":answer,"label":label}).to_string()))
+                .unwrap();
+            let response = router(fixture.state.clone())
+                .oneshot(request)
+                .await
+                .unwrap();
+            assert_eq!(response.status(), status);
+            let actual: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                    .unwrap();
+            assert_eq!(actual, body);
+        }
+        let reviewed = fixture.state.store.request(id).unwrap().unwrap();
+        assert_eq!(reviewed["labels"].as_array().unwrap().len(), 1);
+        assert_eq!(reviewed["labels"][0]["key"], key);
+        assert_eq!(reviewed["labels"][0]["label"], "incorrect");
         fixture.state.collector.shutdown().await;
     }
 

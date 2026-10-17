@@ -19,6 +19,13 @@ pub struct Store {
     max_records: usize,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum LabelOutcome {
+    Saved,
+    RequestNotFound,
+    AnswerNotFound,
+}
+
 #[derive(Clone, Default, Deserialize)]
 pub struct Filter {
     /// Internal snapshot time; callers cannot set it through HTTP query strings.
@@ -1667,21 +1674,43 @@ impl Store {
         Ok(output)
     }
 
-    pub fn add_label(&self, id: &str, key: &str, label: &str) -> Result<()> {
+    pub fn add_label(&self, id: &str, key: &str, label: &str) -> Result<LabelOutcome> {
         if !["correct", "incorrect", "unknown"].contains(&label) {
             bail!("Label must be correct, incorrect or unknown");
         }
-        let conn = self.writer_connection()?;
-        let found: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM answers WHERE request_id=? AND key=?)",
-            params![id, key],
-            |r| r.get(0),
+        Self::add_label_from(&mut self.writer_connection()?, id, key, label)
+    }
+
+    fn add_label_from(
+        connection: &mut Connection,
+        id: &str,
+        key: &str,
+        label: &str,
+    ) -> Result<LabelOutcome> {
+        // Hold the writer reservation through classification so retention or
+        // deletion cannot remove the answer between its lookup and the write.
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let changed = transaction.execute(
+            "INSERT OR REPLACE INTO labels(request_id,key,label,timestamp,source) SELECT request_id,key,?,?,? FROM answers WHERE request_id=? AND key=?",
+            params![label, Utc::now().timestamp_millis(), "local-reviewer", id, key],
         )?;
-        if !found {
-            bail!("Answer does not exist");
-        }
-        conn.execute("INSERT OR REPLACE INTO labels(request_id,key,label,timestamp,source) VALUES(?,?,?,?,?)",params![id,key,label,Utc::now().timestamp_millis(),"local-reviewer"])?;
-        Ok(())
+        let outcome = if changed == 1 {
+            LabelOutcome::Saved
+        } else {
+            let request_exists: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM requests WHERE id=?)",
+                [id],
+                |row| row.get(0),
+            )?;
+            if request_exists {
+                LabelOutcome::AnswerNotFound
+            } else {
+                LabelOutcome::RequestNotFound
+            }
+        };
+        transaction.commit()?;
+        Ok(outcome)
     }
 
     pub fn delete_all(&self) -> Result<()> {
@@ -2575,7 +2604,19 @@ mod tests {
         store
             .write_batch(&mut store.writer_connection().unwrap(), &[record("1")])
             .unwrap();
-        store.add_label("1", "urgent", "incorrect").unwrap();
+        assert_eq!(
+            store.add_label("absent", "urgent", "correct").unwrap(),
+            LabelOutcome::RequestNotFound
+        );
+        assert_eq!(
+            store.add_label("1", "absent", "correct").unwrap(),
+            LabelOutcome::AnswerNotFound
+        );
+        assert!(store.add_label("1", "urgent", "invalid").is_err());
+        assert_eq!(
+            store.add_label("1", "urgent", "incorrect").unwrap(),
+            LabelOutcome::Saved
+        );
         assert_eq!(
             store.request("1").unwrap().unwrap()["labels"][0]["label"],
             "incorrect"
@@ -2586,12 +2627,90 @@ mod tests {
                 .unwrap()
                 .contains("incorrect")
         );
+        assert_eq!(
+            store.add_label("1", "urgent", "correct").unwrap(),
+            LabelOutcome::Saved
+        );
+        let reviewed = store.request("1").unwrap().unwrap();
+        assert_eq!(reviewed["labels"].as_array().unwrap().len(), 1);
+        assert_eq!(reviewed["labels"][0]["label"], "correct");
+        assert_eq!(reviewed["labels"][0]["source"], "local-reviewer");
+        assert!(reviewed["labels"][0]["timestamp"].is_number());
         store.delete_all().unwrap();
         assert!(store.request("1").unwrap().is_none());
+        assert_eq!(
+            store.add_label("1", "urgent", "unknown").unwrap(),
+            LabelOutcome::RequestNotFound
+        );
+        let remaining: i64 = store
+            .writer_connection()
+            .unwrap()
+            .query_row("SELECT count(*) FROM labels", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(remaining, 0);
         assert_eq!(
             store.dashboard(&Filter::default()).unwrap()["summary"]["request_count"],
             0
         );
+    }
+
+    #[test]
+    fn label_classification_waits_for_a_pending_parent_deletion() {
+        use std::{cell::RefCell, sync::mpsc, thread};
+        thread_local! {
+            static BUSY_SIGNAL: RefCell<Option<mpsc::SyncSender<()>>> = const { RefCell::new(None) };
+        }
+        fn retry_busy(attempt: i32) -> bool {
+            BUSY_SIGNAL.with(|signal| {
+                if let Some(sender) = signal.borrow_mut().take() {
+                    let _ = sender.send(());
+                }
+            });
+            thread::sleep(Duration::from_millis(1));
+            attempt < 2000
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("label-delete.sqlite"), 7, 100).unwrap();
+        let mut deleting = store.writer_connection().unwrap();
+        store.write_batch(&mut deleting, &[record("1")]).unwrap();
+        let mut labeling = store.writer_connection().unwrap();
+        let deletion = deleting
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        deletion
+            .execute("DELETE FROM requests WHERE id='1'", [])
+            .unwrap();
+        let (busy_tx, busy_rx) = mpsc::sync_channel(1);
+        let (result_tx, result_rx) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            BUSY_SIGNAL.with(|signal| *signal.borrow_mut() = Some(busy_tx));
+            labeling.busy_handler(Some(retry_busy)).unwrap();
+            result_tx
+                .send(Store::add_label_from(
+                    &mut labeling,
+                    "1",
+                    "urgent",
+                    "correct",
+                ))
+                .unwrap();
+        });
+        // Observe the actual writer-lock conflict before committing deletion;
+        // no sleep-based assumption about thread scheduling is needed.
+        busy_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        deletion.commit().unwrap();
+        assert_eq!(
+            result_rx
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .unwrap(),
+            LabelOutcome::RequestNotFound
+        );
+        worker.join().unwrap();
+        let labels: i64 = deleting
+            .query_row("SELECT count(*) FROM labels", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(labels, 0);
     }
     #[test]
     fn unknown_cost_is_not_zero() {
