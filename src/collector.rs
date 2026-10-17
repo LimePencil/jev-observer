@@ -19,6 +19,8 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 const IDLE_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(30);
 #[cfg(test)]
 const IDLE_MAINTENANCE_INTERVAL: Duration = Duration::from_millis(100);
+const MAX_BATCH_RECORDS: usize = 128;
+const MAX_BATCH_CAPTURE_BYTES: u64 = 4 * 1024 * 1024;
 
 struct Pending {
     capture: Capture,
@@ -273,6 +275,33 @@ fn open_writer(store: &Store, c: &Counters) -> Option<rusqlite::Connection> {
     }
 }
 
+fn collect_batch(first: Pending, receiver: &Receiver<Pending>) -> (Vec<Pending>, Option<Pending>) {
+    let mut bytes = first.size;
+    let mut batch = Vec::with_capacity(MAX_BATCH_RECORDS);
+    batch.push(first);
+    let until = Instant::now() + Duration::from_millis(20);
+    // An individually oversized capture still runs alone. Keep the first item
+    // that would cross the byte bound for the next batch, with its permit and
+    // queue accounting unchanged, so accepted captures retain their order.
+    while batch.len() < MAX_BATCH_RECORDS && bytes < MAX_BATCH_CAPTURE_BYTES {
+        let remaining = until.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match receiver.recv_timeout(remaining) {
+            Ok(event) => {
+                if event.size > MAX_BATCH_CAPTURE_BYTES - bytes {
+                    return (batch, Some(event));
+                }
+                bytes += event.size;
+                batch.push(event);
+            }
+            Err(_) => break,
+        }
+    }
+    (batch, None)
+}
+
 fn writer(
     store: Store,
     options: NormalizeOptions,
@@ -282,8 +311,13 @@ fn writer(
 ) {
     let mut connection = open_writer(&store, &c);
     let mut last_maintenance = Instant::now();
+    let mut deferred = None;
     loop {
-        let first = match receiver.recv_timeout(Duration::from_millis(25)) {
+        let received = match deferred.take() {
+            Some(event) => Ok(event),
+            None => receiver.recv_timeout(Duration::from_millis(25)),
+        };
+        let first = match received {
             Ok(event) => event,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -318,19 +352,8 @@ fn writer(
                 continue;
             }
         };
-        let mut batch = Vec::with_capacity(128);
-        batch.push(first);
-        let until = Instant::now() + Duration::from_millis(20);
-        while batch.len() < 128 {
-            let remaining = until.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            match receiver.recv_timeout(remaining) {
-                Ok(event) => batch.push(event),
-                Err(_) => break,
-            }
-        }
+        let (batch, next) = collect_batch(first, &receiver);
+        deferred = next;
         let mut records = Vec::with_capacity(batch.len());
         for item in &batch {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -392,6 +415,148 @@ fn writer(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pending(id: usize, size: u64, budget: &Arc<Semaphore>) -> Pending {
+        Pending {
+            capture: Capture {
+                id: id.to_string(),
+                ..Default::default()
+            },
+            _permit: budget.clone().try_acquire_owned().unwrap(),
+            size,
+            queued: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn byte_limited_batches_keep_deferred_order_and_permits() {
+        let budget = Arc::new(Semaphore::new(3));
+        let (sender, receiver) = mpsc::sync_channel(3);
+        for (id, size) in [
+            MAX_BATCH_CAPTURE_BYTES * 3 / 4,
+            MAX_BATCH_CAPTURE_BYTES / 2,
+            MAX_BATCH_CAPTURE_BYTES / 4,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            sender.send(pending(id, size, &budget)).unwrap();
+        }
+        drop(sender);
+        assert_eq!(budget.available_permits(), 0);
+        let (first, deferred) = collect_batch(receiver.recv().unwrap(), &receiver);
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].capture.id, "0");
+        let deferred = deferred.expect("over-budget capture must be carried into the next batch");
+        assert_eq!(deferred.capture.id, "1");
+        assert_eq!(budget.available_permits(), 0);
+        drop(first);
+        assert_eq!(budget.available_permits(), 1);
+        let (second, deferred) = collect_batch(deferred, &receiver);
+        assert!(deferred.is_none());
+        assert_eq!(
+            second
+                .iter()
+                .map(|item| item.capture.id.as_str())
+                .collect::<Vec<_>>(),
+            ["1", "2"]
+        );
+        assert_eq!(budget.available_permits(), 1);
+        drop(second);
+        assert_eq!(budget.available_permits(), 3);
+        assert!(receiver.recv().is_err());
+    }
+
+    #[test]
+    fn exact_and_oversized_captures_do_not_consume_the_next_batch() {
+        for sizes in [
+            vec![MAX_BATCH_CAPTURE_BYTES, 1],
+            vec![MAX_BATCH_CAPTURE_BYTES + 1, 1],
+            vec![MAX_BATCH_CAPTURE_BYTES / 2, MAX_BATCH_CAPTURE_BYTES / 2, 1],
+            vec![1; MAX_BATCH_RECORDS + 1],
+        ] {
+            let count = sizes.len();
+            let budget = Arc::new(Semaphore::new(count));
+            let (sender, receiver) = mpsc::sync_channel(count);
+            for (id, size) in sizes.into_iter().enumerate() {
+                sender.send(pending(id, size, &budget)).unwrap();
+            }
+            drop(sender);
+            let (batch, deferred) = collect_batch(receiver.recv().unwrap(), &receiver);
+            assert!(deferred.is_none());
+            assert_eq!(batch.len(), count - 1);
+            let last = receiver.recv().unwrap();
+            assert_eq!(last.capture.id, (count - 1).to_string());
+            drop(batch);
+            assert_eq!(budget.available_permits(), count - 1);
+            drop(last);
+            assert_eq!(budget.available_permits(), count);
+        }
+    }
+
+    #[tokio::test]
+    async fn shutdown_drains_byte_limited_batches_and_releases_all_accounting() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("byte-batches.sqlite"), 7, 100).unwrap();
+        let collector = Collector::start(
+            store.clone(),
+            NormalizeOptions::default(),
+            8 * 1024 * 1024,
+            4,
+            4,
+        );
+        let ids = ["third", "first", "fourth", "second"];
+        for (id, state_bytes) in
+            ids.into_iter()
+                .zip([3 * 1024 * 1024, 3 * 1024 * 1024, 5 * 1024 * 1024, 1])
+        {
+            let capture = Capture {
+                id: id.into(),
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                source: "byte-batch-test".into(),
+                status: 200,
+                request: serde_json::to_vec(&json!({
+                    "questions":{"q":{"type":"noul","instructions":"Synthetic"}},
+                    "state":"x".repeat(state_bytes)
+                }))
+                .unwrap(),
+                response: br#"{"answers":{"q":{"type":"noul","noul":0.5}}}"#.to_vec(),
+                capture_complete: true,
+                ..Default::default()
+            };
+            let permit = collector.reserve_capture().unwrap();
+            collector.record_forwarded();
+            collector.submit(capture, permit);
+        }
+        collector.shutdown().await;
+        let health = collector.health();
+        for field in ["forwarded", "captured", "persisted"] {
+            assert_eq!(health[field], ids.len(), "{field}");
+        }
+        for field in ["dropped", "write_failures", "queue_depth", "queued_bytes"] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(
+            collector
+                .inner
+                .counters
+                .pending_times
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(collector.inner.budget.available_permits(), ids.len());
+        let connection = store.writer_connection().unwrap();
+        let mut statement = connection
+            .prepare("SELECT id FROM requests ORDER BY rowid")
+            .unwrap();
+        let stored = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(stored, ids);
+    }
 
     #[test]
     fn storage_diagnostics_expose_categories_without_sql_or_sensitive_values() {
