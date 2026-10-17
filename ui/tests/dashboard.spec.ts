@@ -1402,6 +1402,169 @@ test('committing a group search preserves request pagination history', async ({ 
   await expect(page.locator('.group-row')).toContainText('department first');
 });
 
+async function failingPageHarness(page: Page) {
+  await page.clock.install({ time: new Date(now) });
+  await page.clock.pauseAt(new Date(now + 1000));
+  const state = await harness(page, { path: '/?source=Test+inbox' });
+  const failures = new Set<string>(), reads: string[] = [];
+  await page.route('**/api/dashboard?**', async route => {
+    const params = new URL(route.request().url()).searchParams;
+    const requests = params.get('request_cursor') || 'first', groups = params.get('group_cursor') || 'first';
+    reads.push(`${requests}/${groups}`);
+    if (failures.has(`requests:${requests}`) || failures.has(`groups:${groups}`)) return route.fulfill({ status: 503, json: { error: 'Selected history page unavailable' } });
+    const next = (cursor: string) => cursor === 'first' ? 'second' : cursor === 'second' ? 'third' : null;
+    return route.fulfill({ json: { ...state.dashboard,
+      requests: [{ ...record, id: `request-${requests}` }],
+      groups: [{ ...group, id: `group-${groups}`, name: `department ${groups}` }],
+      feed_next_cursor: next(requests), group_next_cursor: next(groups),
+    } });
+  });
+  await page.getByRole('button', { name: 'Refresh dashboard', exact: true }).click();
+  await expect(page.getByLabel('Inspect request request-first', { exact: true })).toBeVisible();
+  return { failures, reads };
+}
+
+async function expectHistoryPage(page: Page, section: 'requests' | 'groups', cursor: string) {
+  if (section === 'requests') await expect(page.getByLabel(`Inspect request request-${cursor}`, { exact: true })).toBeVisible();
+  else await expect(page.locator('.group-row')).toContainText(`department ${cursor}`);
+  await expect.poll(() => new URL(page.url()).searchParams.get(section === 'requests' ? 'request_cursor' : 'group_cursor') || 'first').toBe(cursor);
+}
+
+for (const section of ['requests', 'groups'] as const) {
+  test(`failed first ${section} page keeps the loaded view and an explicit retry`, async ({ page }) => {
+    const { failures, reads } = await failingPageHarness(page);
+    await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    failures.add(`${section}:second`);
+    await page.getByRole('button', { name: `Older ${section}`, exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('Selected history page unavailable');
+    await expectHistoryPage(page, section, 'first');
+    await expect(page.locator('.requests-panel .section-heading p')).toContainText('Latest 1 records');
+    await expect(page.getByRole('status').filter({ hasText: 'Loading history…' })).toHaveCount(0);
+    await expect(page.getByRole('list', { name: 'Question groups' })).toHaveAttribute('aria-busy', 'false');
+    await expect(page.getByRole('button', { name: `Older ${section}`, exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: `Newer ${section}`, exact: true })).toBeDisabled();
+    // Successful current-page polling must neither retry the bad page nor erase its notice.
+    const failedReads = reads.filter(value => value.includes('second')).length;
+    await page.clock.runFor(2000);
+    await expect(page.getByRole('alert')).toContainText('Showing the last successfully loaded page');
+    expect(reads.filter(value => value.includes('second'))).toHaveLength(failedReads);
+    await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Filter by source')).toHaveValue('Test inbox');
+
+    failures.clear();
+    await page.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expectHistoryPage(page, section, 'second');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await page.getByRole('button', { name: `Newer ${section}`, exact: true }).click();
+    await expectHistoryPage(page, section, 'first');
+  });
+
+  test(`failed later ${section} page preserves both committed cursor stacks`, async ({ page }) => {
+    const { failures, reads } = await failingPageHarness(page);
+    const other = section === 'requests' ? 'groups' : 'requests';
+    await openThirdPage(page, other);
+    await page.getByRole('button', { name: `Older ${section}`, exact: true }).click();
+    await expectHistoryPage(page, section, 'second');
+    failures.add(`${section}:third`);
+    await page.getByRole('button', { name: `Older ${section}`, exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('Selected history page unavailable');
+    await expectHistoryPage(page, section, 'second');
+    // An immediate failed retry must make a new request without duplicating history.
+    const attempts = reads.filter(value => value === 'third/third').length;
+    await page.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expect.poll(() => reads.filter(value => value === 'third/third').length).toBeGreaterThan(attempts);
+    await expect(page.getByRole('alert')).toContainText('Showing the last successfully loaded page');
+    await expectHistoryPage(page, section, 'second');
+    await page.getByRole('button', { name: `Newer ${section}`, exact: true }).click();
+    await expectHistoryPage(page, section, 'first');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    for (const cursor of ['second', 'first']) {
+      await page.getByRole('button', { name: `Newer ${other}`, exact: true }).click();
+      await expectHistoryPage(page, other, cursor);
+    }
+  });
+
+  test(`failed Newer ${section} navigation keeps its previous history and remains escapable`, async ({ page }) => {
+    const { failures } = await failingPageHarness(page);
+    await page.getByRole('button', { name: `Older ${section}`, exact: true }).click();
+    await expectHistoryPage(page, section, 'second');
+    failures.add(`${section}:first`);
+    await page.getByRole('button', { name: `Newer ${section}`, exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('Selected history page unavailable');
+    await expectHistoryPage(page, section, 'second');
+    if (section === 'requests') await expect(page.locator('.requests-panel .section-heading p')).toContainText('Older 1 records');
+    // Move away while the latest page is still unavailable; the failed pop was never committed.
+    await page.getByRole('button', { name: `Older ${section}`, exact: true }).click();
+    await expectHistoryPage(page, section, 'third');
+    failures.clear();
+    for (const cursor of ['second', 'first']) {
+      await page.getByRole('button', { name: `Newer ${section}`, exact: true }).click();
+      await expectHistoryPage(page, section, cursor);
+    }
+  });
+}
+
+test('a timed-out history page rolls back and ignores its late response before explicit retry', async ({ page }) => {
+  await failingPageHarness(page);
+  let release!: () => void, started = false;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/dashboard?**', async route => {
+    if (new URL(route.request().url()).searchParams.get('request_cursor') && !started) {
+      started = true;
+      await pending;
+    }
+    return route.fallback();
+  });
+  try {
+    await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+    await expect.poll(() => started).toBe(true);
+    await page.clock.runFor(14_999);
+    await expect(page.getByRole('status').filter({ hasText: 'Loading history…' })).toBeVisible();
+    await page.clock.runFor(1);
+    await expect(page.getByRole('alert')).toContainText('Request timed out after 15 seconds');
+    await expectHistoryPage(page, 'requests', 'first');
+    await expect(page.locator('.requests-panel .section-heading p')).toContainText('Latest 1 records');
+    await expect(page.getByRole('button', { name: 'Older requests', exact: true })).toBeEnabled();
+    release();
+    await page.clock.runFor(1000);
+    await expectHistoryPage(page, 'requests', 'first');
+    await expect(page.getByRole('alert')).toContainText('Showing the last successfully loaded page');
+    await page.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expectHistoryPage(page, 'requests', 'second');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  } finally { release(); }
+});
+
+for (const response of ['success', 'failure'] as const) {
+  test(`a late pagination ${response} cannot restore abandoned filters or cursor history`, async ({ page }) => {
+    await failingPageHarness(page);
+    let release!: () => void, started = false;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/dashboard?**', async route => {
+      if (started || !new URL(route.request().url()).searchParams.get('request_cursor')) return route.fallback();
+      started = true;
+      await pending;
+      if (response === 'failure') return route.fulfill({ status: 503, json: { error: 'Abandoned page failure' } });
+      return route.fallback();
+    });
+    try {
+      await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+      await expect.poll(() => started).toBe(true);
+      await page.getByLabel('Filter by source').selectOption('');
+      await expectHistoryPage(page, 'requests', 'first');
+      release();
+      await page.clock.runFor(1000);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(page.getByLabel('Filter by source')).toHaveValue('');
+      await expectHistoryPage(page, 'requests', 'first');
+      await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+      await expectHistoryPage(page, 'requests', 'second');
+      await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+      await expectHistoryPage(page, 'requests', 'first');
+    } finally { release(); }
+  });
+}
+
 test('older request pages survive reloading a bookmarked view', async ({ page }) => {
   const state = await harness(page);
   state.dashboard.feed_next_cursor = 'older-page';
