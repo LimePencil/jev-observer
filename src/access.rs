@@ -10,6 +10,17 @@ use anyhow::{Result, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 
 const PREFIX: &str = "jo_access_";
+const TOKEN_LENGTH: usize = PREFIX.len() + 64;
+
+#[cfg(any(unix, windows))]
+fn read_token(file: impl Read) -> Result<String> {
+    let mut token = String::new();
+    // Read one extra byte so a valid prefix followed by trailing content is
+    // rejected without allocating for an arbitrarily large malformed file.
+    file.take((TOKEN_LENGTH + 1) as u64)
+        .read_to_string(&mut token)?;
+    Ok(token)
+}
 
 #[derive(Clone)]
 pub struct Access {
@@ -30,7 +41,7 @@ fn same_bytes(left: &[u8], right: &[u8]) -> bool {
 impl Access {
     fn new(token: String) -> Result<Self> {
         if !token.starts_with(PREFIX)
-            || token.len() != PREFIX.len() + 64
+            || token.len() != TOKEN_LENGTH
             || !token[PREFIX.len()..]
                 .bytes()
                 .all(|byte| byte.is_ascii_hexdigit())
@@ -61,10 +72,7 @@ impl Access {
                 token
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                let mut file = crate::windows_private::open_private_file(&path)?;
-                let mut token = String::new();
-                file.read_to_string(&mut token)?;
-                token
+                read_token(crate::windows_private::open_private_file(&path)?)?
             }
             Err(error) => return Err(error.into()),
         };
@@ -79,8 +87,8 @@ impl Access {
                 let mut options = fs::OpenOptions::new();
                 options.read(true);
                 use std::os::unix::fs::OpenOptionsExt;
-                options.custom_flags(libc::O_NOFOLLOW);
-                let mut file = options.open(&path).context("Open dashboard access token")?;
+                options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+                let file = options.open(&path).context("Open dashboard access token")?;
                 let metadata = file.metadata()?;
                 if !metadata.file_type().is_file() {
                     bail!("Dashboard access token must be a regular file");
@@ -94,10 +102,7 @@ impl Access {
                 if metadata.uid() != unsafe { libc::geteuid() } {
                     bail!("Dashboard access token must belong to the current user");
                 }
-                let mut token = String::new();
-                file.read_to_string(&mut token)
-                    .context("Read dashboard access token")?;
-                token
+                read_token(file).context("Read dashboard access token")?
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 let token = format!(
@@ -176,5 +181,73 @@ mod tests {
         fs::write(&target, format!("{PREFIX}{}", "a".repeat(64))).unwrap();
         symlink(&target, database.with_extension("access-token")).unwrap();
         assert!(Access::open(&database).is_err());
+    }
+
+    #[test]
+    fn token_reads_are_bounded_and_reject_trailing_content() {
+        use std::io::Cursor;
+        let valid = format!("{PREFIX}{}", "a".repeat(64));
+        assert!(Access::new(read_token(Cursor::new(valid.as_bytes())).unwrap()).is_ok());
+        let mut oversized = Cursor::new(format!("{valid}{}", "x".repeat(4096)));
+        let retained = read_token(&mut oversized).unwrap();
+        assert_eq!(oversized.position(), (TOKEN_LENGTH + 1) as u64);
+        assert!(Access::new(retained).is_err());
+        for malformed in [
+            "".to_owned(),
+            format!("{valid}\n"),
+            "a".repeat(TOKEN_LENGTH),
+        ] {
+            assert!(Access::new(read_token(Cursor::new(malformed)).unwrap()).is_err());
+        }
+    }
+
+    #[test]
+    fn named_pipe_access_token_is_rejected_without_blocking() {
+        const CHILD_PATH: &str = "JEV_OBSERVER_FIFO_TEST_PATH";
+        if let Some(database) = std::env::var_os(CHILD_PATH) {
+            assert!(Access::open(Path::new(&database)).is_err());
+            return;
+        }
+        use std::{
+            ffi::CString,
+            os::unix::ffi::OsStrExt,
+            process::{Command, Stdio},
+            time::{Duration, Instant},
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("observer.sqlite");
+        let path = CString::new(
+            database
+                .with_extension("access-token")
+                .as_os_str()
+                .as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        // Isolate the open in a child so a blocking regression cannot hang the
+        // entire suite or leave a test thread waiting on the pipe forever.
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "access::tests::named_pipe_access_token_is_rejected_without_blocking",
+            ])
+            .env(CHILD_PATH, &database)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(status.success());
+                break;
+            }
+            if started.elapsed() > Duration::from_secs(2) {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                panic!("Opening a named-pipe access token blocked startup");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 }
