@@ -11,6 +11,8 @@ import { Definition, Distribution, Empty, ErrorNotice, KindBadge, Loading, Reque
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
 const DECISIONS_PER_PAGE = 50;
+type ReviewState = { pending: Label | null; error: string; saved: boolean };
+const emptyReview: ReviewState = { pending: null, error: '', saved: false };
 type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; changed: () => void; historyChanged: () => void; historyRevision: number; filterGroup: (id: string) => void; notify: (message: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
@@ -32,15 +34,29 @@ export default function Details({ health, panel, setPanel, filters, changed, his
 function RequestDetails({ id, setPanel, changed, historyRevision }: { id: string; setPanel: Props['setPanel']; changed: () => void; historyRevision: number }) {
   const { data: record, error, reload, update } = useResource<RequestRecord>(`/api/requests/${encodeURIComponent(id)}`, historyRevision);
   const [answerPage, setAnswerPage] = useState(0);
-  const [pendingReviews, setPendingReviews] = useState<Set<string>>(() => new Set());
+  const [reviews, setReviews] = useState<Map<string, ReviewState>>(() => new Map());
+  const inFlightReviews = useRef(new Set<string>());
+  const revision = useRef(historyRevision);
+  revision.current = historyRevision;
+  const pendingReviews = [...reviews.values()].some(review => review.pending !== null);
   const page = Math.min(answerPage, Math.max(0, Math.ceil((record?.answers.length ?? 0) / DECISIONS_PER_PAGE) - 1));
   const answerStart = page * DECISIONS_PER_PAGE;
-  function reviewPending(key: string, pending: boolean) {
-    setPendingReviews(previous => { const next = new Set(previous); if (pending) next.add(key); else next.delete(key); return next; });
-  }
-  function updateLabel(key: string, label: Label) {
-    update(previous => previous.id !== id ? previous : { ...previous, labels: [...previous.labels.filter(item => (item.key ?? item.answer_key) !== key), { key, label }] });
-    changed();
+  async function review(key: string, label: Label) {
+    if (inFlightReviews.current.has(key)) return;
+    inFlightReviews.current.add(key);
+    const startedRevision = revision.current;
+    setReviews(previous => new Map(previous).set(key, { pending: label, error: '', saved: false }));
+    try {
+      await api(`/api/requests/${encodeURIComponent(id)}/label`, { method: 'POST', body: JSON.stringify({ key, label }) });
+      // A history refresh can unmount the card and read labels before this save.
+      // Fetch after the commit instead of letting that older snapshot replace it.
+      if (revision.current !== startedRevision) reload();
+      else update(previous => previous.id !== id ? previous : { ...previous, labels: [...previous.labels.filter(item => (item.key ?? item.answer_key) !== key), { key, label }] });
+      changed();
+      setReviews(previous => new Map(previous).set(key, { pending: null, error: '', saved: true }));
+    } catch (error) {
+      setReviews(previous => new Map(previous).set(key, { pending: null, error: error instanceof Error ? error.message : 'Could not save label', saved: false }));
+    } finally { inFlightReviews.current.delete(key); }
   }
   return <>
     <DetailHeading eyebrow="Request details" title={record?.source ?? 'Request'} description="Inspect the captured response and its individual decisions." icon={<Fingerprint size={15} />} />
@@ -52,8 +68,8 @@ function RequestDetails({ id, setPanel, changed, historyRevision }: { id: string
       <dl className="detail-grid"><Field label={record.timestamp == null ? "Imported at" : "Recorded"}>{dateTime(record.timestamp ?? record.imported_at)}{record.timestamp == null && <span className="table-subline">Original event time unknown</span>}</Field><Field label="Latency">{ms(record.duration_ms)}</Field><Field label="Provider">{record.provider || 'Unknown'}</Field><Field label="Model">{record.model || 'Unknown'}</Field><Field label="Requested model">{record.requested_model ?? 'Unknown'}</Field><Field label="Input tokens">{number(record.input_tokens)}</Field><Field label="Output tokens">{number(record.output_tokens)}</Field><Field label="Request cost">{money(record.cost_usd)}</Field><Field label="Cost basis">{costBasis(record.cost_basis)}</Field></dl>
       <div className="detail-section-title"><h3>Decisions</h3><span className="count-badge">{record.answers.length}</span></div>
       <p className="caption">Usage and cost belong to this request, across all its answers.</p>
-      {record.answers.length > DECISIONS_PER_PAGE && <nav className="history-pagination" aria-label="Decision pages"><button className="text-button" aria-disabled={page === 0 || pendingReviews.size > 0} onClick={() => { if (page > 0 && pendingReviews.size === 0) setAnswerPage(page - 1); }}>Previous decisions</button><span role="status">Decisions {number(answerStart + 1)}–{number(Math.min(answerStart + DECISIONS_PER_PAGE, record.answers.length))} of {number(record.answers.length)}{pendingReviews.size > 0 && ' · Saving reviews…'}</span><button className="text-button" aria-disabled={answerStart + DECISIONS_PER_PAGE >= record.answers.length || pendingReviews.size > 0} onClick={() => { if (answerStart + DECISIONS_PER_PAGE < record.answers.length && pendingReviews.size === 0) setAnswerPage(page + 1); }}>Next decisions</button></nav>}
-      {!record.answers.length ? <Empty title="No captured answers">The provider response did not include a supported answer, or the capture was incomplete.</Empty> : record.answers.slice(answerStart, answerStart + DECISIONS_PER_PAGE).map(answer => <AnswerDetail key={`${record.id}-${answer.key}`} answer={answer} record={record} onGroup={() => setPanel({ type: 'group', id: answer.group_id })} changed={label => updateLabel(answer.key, label)} pendingChanged={pending => reviewPending(answer.key, pending)} />)}
+      {record.answers.length > DECISIONS_PER_PAGE && <nav className="history-pagination" aria-label="Decision pages"><button className="text-button" aria-disabled={page === 0 || pendingReviews} onClick={() => { if (page > 0 && !pendingReviews) setAnswerPage(page - 1); }}>Previous decisions</button><span role="status">Decisions {number(answerStart + 1)}–{number(Math.min(answerStart + DECISIONS_PER_PAGE, record.answers.length))} of {number(record.answers.length)}{pendingReviews && ' · Saving reviews…'}</span><button className="text-button" aria-disabled={answerStart + DECISIONS_PER_PAGE >= record.answers.length || pendingReviews} onClick={() => { if (answerStart + DECISIONS_PER_PAGE < record.answers.length && !pendingReviews) setAnswerPage(page + 1); }}>Next decisions</button></nav>}
+      {!record.answers.length ? <Empty title="No captured answers">The provider response did not include a supported answer, or the capture was incomplete.</Empty> : record.answers.slice(answerStart, answerStart + DECISIONS_PER_PAGE).map(answer => <AnswerDetail key={`${record.id}-${answer.key}`} answer={answer} record={record} onGroup={() => setPanel({ type: 'group', id: answer.group_id })} review={reviews.get(answer.key) ?? emptyReview} onReview={label => void review(answer.key, label)} />)}
       <section className="detail-section"><h3>Request input state</h3><div className="inline-notice"><ShieldCheck size={18} weight="bold" />{record.state_retained ? 'Captured with local opt-in and configured redaction.' : 'This record has no retained request state.'}</div>{record.import_format && !!record.actions?.length && <p className="caption">Imported application data is shown under Application outcome.</p>}{record.state_retained && <details><summary>Inspect retained input</summary><Definition value={record.state} /></details>}</section>
       <section className="detail-section"><h3>Application outcome</h3>{record.actions?.length ? <Definition value={record.actions} /> : <p className="muted">Not collected. An API response does not establish whether an application action ran or succeeded.</p>}</section>
       {(record.source_event_id || record.import_format) && <section className="detail-section"><h3>Import provenance</h3><dl className="detail-grid"><Field label="Source event">{record.source_event_id ?? 'Not supplied'}</Field><Field label="Format">{record.import_format ?? 'Native capture'}</Field></dl></section>}
@@ -61,22 +77,12 @@ function RequestDetails({ id, setPanel, changed, historyRevision }: { id: string
   </>;
 }
 
-function AnswerDetail({ answer, record, onGroup, changed, pendingChanged }: { answer: Answer; record: RequestRecord; onGroup: () => void; changed: (label: Label) => void; pendingChanged: (pending: boolean) => void }) {
-  const [pending, setPending] = useState<Label | null>(null), [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
+function AnswerDetail({ answer, record, onGroup, review: { pending, error, saved }, onReview }: { answer: Answer; record: RequestRecord; onGroup: () => void; review: ReviewState; onReview: (label: Label) => void }) {
   const currentLabel = [...(record.labels ?? [])].reverse().find(item => (item.key ?? item.answer_key) === answer.key)?.label;
   const probabilities = Object.entries(answer.probabilities ?? {}).map(([key, value]) => ({
     key, value: typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null,
   })).sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
   const invalidProbabilities = probabilities.some(item => item.value === null);
-  async function label(value: string) {
-    if (!value || pending) return;
-    const next = value as Label;
-    setPending(next); pendingChanged(true); setError(''); setSaved(false);
-    try { await api(`/api/requests/${encodeURIComponent(record.id)}/label`, { method: 'POST', body: JSON.stringify({ key: answer.key, label: next }) }); changed(next); setSaved(true); }
-    catch (error) { setError(error instanceof Error ? error.message : 'Could not save label'); }
-    finally { setPending(null); pendingChanged(false); }
-  }
   return <section className="answer-card"><div className="answer-heading"><h4>{answer.key}</h4><KindBadge kind={answer.kind} /></div>
     <div className="answer-value">{answer.valid ? answerValue(answer.value, answer.kind) : 'Invalid or missing answer'}{answer.kind === 'noul' && answer.valid && <span className="caption">yes-probability</span>}</div>
     {!answer.valid && <p className="error-text">{answer.error ?? 'Excluded from answer distributions.'}</p>}
@@ -84,7 +90,7 @@ function AnswerDetail({ answer, record, onGroup, changed, pendingChanged }: { an
     {answer.confidence != null && <p className="caption">Reported confidence {percent(answer.confidence)} · not measured accuracy</p>}
     {probabilities.length > 0 && <div className="probability-list" aria-label="Reported probabilities">{probabilities.map(({ key, value }) => <div key={key} className="probability-row"><span title={key}>{key}</span><div className="probability-track">{value !== null && <span style={{ width: `${value * 100}%` }} />}</div><span className="mono">{value === null ? 'Invalid' : percent(value)}</span></div>)}</div>}
     {invalidProbabilities && <details className="raw-answer-details"><summary>Inspect raw answer</summary><Definition value={answer.raw_answer} /></details>}
-    <div className="answer-actions"><button className="text-button" onClick={onGroup}>View recurring group <ArrowRight size={14} /></button><div className="review-control"><span className="review-status" role="status">{pending ? 'Saving…' : saved ? 'Saved' : ''}</span><label className="label-control"><span>Review</span><select aria-label={`Review ${answer.key}`} value={pending ?? currentLabel ?? ''} aria-disabled={pending !== null} onPointerDown={event => { if (pending) event.preventDefault(); }} onKeyDown={event => { if (pending && ['ArrowUp', 'ArrowDown', 'Home', 'End', ' ', 'Enter'].includes(event.key)) event.preventDefault(); }} onChange={event => void label(event.target.value)}><option value="" disabled>Not labeled</option><option value="correct">Correct</option><option value="incorrect">Incorrect</option><option value="unknown">Unknown</option></select></label></div></div>
+    <div className="answer-actions"><button className="text-button" onClick={onGroup}>View recurring group <ArrowRight size={14} /></button><div className="review-control"><span className="review-status" role="status">{pending ? 'Saving…' : saved ? 'Saved' : ''}</span><label className="label-control"><span>Review</span><select aria-label={`Review ${answer.key}`} value={pending ?? currentLabel ?? ''} aria-disabled={pending !== null} onPointerDown={event => { if (pending) event.preventDefault(); }} onKeyDown={event => { if (pending && ['ArrowUp', 'ArrowDown', 'Home', 'End', ' ', 'Enter'].includes(event.key)) event.preventDefault(); }} onChange={event => { if (event.target.value && !pending) onReview(event.target.value as Label); }}><option value="" disabled>Not labeled</option><option value="correct">Correct</option><option value="incorrect">Incorrect</option><option value="unknown">Unknown</option></select></label></div></div>
     {error && <ErrorNotice message={error} />}
     <details className="definition-details"><summary>Definition and context</summary><dl className="detail-grid compact-fields"><Field label="Definition">{shortId(answer.definition_id)}</Field><Field label="Presentation">{shortId(answer.presentation_id)}</Field><Field label="Task version">{answer.task_version ?? 'Unverified'}</Field><Field label="Candidate set">{shortId(answer.candidate_id)}</Field></dl><Definition value={answer.definition} />{answer.family_id && <div className="family-note"><strong>{answer.family_name ?? answer.family_id}</strong><p>{answer.mapping_reason ?? 'Adapter-defined family mapping'}</p><span>Adapter {answer.adapter ?? 'Unknown'} · instance {answer.instance_ref ?? 'Unknown'}</span></div>}</details>
   </section>;
