@@ -56,7 +56,10 @@ function AnswerDetail({ answer, record, onGroup, changed }: { answer: Answer; re
   const [pending, setPending] = useState<Label | null>(null), [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const currentLabel = [...(record.labels ?? [])].reverse().find(item => (item.key ?? item.answer_key) === answer.key)?.label;
-  const probabilities = Object.entries(answer.probabilities ?? {}).sort((a, b) => b[1] - a[1]);
+  const probabilities = Object.entries(answer.probabilities ?? {}).map(([key, value]) => ({
+    key, value: typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null,
+  })).sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
+  const invalidProbabilities = probabilities.some(item => item.value === null);
   async function label(value: string) {
     if (!value || pending) return;
     const next = value as Label;
@@ -70,7 +73,8 @@ function AnswerDetail({ answer, record, onGroup, changed }: { answer: Answer; re
     {!answer.valid && <p className="error-text">{answer.error ?? 'Excluded from answer distributions.'}</p>}
     {answer.warnings?.map(warning => <div className="warning-notice" key={warning}><WarningCircle size={17} /><span>{warning}</span></div>)}
     {answer.confidence != null && <p className="caption">Reported confidence {percent(answer.confidence)} · not measured accuracy</p>}
-    {probabilities.length > 0 && <div className="probability-list" aria-label="Reported probabilities">{probabilities.map(([key, value]) => <div key={key} className="probability-row"><span title={key}>{key}</span><div className="probability-track"><span style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></div><span className="mono">{percent(value)}</span></div>)}</div>}
+    {probabilities.length > 0 && <div className="probability-list" aria-label="Reported probabilities">{probabilities.map(({ key, value }) => <div key={key} className="probability-row"><span title={key}>{key}</span><div className="probability-track">{value !== null && <span style={{ width: `${value * 100}%` }} />}</div><span className="mono">{value === null ? 'Invalid' : percent(value)}</span></div>)}</div>}
+    {invalidProbabilities && <details className="raw-answer-details"><summary>Inspect raw answer</summary><Definition value={answer.raw_answer} /></details>}
     <div className="answer-actions"><button className="text-button" onClick={onGroup}>View recurring group <ArrowRight size={14} /></button><div className="review-control"><span className="review-status" role="status">{pending ? 'Saving…' : saved ? 'Saved' : ''}</span><label className="label-control"><span>Review</span><select aria-label={`Review ${answer.key}`} value={pending ?? currentLabel ?? ''} aria-disabled={pending !== null} onPointerDown={event => { if (pending) event.preventDefault(); }} onKeyDown={event => { if (pending && ['ArrowUp', 'ArrowDown', 'Home', 'End', ' ', 'Enter'].includes(event.key)) event.preventDefault(); }} onChange={event => void label(event.target.value)}><option value="" disabled>Not labeled</option><option value="correct">Correct</option><option value="incorrect">Incorrect</option><option value="unknown">Unknown</option></select></label></div></div>
     {error && <ErrorNotice message={error} />}
     <details className="definition-details"><summary>Definition and context</summary><dl className="detail-grid compact-fields"><Field label="Definition">{shortId(answer.definition_id)}</Field><Field label="Presentation">{shortId(answer.presentation_id)}</Field><Field label="Task version">{answer.task_version ?? 'Unverified'}</Field><Field label="Candidate set">{shortId(answer.candidate_id)}</Field></dl><Definition value={answer.definition} />{answer.family_id && <div className="family-note"><strong>{answer.family_name ?? answer.family_id}</strong><p>{answer.mapping_reason ?? 'Adapter-defined family mapping'}</p><span>Adapter {answer.adapter ?? 'Unknown'} · instance {answer.instance_ref ?? 'Unknown'}</span></div>}</details>
