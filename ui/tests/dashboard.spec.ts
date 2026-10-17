@@ -658,6 +658,39 @@ test('custom date filters survive reloading a bookmarked view', async ({ page })
   await expect(page).not.toHaveURL(/request_cursor|from=|to=/);
 });
 
+test.describe('date bookmarks in Asia/Seoul', () => {
+  test.use({ timezoneId: 'Asia/Seoul' });
+
+  test('valid epoch boundary bookmarks keep their scope without crashing the date picker', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const boundary = '8640000000000000';
+    const state = await harness(page, { path: `/?window=all&from=${boundary}&to=${boundary}` });
+    // A local value beyond the HTML control's range stays in the URL/API scope.
+    await expect(page.getByLabel('From date')).toHaveValue('');
+    await expect(page.getByLabel('To date')).toHaveValue('');
+    await expect(page.getByLabel('From date')).toHaveAccessibleDescription(/saved start date.*remains active/);
+    await expect(page.getByLabel('To date')).toHaveAccessibleDescription(/saved end date.*remains active/);
+    expect(state.dashboardQueries.some(query => {
+      const params = new URLSearchParams(query);
+      return params.get('from') === boundary && params.get('to') === boundary;
+    })).toBe(true);
+    await expect(page).toHaveURL(new RegExp(`from=${boundary}&to=${boundary}`));
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Request stream' })).toBeVisible();
+    expect(errors).toEqual([]);
+
+    await page.getByLabel('From date').fill('10000-01-15T09:30');
+    await page.getByLabel('To date').fill('10000-01-15T10:45');
+    await expect(page.getByLabel('From date')).toHaveValue('10000-01-15T09:30');
+    await expect(page.getByLabel('To date')).toHaveValue('10000-01-15T10:45');
+    const expected = await page.evaluate(() => ({ from: String(new Date('+010000-01-15T09:30').getTime()), to: String(new Date('+010000-01-15T10:45').getTime()) }));
+    await expect.poll(() => new URL(page.url()).searchParams.get('from')).toBe(expected.from);
+    await expect.poll(() => new URL(page.url()).searchParams.get('to')).toBe(expected.to);
+    await expect(page.locator('#from-date-range-note, #to-date-range-note')).toHaveCount(0);
+  });
+});
+
 test('question search reaches server history and stays editable after no matches', async ({ page }) => {
   const state = await harness(page);
   state.groupCatalog.push({ ...structuredClone(group), id: 'older-question', name: 'historical-routing' });
