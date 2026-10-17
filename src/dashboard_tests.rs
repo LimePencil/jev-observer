@@ -338,6 +338,105 @@ fn list_cursors_cover_tied_requests_and_groups_and_search_beyond_the_first_page(
 }
 
 #[test]
+fn filtered_request_pages_bound_query_work_and_keep_small_selections_direct() {
+    use rusqlite::StatementStatus;
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("page-work.sqlite"), 7, 10_000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records: Vec<_> = (0..4096)
+        .map(|index| {
+            let prefix = if index % 2 == 0 { "match" } else { "other" };
+            // Groups of eight requests share timestamps; sequence must keep
+            // ties stable when the cursor lands inside one of those groups.
+            let sparse = if index % 2 == 0 && !(4..3896).contains(&index) {
+                "sparse-"
+            } else {
+                ""
+            };
+            let mut record = dashboard_record(
+                &format!("{prefix}-{sparse}{index:04}"),
+                now - (4095 - index) / 8,
+            );
+            record["answers"] = json!([]);
+            record
+        })
+        .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+
+    for (search, broad, pages) in [
+        ("match-", true, 2),
+        // A selection just over one page, with its final two matches at the
+        // oldest edge, must not scan all intervening nonmatching history.
+        ("sparse-", false, 2),
+        ("match-000", false, 1),
+    ] {
+        let mut connection = store.reader().unwrap();
+        let transaction = connection.transaction().unwrap();
+        let (predicate, args) = Store::dashboard_predicate(
+            &transaction,
+            &Filter {
+                window: Some("all".into()),
+                search: Some(search.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let expected: Vec<_> = records
+            .iter()
+            .rev()
+            .map(|record| text(record, "id"))
+            .filter(|id| id.contains(search))
+            .collect();
+        let mut cursor = None;
+        for page in 0..pages {
+            let (query, values) = Store::request_summary_query(
+                &transaction,
+                &predicate,
+                &args,
+                101,
+                cursor.as_deref(),
+            )
+            .unwrap();
+            let mut statement = transaction.prepare(&query).unwrap();
+            let ids = statement
+                .query_map(params_from_iter(&values), |row| row.get::<_, String>(0))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap();
+            let offset = page * 100;
+            assert_eq!(ids, expected[offset..expected.len().min(offset + 101)]);
+            if broad {
+                assert_eq!(
+                    statement.get_status(StatementStatus::Sort),
+                    0,
+                    "Broad filtered page {page} must not sort the full selection"
+                );
+            }
+            // This is a deterministic SQLite work bound, not a wall-clock
+            // benchmark. A small selection near the oldest history also needs
+            // direct lookups instead of walking thousands of newer requests.
+            let work = statement.get_status(StatementStatus::VmStep);
+            assert!(work < 20_000, "{search} page {page} used {work} VM steps");
+
+            let (summaries, next) =
+                Store::request_page(&transaction, &predicate, &args, cursor.as_deref()).unwrap();
+            assert_eq!(
+                summaries
+                    .iter()
+                    .map(|record| text(record, "id"))
+                    .collect::<Vec<_>>(),
+                expected[offset..expected.len().min(offset + 100)]
+            );
+            assert_eq!(next.is_some(), expected.len() > offset + 100);
+            cursor = next;
+        }
+    }
+}
+
+#[test]
 fn version_metrics_count_parent_cost_once_and_keep_reviews_in_the_parent_scope() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(&dir.path().join("reviews.sqlite"), 7, 100).unwrap();
