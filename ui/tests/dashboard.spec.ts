@@ -434,11 +434,11 @@ for (const endpoint of ['dashboard', 'health'] as const) {
       // The other endpoint continues updating while this request is stalled.
       if (endpoint === 'dashboard') await expect(page.locator('.health-fields').getByText('11', { exact: true })).toBeVisible();
       else await expect(page.getByLabel('Inspect request after-timeout')).toBeVisible();
-      await page.clock.runFor(14_999);
+      await page.clock.runFor(endpoint === 'dashboard' ? 44_999 : 14_999);
       expect(started).toBe(1);
       await page.clock.runFor(1);
       if (endpoint === 'dashboard') {
-        await expect(page.getByRole('alert')).toContainText('Request timed out after 15 seconds');
+        await expect(page.getByRole('alert')).toContainText('Request timed out after 45 seconds');
         await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeVisible();
       }
       await page.clock.runFor(1000);
@@ -568,6 +568,117 @@ test('request labels persist through API and versions remain separate', async ({
   await expect(page.getByText('Presentation: 2222222222')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+for (const paused of [false, true]) {
+  test(`a 23-second dashboard query stays sequential and completes with the visible view ${paused ? 'paused' : 'live'}`, async ({ page }) => {
+    await page.clock.install({ time: new Date(now) });
+    await page.clock.pauseAt(new Date(now + 1000));
+    const state = await harness(page);
+    await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeVisible();
+    if (paused) await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    let finish!: () => void, queries = 0, healthReads = 0;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const updated = { ...structuredClone(state.dashboard), requests: [{ ...record, id: 'after-slow-query' }] };
+    await page.route('**/api/dashboard?**', async route => { queries += 1; await pending; await route.fulfill({ json: updated }); });
+    await page.route('**/api/health', route => { healthReads += 1; return route.fulfill({ json: { ...state.dashboard.health, dropped: healthReads } }); });
+    const notice = page.getByRole('status').filter({ hasText: 'History query is still running' });
+    try {
+      await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      await expect.poll(() => queries).toBe(1);
+      await page.clock.runFor(4999);
+      await expect(notice).toHaveCount(0);
+      await page.clock.runFor(1);
+      await expect(notice).toBeVisible();
+      await expect(notice).toContainText('narrow the time window or filters');
+      await expect.poll(() => healthReads).toBeGreaterThan(0);
+      const observedHealthReads = healthReads;
+      // Let the real response finish before advancing its next virtual poll.
+      await expect(page.locator('.health-fields').getByText(String(observedHealthReads), { exact: true })).toBeVisible();
+      await page.clock.runFor(1000);
+      await expect.poll(() => healthReads).toBeGreaterThan(observedHealthReads);
+      await page.clock.runFor(17_000);
+      expect(queries, 'A useful slow query should neither time out nor start an overlapping retry').toBe(1);
+      expect(healthReads).toBeGreaterThan(1);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      finish();
+      await expect(notice).toHaveCount(0);
+      if (paused) {
+        await expect(page.locator('.pause-notice')).toContainText('visible dashboard is paused');
+        await expect(page.getByLabel('Inspect request after-slow-query')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Resume live', exact: true }).click();
+      }
+      await expect(page.getByLabel('Inspect request after-slow-query')).toBeVisible();
+      expect(queries).toBe(1);
+    } finally { finish(); }
+  });
+}
+
+test('a slow dashboard query clears its notice on scope change and ignores the old response', async ({ page }) => {
+  await page.clock.install({ time: new Date(now) });
+  await page.clock.pauseAt(new Date(now + 1000));
+  const state = await harness(page);
+  let finish!: () => void, slowReads = 0;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  await page.route('**/api/dashboard?**', async route => {
+    if (new URL(route.request().url()).searchParams.get('window') === 'all') {
+      slowReads += 1; await pending;
+      return route.fulfill({ json: { ...state.dashboard, requests: [{ ...record, id: 'stale-slow-scope' }] } });
+    }
+    return route.fulfill({ json: { ...state.dashboard, requests: [{ ...record, id: 'current-short-scope' }] } });
+  });
+  const notice = page.getByRole('status').filter({ hasText: 'History query is still running' });
+  try {
+    await page.getByLabel('Time window').selectOption('all');
+    await expect.poll(() => slowReads).toBe(1);
+    await page.clock.runFor(5000);
+    await expect(notice).toBeVisible();
+    const canceled = page.waitForEvent('requestfailed', request => new URL(request.url()).pathname === '/api/dashboard' && new URL(request.url()).searchParams.get('window') === 'all');
+    await page.getByLabel('Time window').selectOption('1h');
+    await canceled;
+    await expect(notice).toHaveCount(0);
+    await expect(page.getByLabel('Inspect request current-short-scope')).toBeVisible();
+    finish();
+    await page.clock.runFor(5000);
+    await expect(notice).toHaveCount(0);
+    await expect(page.getByLabel('Inspect request stale-slow-scope')).toHaveCount(0);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  } finally { finish(); }
+});
+
+test('slow dashboard notices reset on manual refresh, hidden tabs, and request failure', async ({ page }) => {
+  await page.clock.install({ time: new Date(now) });
+  await page.clock.pauseAt(new Date(now + 1000));
+  const state = await harness(page);
+  let finish!: () => void, queries = 0, fail = false;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  await page.route('**/api/dashboard?**', async route => {
+    queries += 1; await pending;
+    await route.fulfill(fail ? { status: 503, json: { error: 'History unavailable for this control' } } : { json: state.dashboard });
+  });
+  const notice = page.getByRole('status').filter({ hasText: 'History query is still running' });
+  try {
+    await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+    await expect.poll(() => queries).toBe(1);
+    await page.clock.runFor(5000);
+    await expect(notice).toBeVisible();
+    await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+    await expect.poll(() => queries).toBe(2);
+    await expect(notice).toHaveCount(0);
+    await page.clock.runFor(4999);
+    await expect(notice).toHaveCount(0);
+    await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    await page.clock.runFor(5001);
+    await expect(notice).toHaveCount(0);
+    expect(queries).toBe(2);
+    await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new Event('visibilitychange')); });
+    await expect.poll(() => queries).toBe(3);
+    await page.clock.runFor(5000);
+    await expect(notice).toBeVisible();
+    fail = true; finish();
+    await expect(page.getByRole('alert')).toContainText('History unavailable for this control');
+    await expect(notice).toHaveCount(0);
+  } finally { finish(); }
 });
 
 test('a stalled detail read offers Retry and recovers', async ({ page }) => {
@@ -1702,10 +1813,10 @@ test('a timed-out history page rolls back and ignores its late response before e
   try {
     await page.getByRole('button', { name: 'Older requests', exact: true }).click();
     await expect.poll(() => started).toBe(true);
-    await page.clock.runFor(14_999);
+    await page.clock.runFor(44_999);
     await expect(page.getByRole('status').filter({ hasText: 'Loading history…' })).toBeVisible();
     await page.clock.runFor(1);
-    await expect(page.getByRole('alert')).toContainText('Request timed out after 15 seconds');
+    await expect(page.getByRole('alert')).toContainText('Request timed out after 45 seconds');
     await expectHistoryPage(page, 'requests', 'first');
     await expect(page.locator('.requests-panel .section-heading p')).toContainText('Latest 1 records');
     await expect(page.getByRole('button', { name: 'Older requests', exact: true })).toBeEnabled();

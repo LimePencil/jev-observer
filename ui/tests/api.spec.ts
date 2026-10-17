@@ -111,3 +111,28 @@ test('a slow mutation is not timed out or retried', async () => {
     await expect(result).resolves.toEqual({ ok: true });
   } finally { release(Response.json({ ok: true })); mock.timers.reset(); mock.restoreAll(); }
 });
+
+test('a longer read budget includes body decoding and still ends at its own deadline', async () => {
+  let signal: AbortSignal | null | undefined, began!: () => void;
+  const decoding = new Promise<void>(resolve => { began = resolve; });
+  mock.timers.enable({ apis: ['setTimeout'] });
+  mock.method(globalThis, 'fetch', async (_input: string | URL | Request, init?: RequestInit) => {
+    signal = init?.signal;
+    const response = new Response();
+    mock.method(response, 'json', () => {
+      began();
+      return new Promise((_, reject) => signal?.addEventListener('abort', () => reject(signal?.reason), { once: true }));
+    });
+    return response;
+  });
+  try {
+    const result = api('/api/dashboard', {}, 45_000).catch(error => error);
+    await decoding;
+    mock.timers.tick(44_999);
+    expect(signal?.aborted).toBe(false);
+    mock.timers.tick(1);
+    const error = await result;
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ name: 'TimeoutError', message: 'Request timed out after 45 seconds' });
+  } finally { mock.timers.reset(); mock.restoreAll(); }
+});
