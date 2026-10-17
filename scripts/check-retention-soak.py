@@ -53,11 +53,12 @@ def main():
     if not __debug__:
         parser.error('Run without Python -O; this check requires assertions')
     args.binary = args.binary.resolve(strict=True)
-    destinations = [args.output.resolve()]
+    destinations = [args.output, args.output.with_name(args.output.name + '.tmp')]
     if args.active_state is not None:
-        destinations.append(args.active_state.resolve())
+        destinations.extend([args.active_state, args.active_state.with_name(args.active_state.name + '.tmp')])
+    destinations = [path.resolve() for path in destinations]
     if args.binary in destinations or len(set(destinations)) != len(destinations):
-        parser.error('Binary, report and optional status paths must be distinct')
+        parser.error('Binary, report, optional status and their .tmp staging paths must be distinct')
     app = upgrade.Upgrade(args)
     report = {'started_at': now(), 'binary_sha256': hashlib.sha256(args.binary.read_bytes()).hexdigest(),
               'harness_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
