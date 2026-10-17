@@ -5,6 +5,7 @@ struct OverviewWork {
     overview: i64,
     feed: i64,
     feed_statements: usize,
+    catalogs: i64,
 }
 
 fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, OverviewWork) {
@@ -38,6 +39,13 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
                 work.feed += steps;
                 work.feed_statements += 1;
             }
+            if sql.starts_with(b"SELECT DISTINCT source FROM requests")
+                || sql.starts_with(b"SELECT DISTINCT model FROM requests")
+                || sql.starts_with(b"WITH RECURSIVE source_catalog")
+                || sql.starts_with(b"WITH RECURSIVE model_catalog")
+            {
+                work.catalogs += steps;
+            }
         }
         0
     }
@@ -56,6 +64,121 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
     let result = Store::dashboard_from(&mut connection, filter);
     drop(trace);
     (result, work)
+}
+
+#[test]
+fn dashboard_catalogs_skip_long_duplicate_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("catalog-work.sqlite"), 7, 5000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records: Vec<_> = (0..4096)
+        .map(|index| {
+            let mut record = dashboard_record(&format!("catalog-{index}"), now);
+            record["answers"] = json!([]);
+            record["source"] = json!(format!("source-{}", index % 3));
+            record["model"] = json!(if index % 2 == 0 { "" } else { "model" });
+            record
+        })
+        .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+    let filter = Filter {
+        window: Some("all".into()),
+        status: Some("error".into()),
+        as_of: Some(now),
+        ..Default::default()
+    };
+    let (snapshot, work) = measured_overview(&store, &filter);
+    let snapshot = snapshot.unwrap();
+    assert_eq!(snapshot["summary"]["request_count"], 0);
+    assert_eq!(
+        snapshot["sources"],
+        json!(["source-0", "source-1", "source-2"])
+    );
+    assert_eq!(snapshot["models"], json!(["model"]));
+    assert!(
+        (1..1000).contains(&work.catalogs),
+        "Catalogs visited duplicate entries: {} VM steps",
+        work.catalogs
+    );
+}
+
+#[test]
+fn dashboard_catalogs_preserve_binary_order_empty_values_and_entry_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("catalog-values.sqlite"), 7, 3000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let filter = Filter {
+        window: Some("all".into()),
+        as_of: Some(now),
+        ..Default::default()
+    };
+    let empty = store.dashboard(&filter).unwrap();
+    assert_eq!(empty["sources"], json!([]));
+    assert_eq!(empty["models"], json!([]));
+    let mut values = ["", "\0", "A", "a", "a\0b", "a'quote", "é", "한글", "😀"]
+        .map(str::to_owned)
+        .to_vec();
+    let catalog_record = |id: &str, value: &str| {
+        let mut record = dashboard_record(id, now);
+        record["answers"] = json!([]);
+        record["source"] = json!(value);
+        record["model"] = json!(value);
+        record
+    };
+    let edges: Vec<_> = values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| catalog_record(&format!("catalog-edge-{index}"), value))
+        .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &edges)
+        .unwrap();
+    values.sort();
+    let edge_snapshot = store.dashboard(&filter).unwrap();
+    assert_eq!(edge_snapshot["sources"], json!(values));
+    assert_eq!(
+        edge_snapshot["models"],
+        json!(
+            values
+                .iter()
+                .filter(|value| !value.is_empty())
+                .collect::<Vec<_>>()
+        )
+    );
+    values.extend((0..1002).map(|index| format!("value-{index:04}")));
+    let records: Vec<_> = values
+        .iter()
+        .cycle()
+        .take(values.len() * 2)
+        .enumerate()
+        .map(|(index, value)| catalog_record(&format!("catalog-value-{index}"), value))
+        .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+    values.sort();
+    let sources: Vec<_> = values.iter().take(1000).collect();
+    let models: Vec<_> = values
+        .iter()
+        .filter(|value| !value.is_empty())
+        .take(1000)
+        .collect();
+    for source in [None, Some("absent-source".into())] {
+        let snapshot = store
+            .dashboard(&Filter {
+                source,
+                ..filter.clone()
+            })
+            .unwrap();
+        assert_eq!(snapshot["sources"], json!(sources));
+        assert_eq!(snapshot["models"], json!(models));
+    }
+    store.delete_all().unwrap();
+    let cleared = store.dashboard(&filter).unwrap();
+    assert_eq!(cleared["sources"], json!([]));
+    assert_eq!(cleared["models"], json!([]));
 }
 
 fn membership_fixture(store: &Store, now: i64) {
