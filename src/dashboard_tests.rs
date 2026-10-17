@@ -1196,3 +1196,120 @@ fn csv_export_large_definitions_benchmark() {
         })
     );
 }
+
+#[test]
+fn version_counts_preserve_sources_and_families_with_bounded_lookup_work() {
+    use rusqlite::StatementStatus;
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("version-counts.sqlite"), 7, 2_000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut writer = store.writer_connection().unwrap();
+    let group_record = |id: &str, source: &str, key: &str, family: Option<&str>| {
+        let mut record = dashboard_record(id, now);
+        record["source"] = json!(source);
+        record["answers"][0]["key"] = json!(key);
+        record["answers"][0]["group_id"] = json!(id);
+        record["answers"][0]["definition_id"] = json!(format!("definition-{id}"));
+        record["answers"][0]["family_id"] = json!(family);
+        record["answers"][0]["family_name"] = json!(family);
+        record
+    };
+    store
+        .write_batch(
+            &mut writer,
+            &[
+                group_record("a0", "source-a", "question", Some("family-a")),
+                group_record("a1", "source-a", "question", None),
+                group_record("a2", "source-a", "question", Some("other-family-a")),
+                group_record("a3", "source-a", "another-key", Some("family-a")),
+                group_record("b0", "source-b", "question", Some("family-b")),
+                group_record("b1", "source-b", "question", None),
+            ],
+        )
+        .unwrap();
+    let all = Filter {
+        window: Some("all".into()),
+        ..Default::default()
+    };
+    for (source, expected) in [
+        (
+            "source-a",
+            vec![
+                ("a0", 3, false),
+                ("a1", 3, true),
+                ("a2", 3, false),
+                ("a3", 1, false),
+                ("family-a", 2, true),
+                ("other-family-a", 1, true),
+            ],
+        ),
+        (
+            "source-b",
+            vec![("b0", 2, false), ("b1", 2, true), ("family-b", 1, true)],
+        ),
+    ] {
+        let filter = Filter {
+            source: Some(source.into()),
+            ..all.clone()
+        };
+        let dashboard = store.dashboard(&filter).unwrap();
+        assert_eq!(
+            dashboard["groups"].as_array().unwrap().len(),
+            expected.iter().filter(|(_, _, visible)| *visible).count()
+        );
+        for (id, count, visible) in expected {
+            // Family members pool into one overview entry, but each strict
+            // member still has its own detail view and complete version list.
+            let overview = dashboard["groups"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|group| group["id"] == id);
+            assert_eq!(overview.is_some(), visible, "{id}");
+            if let Some(overview) = overview {
+                assert_eq!(overview["source"], source);
+                assert_eq!(overview["version_count"], count, "{id}");
+            }
+            let detail = store.group(id, &filter).unwrap().unwrap();
+            assert_eq!(detail["group"]["version_count"], count, "{id}");
+            assert_eq!(
+                detail["versions"].as_array().unwrap().len(),
+                count as usize,
+                "{id}"
+            );
+        }
+    }
+    // Most groups share the source but not the key or family. Counting a few
+    // versions must not visit this unrelated population for each visible group.
+    let unrelated: Vec<_> = (0..1024)
+        .map(|index| {
+            group_record(
+                &format!("unrelated-{index:04}"),
+                "source-a",
+                &format!("other-key-{index:04}"),
+                None,
+            )
+        })
+        .collect();
+    store.write_batch(&mut writer, &unrelated).unwrap();
+    for (family, source, selector, expected) in [
+        (false, "source-a", "question", 3),
+        (false, "source-b", "question", 2),
+        (false, "source-a", "missing", 0),
+        (true, "source-a", "family-a", 2),
+        (true, "source-a", "other-family-a", 1),
+        (true, "source-b", "family-a", 0),
+        (true, "source-b", "family-b", 1),
+    ] {
+        let mut stmt = writer.prepare(Store::version_count_query(family)).unwrap();
+        let count: i64 = stmt
+            .query_row(params![source, selector], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, expected);
+        assert!(
+            stmt.get_status(StatementStatus::VmStep) < 1000,
+            "Version lookup must stay bounded by matching key/family, not all groups from {source}"
+        );
+    }
+}

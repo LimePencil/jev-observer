@@ -920,6 +920,16 @@ impl Store {
         Ok((spec.finish(buckets), spec.metadata()))
     }
 
+    fn version_count_query(family: bool) -> &'static str {
+        // Separate predicates let SQLite use the complete source/key index or
+        // the family index instead of scanning every group from the source.
+        if family {
+            "SELECT count(*) FROM groups WHERE source=? AND family_id=?"
+        } else {
+            "SELECT count(*) FROM groups WHERE source=? AND key=?"
+        }
+    }
+
     fn group_metadata(conn: &Connection, id: &str) -> Result<Option<Value>> {
         let meta = conn.query_row("SELECT id,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter FROM groups WHERE id=? OR family_id=? ORDER BY id LIMIT 1",params![id,id], |r| Ok(json!({"id":id,"key":r.get::<_,String>(1)?,"name":r.get::<_,String>(1)?,"kind":r.get::<_,String>(2)?,"source":r.get::<_,String>(3)?,"definition_id":r.get::<_,String>(4)?,"presentation_id":r.get::<_,String>(5)?,"definition":parse(r.get(6)?)?,"task_version":r.get::<_,Option<String>>(7)?,"family_id":r.get::<_,Option<String>>(8)?,"family_name":r.get::<_,Option<String>>(9)?,"adapter":r.get::<_,Option<String>>(10)?}))).optional()?;
         let Some(mut result) = meta else {
@@ -931,8 +941,15 @@ impl Store {
         }
         result["is_family"] = json!(family);
         let version_count: i64 = conn.query_row(
-            "SELECT count(*) FROM groups WHERE source=? AND ((?=1 AND family_id=?) OR (?=0 AND key=?))",
-            params![text(&result, "source"),family,id,family,text(&result, "key")],
+            Self::version_count_query(family),
+            params![
+                text(&result, "source"),
+                if family {
+                    id
+                } else {
+                    result["key"].as_str().unwrap_or_default()
+                }
+            ],
             |r| r.get(0),
         )?;
         result["version_count"] = json!(version_count);
