@@ -722,6 +722,32 @@ test('transport failures, provider charges and Score warnings remain visible', a
   await expect(page.getByRole('dialog')).toContainText('Provider-reported charge');
 });
 
+test('version comparisons show token coverage independently for partial unknown and zero usage', async ({ page }) => {
+  await harness(page);
+  const current = { ...group, request_count: 3, input_tokens: 100, output_tokens: 20, input_tokens_known_requests: 1, output_tokens_known_requests: 2 };
+  const versions = [
+    current,
+    { ...group, id: 'unknown', input_tokens: null, output_tokens: null, input_tokens_known_requests: 0, output_tokens_known_requests: 0 },
+    { ...group, id: 'zero', input_tokens: 0, output_tokens: 0, input_tokens_known_requests: 2, output_tokens_known_requests: 2 },
+  ];
+  await page.route('**/api/groups/**', route => route.fulfill({ json: {
+    group: current, versions, timeline: [], requests: [], answers: [],
+  } }));
+  await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+  await page.getByLabel('Compare with').selectOption('unknown');
+  const comparison = page.getByLabel('Version outcome comparison');
+  const input = comparison.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Reported input tokens', exact: true }) });
+  const output = comparison.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Reported output tokens', exact: true }) });
+  await expect(input.getByRole('cell').nth(0)).toHaveText('1001 / 3 requests covered');
+  await expect(output.getByRole('cell').nth(0)).toHaveText('202 / 3 requests covered');
+  await expect(input.getByRole('cell').nth(1)).toHaveText('Unknown0 / 2 requests covered');
+  await expect(output.getByRole('cell').nth(1)).toHaveText('Unknown0 / 2 requests covered');
+
+  await page.getByLabel('Compare with').selectOption('zero');
+  await expect(input.getByRole('cell').nth(1)).toHaveText('02 / 2 requests covered');
+  await expect(output.getByRole('cell').nth(1)).toHaveText('02 / 2 requests covered');
+});
+
 test('version comparisons show observed outcomes and judged review coverage', async ({ page }) => {
   await harness(page);
   await page.route('**/api/groups/**', route => route.fulfill({ json: {
