@@ -956,6 +956,93 @@ test('key-protected Laya keeps client authentication and longer SDK timeouts', a
   await expect(page.getByRole('dialog')).toContainText('Python: seconds; JavaScript: milliseconds');
 });
 
+async function paginatedSearchHarness(page: Page) {
+  const state = await harness(page);
+  await page.route('**/api/dashboard?**', async route => {
+    const params = new URL(route.request().url()).searchParams;
+    const requestPage = params.get('request_cursor') || 'first', groupPage = params.get('group_cursor') || 'first';
+    const next = (cursor: string) => cursor === 'first' ? 'second' : cursor === 'second' ? 'third' : null;
+    await route.fulfill({ json: {
+      ...state.dashboard,
+      requests: [{ ...record, id: `request-${requestPage}` }],
+      groups: [{ ...group, id: `group-${groupPage}`, name: `department ${groupPage}` }],
+      feed_next_cursor: next(requestPage), group_next_cursor: next(groupPage),
+    } });
+  });
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await expect(page.getByLabel('Inspect request request-first', { exact: true })).toBeVisible();
+  await expect(page.locator('.group-row')).toContainText('department first');
+}
+
+async function openThirdPage(page: Page, section: 'requests' | 'groups') {
+  for (const cursor of ['second', 'third']) {
+    await page.getByRole('button', { name: `Older ${section}`, exact: true }).click();
+    if (section === 'requests') await expect(page.getByLabel(`Inspect request request-${cursor}`, { exact: true })).toBeVisible();
+    else await expect(page.locator('.group-row')).toContainText(`department ${cursor}`);
+  }
+}
+
+for (const section of ['requests', 'groups'] as const) {
+  test(`undoing a ${section === 'requests' ? 'request' : 'group'} search draft preserves the previous page`, async ({ page }) => {
+    await page.clock.install({ time: new Date(now) });
+    await page.clock.pauseAt(new Date(now + 1000));
+    await paginatedSearchHarness(page);
+    await openThirdPage(page, section);
+    const search = page.getByLabel(section === 'requests' ? 'Search requests' : 'Find a question group');
+    await search.fill('x');
+    await search.fill('');
+    await page.clock.runFor(300);
+    // No search was committed, so this remains the third page of the same scope.
+    const params = new URL(page.url()).searchParams;
+    expect(params.get(section === 'requests' ? 'request_cursor' : 'group_cursor')).toBe('third');
+    expect(params.has(section === 'requests' ? 'search' : 'group_search')).toBe(false);
+    await page.getByRole('button', { name: `Newer ${section}`, exact: true }).click();
+    if (section === 'requests') await expect(page.getByLabel('Inspect request request-second', { exact: true })).toBeVisible();
+    else await expect(page.locator('.group-row')).toContainText('department second');
+  });
+}
+
+test('committing a request search resets both page scopes', async ({ page }) => {
+  await page.clock.install({ time: new Date(now) });
+  await page.clock.pauseAt(new Date(now + 1000));
+  await paginatedSearchHarness(page);
+  await openThirdPage(page, 'requests');
+  await openThirdPage(page, 'groups');
+  await page.getByLabel('Search requests').fill('department');
+  await page.clock.runFor(300);
+  await expect(page.getByLabel('Inspect request request-first', { exact: true })).toBeVisible();
+  await expect(page.locator('.group-row')).toContainText('department first');
+  const params = new URL(page.url()).searchParams;
+  expect(params.get('search')).toBe('department');
+  expect(params.has('request_cursor')).toBe(false);
+  expect(params.has('group_cursor')).toBe(false);
+  await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+  await expect(page.getByLabel('Inspect request request-second', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+  await expect(page.getByLabel('Inspect request request-first', { exact: true })).toBeVisible();
+});
+
+test('committing a group search preserves request pagination history', async ({ page }) => {
+  await page.clock.install({ time: new Date(now) });
+  await page.clock.pauseAt(new Date(now + 1000));
+  await paginatedSearchHarness(page);
+  await openThirdPage(page, 'requests');
+  await openThirdPage(page, 'groups');
+  await page.getByLabel('Find a question group').fill('department');
+  await page.clock.runFor(300);
+  await expect(page.locator('.group-row')).toContainText('department first');
+  const params = new URL(page.url()).searchParams;
+  expect(params.get('group_search')).toBe('department');
+  expect(params.has('group_cursor')).toBe(false);
+  expect(params.get('request_cursor')).toBe('third');
+  await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+  await expect(page.getByLabel('Inspect request request-second', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Older groups', exact: true }).click();
+  await expect(page.locator('.group-row')).toContainText('department second');
+  await page.getByRole('button', { name: 'Newer groups', exact: true }).click();
+  await expect(page.locator('.group-row')).toContainText('department first');
+});
+
 test('older request pages survive reloading a bookmarked view', async ({ page }) => {
   const state = await harness(page);
   state.dashboard.feed_next_cursor = 'older-page';
