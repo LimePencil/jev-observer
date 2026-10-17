@@ -1,5 +1,247 @@
 use super::*;
 
+#[derive(Default)]
+struct OverviewWork {
+    overview: i64,
+    feed: i64,
+    feed_statements: usize,
+}
+
+fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, OverviewWork) {
+    struct Trace(*mut rusqlite::ffi::sqlite3);
+    impl Drop for Trace {
+        fn drop(&mut self) {
+            unsafe {
+                rusqlite::ffi::sqlite3_trace_v2(self.0, 0, None, std::ptr::null_mut());
+            }
+        }
+    }
+    unsafe extern "C" fn count_work(
+        _: u32,
+        context: *mut std::ffi::c_void,
+        statement: *mut std::ffi::c_void,
+        _: *mut std::ffi::c_void,
+    ) -> i32 {
+        unsafe {
+            let statement = statement.cast::<rusqlite::ffi::sqlite3_stmt>();
+            let sql = std::ffi::CStr::from_ptr(rusqlite::ffi::sqlite3_sql(statement)).to_bytes();
+            let work = &mut *context.cast::<OverviewWork>();
+            let steps = i64::from(rusqlite::ffi::sqlite3_stmt_status(
+                statement,
+                rusqlite::ffi::SQLITE_STMTSTATUS_VM_STEP,
+                1,
+            ));
+            if sql.starts_with(b"SELECT id,timestamp,event_kind,answer_count") {
+                work.overview += steps;
+            }
+            if sql.starts_with(b"SELECT id,json_extract(data,'$.timestamp')") {
+                work.feed += steps;
+                work.feed_statements += 1;
+            }
+        }
+        0
+    }
+    let mut connection = store.reader().unwrap();
+    let mut work = OverviewWork::default();
+    unsafe {
+        rusqlite::ffi::sqlite3_trace_v2(
+            connection.handle(),
+            rusqlite::ffi::SQLITE_TRACE_PROFILE,
+            Some(count_work),
+            std::ptr::from_mut(&mut work).cast(),
+        );
+    }
+    // Unregister before inspecting the stack context, including error paths.
+    let trace = Trace(unsafe { connection.handle() });
+    let result = Store::dashboard_from(&mut connection, filter);
+    drop(trace);
+    (result, work)
+}
+
+fn membership_fixture(store: &Store, now: i64) {
+    let records: Vec<_> = (0..1024)
+        .map(|index| {
+            let mut record = dashboard_record(&format!("membership-{index}"), now - index / 8);
+            record["source"] = json!("needle-source");
+            if index % 16 == 0 {
+                record["event_kind"] = json!("application_action");
+                record["model"] = json!("actions");
+                record["answers"] = json!([]);
+            }
+            if index == 0 {
+                record["timestamp"] = Value::Null;
+                record["imported_at"] = json!(now);
+            }
+            record
+        })
+        .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+}
+
+#[test]
+fn empty_dashboard_feed_avoids_history_work_and_validates_cursors() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("empty-feed.sqlite"), 7, 2000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    membership_fixture(&store, now);
+    let filter = Filter {
+        window: Some("all".into()),
+        as_of: Some(now),
+        status: Some("error".into()),
+        ..Default::default()
+    };
+    let (result, work) = measured_overview(&store, &filter);
+    let result = result.unwrap();
+    assert_eq!(result, store.dashboard(&filter).unwrap());
+    assert_eq!(result["summary"]["request_count"], 0);
+    assert_eq!(result["summary"]["action_count"], 0);
+    assert_eq!(result["requests"], json!([]));
+    assert!(result["feed_next_cursor"].is_null());
+    assert_eq!(work.feed_statements, 1);
+    assert!(
+        (1..100).contains(&work.feed),
+        "Empty feed visited history: {} VM steps",
+        work.feed
+    );
+    for cursor in ["invalid", "1:not-a-number"] {
+        assert!(
+            store
+                .dashboard(&Filter {
+                    request_cursor: Some(cursor.into()),
+                    ..filter.clone()
+                })
+                .is_err()
+        );
+    }
+    let valid_cursor = store
+        .dashboard(&Filter {
+            request_cursor: Some(format!("{now}:1")),
+            ..filter
+        })
+        .unwrap();
+    assert_eq!(valid_cursor["requests"], json!([]));
+}
+
+#[test]
+fn full_search_membership_reuses_overview_work_and_preserves_filtered_pages() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("full-membership.sqlite"), 7, 2000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    membership_fixture(&store, now);
+    let all = Filter {
+        window: Some("all".into()),
+        as_of: Some(now),
+        ..Default::default()
+    };
+    let (plain, plain_work) = measured_overview(&store, &all);
+    let plain = plain.unwrap();
+    let full = Filter {
+        search: Some("needle".into()),
+        ..all.clone()
+    };
+    let (selected, selected_work) = measured_overview(&store, &full);
+    assert_eq!(selected.unwrap(), plain);
+    assert!(plain_work.overview > 1024);
+    assert!(
+        selected_work.overview <= plain_work.overview + 100,
+        "Full membership added per-parent work: {} versus {} VM steps",
+        selected_work.overview,
+        plain_work.overview
+    );
+    assert_eq!(plain["summary"]["request_count"], 960);
+    assert_eq!(plain["summary"]["action_count"], 64);
+    let next = plain["feed_next_cursor"].as_str().unwrap();
+    for scope in [
+        json!({"request_cursor":next}),
+        json!({"source":"needle-source"}),
+        json!({"model":"actions"}),
+        json!({"from":now-8,"to":now}),
+        json!({"group":"dashboard-group"}),
+        json!({"status":"error"}),
+    ] {
+        let mut filter: Filter = serde_json::from_value(scope.clone()).unwrap();
+        filter.window = Some("all".into());
+        filter.as_of = Some(now);
+        let expected = store.dashboard(&filter).unwrap();
+        filter.search = Some("needle".into());
+        assert_eq!(store.dashboard(&filter).unwrap(), expected, "{scope}");
+        if scope["model"] == "actions" {
+            assert_eq!(expected["summary"]["request_count"], 0);
+            assert_eq!(expected["requests"].as_array().unwrap().len(), 64);
+        }
+    }
+    let second = store
+        .dashboard(&Filter {
+            request_cursor: Some(next.into()),
+            ..full
+        })
+        .unwrap();
+    let first_ids: std::collections::HashSet<_> = plain["requests"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(second["requests"].as_array().unwrap().len(), 100);
+    assert!(
+        second["requests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| !first_ids.contains(r["id"].as_str().unwrap()))
+    );
+}
+
+#[test]
+fn full_membership_counts_stay_in_the_read_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("snapshot-membership.sqlite"), 7, 10).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut original = dashboard_record("matching", now);
+    original["source"] = json!("needle");
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &[original])
+        .unwrap();
+    let mut reader = store.reader().unwrap();
+    let transaction = reader.transaction().unwrap();
+    let retained: i64 = transaction
+        .query_row("SELECT count(*) FROM requests", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(retained, 1);
+    store
+        .write_batch(
+            &mut store.writer_connection().unwrap(),
+            &[dashboard_record("later", now)],
+        )
+        .unwrap();
+    let filter = Filter {
+        window: Some("all".into()),
+        search: Some("needle".into()),
+        as_of: Some(now),
+        ..Default::default()
+    };
+    let (predicate, args) = Store::dashboard_predicate(&transaction, &filter).unwrap();
+    let (rows, cursor) = Store::request_page(&transaction, &predicate, &args, None).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["id"], "matching");
+    assert!(cursor.is_none());
+    drop(transaction);
+    let selected = store.dashboard(&filter).unwrap();
+    assert_eq!(selected["summary"]["request_count"], 1);
+    assert_eq!(selected["requests"][0]["id"], "matching");
+    assert_eq!(
+        store
+            .dashboard(&Filter {
+                search: None,
+                ..filter
+            })
+            .unwrap()["summary"]["request_count"],
+        2
+    );
+}
+
 #[test]
 fn token_coverage_counts_requests_and_preserves_unknown_and_zero_usage() {
     let dir = tempfile::tempdir().unwrap();

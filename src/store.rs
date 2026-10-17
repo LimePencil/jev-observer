@@ -894,6 +894,7 @@ impl Store {
         // narrow scopes keep per-parent lookups rather than scanning history.
         // Export/detail queries keep their existing paged/correlated strategy.
         let mut batch_search = false;
+        let mut retained = None;
         let has_group = filter.group.as_ref().is_some_and(|group| !group.is_empty());
         if !has_group && filter.search.as_ref().is_some_and(|s| !s.is_empty()) {
             let mut scope = filter.clone();
@@ -901,6 +902,7 @@ impl Store {
             let (predicate, args) = Self::predicate(&scope)?;
             let records: i64 =
                 conn.query_row("SELECT count(*) FROM requests", [], |row| row.get(0))?;
+            retained = Some(records);
             let threshold = (records / 4).max(512);
             batch_search = conn.query_row(
                 &format!("SELECT count(*)>{threshold} FROM (SELECT 1 FROM requests r WHERE {predicate} LIMIT {})", threshold + 1),
@@ -929,10 +931,15 @@ impl Store {
         } else {
             "request_dashboard"
         };
-        conn.execute(
+        let selected = conn.execute(
             &format!("INSERT INTO temp.dashboard_request_ids SELECT r.seq FROM requests r INDEXED BY {index} WHERE {predicate}"),
             params_from_iter(&args),
         )?;
+        // Both counts are exact in this read transaction. When every retained
+        // parent matched, later queries need no temporary membership lookup.
+        if retained.is_some_and(|records| usize::try_from(records).ok() == Some(selected)) {
+            return Ok(("1=1".into(), Vec::new()));
+        }
         Ok((DASHBOARD_SELECTION.into(), Vec::new()))
     }
 
@@ -1473,8 +1480,11 @@ impl Store {
         anchored
             .as_of
             .get_or_insert_with(|| Utc::now().timestamp_millis());
-        let filter = &anchored;
         let mut conn = self.reader()?;
+        Self::dashboard_from(&mut conn, &anchored)
+    }
+
+    fn dashboard_from(conn: &mut Connection, filter: &Filter) -> Result<Value> {
         let tx = conn.transaction()?;
         let (predicate, args) = Self::dashboard_predicate(&tx, filter)?;
         let DashboardRequests {
@@ -1484,8 +1494,19 @@ impl Store {
             parents,
             timeline_meta,
         } = Self::dashboard_requests(&tx, &predicate, &args, filter)?;
-        let (requests, feed_next_cursor) =
-            Self::request_page(&tx, &predicate, &args, filter.request_cursor.as_deref())?;
+        // The overview already proved whether any parent matches. Keep cursor
+        // validation in request_page, but avoid another history scan when empty.
+        let (feed_predicate, feed_args) = if parents.is_empty() {
+            ("0", &[][..])
+        } else {
+            (predicate.as_str(), args.as_slice())
+        };
+        let (requests, feed_next_cursor) = Self::request_page(
+            &tx,
+            feed_predicate,
+            feed_args,
+            filter.request_cursor.as_deref(),
+        )?;
         // Families may contain multiple keys per request. Keep their exact SQL
         // distinct counts; strict groups compute metrics and bins in one pass.
         let from = format!(
