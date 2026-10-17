@@ -130,14 +130,20 @@ export function useResource<T>(path: string | null, revision = 0) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
+  const pendingRead = useRef<AbortController | null>(null);
   const reload = useCallback(() => setVersion(value => value + 1), []);
-  const update = useCallback((apply: (previous: T) => T) => setData(previous => previous === null ? null : apply(previous)), []);
+  const update = useCallback((apply: (previous: T) => T) => {
+    // A reopened detail may still be reading a snapshot from before the write.
+    if (pendingRead.current) { pendingRead.current.abort(); reload(); }
+    else setData(previous => previous === null ? null : apply(previous));
+  }, [reload]);
   useEffect(() => {
     setData(null); setError('');
     if (!path) return;
     const controller = new AbortController();
-    api<T>(path, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setData(value); }).catch(error => { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Unable to load details'); });
-    return () => controller.abort();
+    pendingRead.current = controller;
+    api<T>(path, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) { pendingRead.current = null; setData(value); } }).catch(error => { if (!controller.signal.aborted) { pendingRead.current = null; setError(error instanceof Error ? error.message : 'Unable to load details'); } });
+    return () => { controller.abort(); if (pendingRead.current === controller) pendingRead.current = null; };
   }, [path, version, revision]);
   return { data, error, reload, update };
 }

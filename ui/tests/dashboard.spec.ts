@@ -1023,6 +1023,190 @@ test('parallel reviews survive refresh, retry independently, and stay isolated a
   expect(writes).toEqual({ q0050: 1, q0051: 2, q0052: 1 });
 });
 
+for (const outcome of ['success', 'failure'] as const) {
+  test(`reopened pending review ${outcome} retains ownership, feedback, and focus`, async ({ page }) => {
+    const state = await harness(page);
+    state.record.labels = [{ key: 'department', label: 'unknown' }];
+    let finish!: () => void, writes = 0;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    await page.route('**/api/requests/request-one/label', async route => {
+      writes += 1;
+      if (writes === 1) {
+        await pending;
+        if (outcome === 'failure') return route.fulfill({ status: 503, json: { error: 'Review could not be stored' } });
+      }
+      const { key, label } = route.request().postDataJSON();
+      state.record.labels = [{ key, label }];
+      return route.fulfill({ json: { ok: true } });
+    });
+    const opener = page.getByLabel('Inspect request request-one', { exact: true });
+    await opener.click();
+    const drawer = page.getByRole('dialog'), review = drawer.getByLabel('Review department');
+    await review.selectOption('correct');
+    await expect(review).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Escape');
+    await expect(opener).toBeFocused();
+    await opener.press('Enter');
+    await expect(review).toHaveAttribute('aria-disabled', 'true');
+    await expect(review).toHaveValue('correct');
+    await expect(drawer.getByText('Saving…', { exact: true })).toBeVisible();
+    await review.focus();
+    await review.press('ArrowDown');
+    await expect(review).toHaveValue('correct');
+    // Exercise a stale change event too; Playwright refuses aria-disabled selects.
+    await review.evaluate(select => { (select as HTMLSelectElement).value = 'incorrect'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(writes).toBe(1);
+    finish();
+    await expect(drawer.getByText(outcome === 'success' ? 'Saved' : 'Review could not be stored', { exact: true })).toBeVisible();
+    await expect(review).toHaveValue(outcome === 'success' ? 'correct' : 'unknown');
+    await expect(review).toHaveAttribute('aria-disabled', 'false');
+    await expect(review).toBeFocused();
+    if (outcome === 'failure') {
+      await review.selectOption('correct');
+      await expect(drawer.getByText('Saved', { exact: true })).toBeVisible();
+      await expect(drawer.getByRole('alert')).toHaveCount(0);
+      expect(writes).toBe(2);
+    }
+    // Settled feedback expires on leaving, while the persisted label remains.
+    await page.keyboard.press('Escape');
+    await opener.press('Enter');
+    await expect(review).toHaveValue('correct');
+    await expect(drawer.getByText('Saved', { exact: true })).toHaveCount(0);
+    await expect(drawer.getByRole('alert')).toHaveCount(0);
+  });
+}
+
+test('reopened pending review aborts a pre-save detail snapshot before it can replace the committed label', async ({ page }) => {
+  const state = await harness(page);
+  state.record.labels = [{ key: 'department', label: 'unknown' }];
+  let finishReview!: () => void, finishDetail!: () => void;
+  const reviewing = new Promise<void>(resolve => { finishReview = resolve; });
+  const reading = new Promise<void>(resolve => { finishDetail = resolve; });
+  let reopened = false, staleReads = 0, freshReads = 0, committed = false, writes = 0;
+  await page.route('**/api/requests/request-one', async route => {
+    const snapshot = structuredClone(state.record);
+    if (reopened && !committed) { staleReads += 1; await reading; }
+    else if (committed) freshReads += 1;
+    await route.fulfill({ json: snapshot });
+  });
+  await page.route('**/api/requests/request-one/label', async route => {
+    writes += 1; await reviewing;
+    state.record.labels = [{ key: 'department', label: 'correct' }]; committed = true;
+    await route.fulfill({ json: { ok: true } });
+  });
+  const opener = page.getByLabel('Inspect request request-one', { exact: true });
+  await opener.click();
+  await page.getByLabel('Review department').selectOption('correct');
+  await page.keyboard.press('Escape');
+  reopened = true;
+  await opener.click();
+  await expect.poll(() => staleReads).toBeGreaterThan(0);
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Loading request');
+  finishReview();
+  await expect.poll(() => freshReads).toBe(1);
+  await expect(page.getByLabel('Review department')).toHaveValue('correct');
+  await expect(page.getByRole('dialog').getByText('Saved', { exact: true })).toBeVisible();
+  finishDetail();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.getByLabel('Review department')).toHaveValue('correct');
+  expect(writes).toBe(1);
+});
+
+for (const outcome of ['success', 'failure'] as const) {
+  test(`closed review ${outcome} leaves another request independently editable and drops inactive feedback`, async ({ page }) => {
+    const state = await harness(page);
+    state.record.labels = [{ key: 'department', label: 'unknown' }];
+    const other = { ...structuredClone(state.record), id: 'request-failed' };
+    let finish!: () => void, firstWrites = 0, otherWrites = 0;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    await page.route('**/api/requests/request-failed', route => route.fulfill({ json: other }));
+    await page.route('**/api/requests/request-failed/label', async route => {
+      otherWrites += 1; other.labels = [{ key: 'department', label: 'incorrect' }];
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.route('**/api/requests/request-one/label', async route => {
+      firstWrites += 1; await pending;
+      if (outcome === 'failure') return route.fulfill({ status: 503, json: { error: 'First review could not be stored' } });
+      state.record.labels = [{ key: 'department', label: 'correct' }];
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    await page.getByLabel('Review department').selectOption('correct');
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Inspect request request-failed', { exact: true }).click();
+    const drawer = page.getByRole('dialog'), review = drawer.getByLabel('Review department');
+    await expect(review).toHaveAttribute('aria-disabled', 'false');
+    await review.selectOption('incorrect');
+    await expect(drawer.getByText('Saved', { exact: true })).toBeVisible();
+    const settled = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname === '/api/requests/request-one/label');
+    finish(); await settled;
+    await expect(review).toHaveValue('incorrect');
+    await expect(drawer.getByRole('alert')).toHaveCount(0);
+    await expect(drawer.locator('.request-detail-id')).toContainText('request-failed');
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    await expect(review).toHaveValue(outcome === 'success' ? 'correct' : 'unknown');
+    await expect(review).toHaveAttribute('aria-disabled', 'false');
+    await expect(drawer.getByText('Saved', { exact: true })).toHaveCount(0);
+    await expect(drawer.getByRole('alert')).toHaveCount(0);
+    expect([firstWrites, otherWrites]).toEqual([1, 1]);
+  });
+}
+
+test('reopened review completion preserves a deleted request error without resurrecting the row', async ({ page }) => {
+  const state = await harness(page);
+  let finish!: () => void, writes = 0, deleted = false;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  await page.route('**/api/requests/request-one', route => deleted ? route.fulfill({ status: 404, json: { error: 'Record not found' } }) : route.fulfill({ json: state.record }));
+  await page.route('**/api/requests/request-one/label', async route => { writes += 1; await pending; await route.fulfill({ json: { ok: true } }); });
+  const opener = page.getByLabel('Inspect request request-one', { exact: true });
+  await opener.click();
+  await page.getByLabel('Review department').selectOption('correct');
+  await page.keyboard.press('Escape');
+  deleted = true; // Another client deleted history after the save committed but before its response arrived.
+  await opener.click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer.getByRole('alert')).toContainText('Record not found');
+  const settled = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname.endsWith('/label'));
+  finish(); await settled;
+  await expect(drawer.getByRole('alert')).toContainText('Record not found');
+  await expect(drawer.locator('.answer-card')).toHaveCount(0);
+  expect(writes).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(opener).toBeFocused();
+});
+
+test('reopened review completion preserves a detail timeout and Retry reads the saved label without retrying the write', async ({ page }) => {
+  const state = await harness(page);
+  let finish!: () => void, finishRead!: () => void, writes = 0, hang = false, delayedReads = 0;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const reading = new Promise<void>(resolve => { finishRead = resolve; });
+  await page.route('**/api/requests/request-one', async route => { if (hang) { delayedReads += 1; await reading; } await route.fulfill({ json: state.record }); });
+  await page.route('**/api/requests/request-one/label', async route => { writes += 1; await pending; state.record.labels = [{ key: 'department', label: 'correct' }]; await route.fulfill({ json: { ok: true } }); });
+  const opener = page.getByLabel('Inspect request request-one', { exact: true });
+  await opener.click();
+  await page.getByLabel('Review department').selectOption('correct');
+  await page.keyboard.press('Escape');
+  await page.clock.install();
+  hang = true;
+  await opener.click();
+  await page.clock.runFor(500);
+  await expect.poll(() => delayedReads).toBeGreaterThan(0);
+  await page.clock.runFor(15_001);
+  const drawer = page.getByRole('dialog');
+  await expect(drawer.getByRole('alert')).toContainText('Request timed out');
+  const settled = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname.endsWith('/label'));
+  finish(); await settled;
+  await expect(drawer.getByRole('alert')).toContainText('Request timed out');
+  expect(writes).toBe(1);
+  hang = false;
+  await drawer.getByRole('button', { name: 'Retry' }).click();
+  await expect(page.getByLabel('Review department')).toHaveValue('correct');
+  await expect(drawer.getByText('Saved', { exact: true })).toBeVisible();
+  finishRead();
+  expect(writes).toBe(1);
+});
+
 test('imported actions and unknown transport facts stay distinct', async ({ page }) => {
   const state = await harness(page);
   state.record = { ...state.record, timestamp: null, imported_at: now, timestamp_basis: 'import', event_kind: 'application_action', status: null, duration_ms: null, model: null, input_tokens: null, output_tokens: null, cost_usd: null, actions: [{ kind: 'cache_reuse', source: 'import' }] };
