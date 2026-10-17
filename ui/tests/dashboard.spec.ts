@@ -623,6 +623,36 @@ test('delete and import replace paused history without resuming live updates', a
   await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
 });
 
+test('import files preserve valid Unicode and reject invalid UTF-8 without substituting bytes', async ({ page }) => {
+  await harness(page);
+  const imports: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/import') imports.push(request.postDataJSON().text);
+  });
+  await page.getByRole('button', { name: 'Import records', exact: true }).click();
+  const input = page.getByLabel('Choose import file');
+  const text = page.getByLabel('Or paste records');
+  const submit = page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true });
+  const unicode = JSON.stringify({ source: '한글 café 😀 �' });
+  await input.setInputFiles({ name: 'unicode.jsonl', mimeType: 'application/json', buffer: Buffer.from('\uFEFF' + unicode) });
+  await expect(text).toHaveValue(unicode);
+  await submit.click();
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('2 records imported');
+  expect(imports).toEqual([unicode]);
+
+  const invalid = Buffer.concat([Buffer.from('{"source":"'), Buffer.from([0xff]), Buffer.from('"}')]);
+  await input.setInputFiles({ name: 'invalid.jsonl', mimeType: 'application/json', buffer: invalid });
+  await expect(page.getByRole('alert')).toContainText('not valid UTF-8');
+  await expect(text).toHaveValue('');
+  await expect(submit).toBeDisabled();
+  expect(imports).toEqual([unicode]);
+
+  await input.setInputFiles({ name: 'unicode.jsonl', mimeType: 'application/json', buffer: Buffer.from(unicode) });
+  await expect(text).toHaveValue(unicode);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(submit).toBeEnabled();
+});
+
 test('an invalid replacement import file cannot submit the previous contents', async ({ page }) => {
   await harness(page);
   await page.getByRole('button', { name: 'Import records', exact: true }).click();
@@ -638,7 +668,7 @@ test('an invalid replacement import file cannot submit the previous contents', a
   await text.fill('{"pasted":true}');
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(submit).toBeEnabled();
-  await page.evaluate(() => { File.prototype.text = () => Promise.reject(new Error('Unavailable file')); });
+  await page.evaluate(() => { File.prototype.arrayBuffer = () => Promise.reject(new Error('Unavailable file')); });
   await input.setInputFiles({ name: 'unreadable.jsonl', mimeType: 'application/json', buffer: Buffer.from('unreadable') });
   await expect(page.getByRole('alert')).toContainText('could not be read');
   await expect(text).toHaveValue('');
@@ -649,9 +679,9 @@ test('late file reads cannot overwrite a newer file or pasted import text', asyn
   await harness(page);
   await page.getByRole('button', { name: 'Import records', exact: true }).click();
   await page.evaluate(() => {
-    const pending: Record<string, (text: string) => void> = {};
-    (window as unknown as { finishImportRead: (name: string, text: string) => void }).finishImportRead = (name, text) => pending[name](text);
-    File.prototype.text = function () { return new Promise<string>(resolve => { pending[this.name] = resolve; }); };
+    const pending: Record<string, (buffer: ArrayBuffer) => void> = {};
+    (window as unknown as { finishImportRead: (name: string, text: string) => void }).finishImportRead = (name, text) => pending[name](new TextEncoder().encode(text).buffer);
+    File.prototype.arrayBuffer = function () { return new Promise<ArrayBuffer>(resolve => { pending[this.name] = resolve; }); };
   });
   const input = page.getByLabel('Choose import file');
   const text = page.getByLabel('Or paste records');

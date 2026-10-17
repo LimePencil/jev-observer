@@ -170,7 +170,12 @@ function ImportDetails({ changed, initialFormat }: { changed: () => void; initia
     setText(''); setFilename(file.name); setReading(false); setError(''); setResult(null);
     if (file.size > maxBytes) { setError('Choose a file no larger than 8 MiB. Split larger histories into separate imports.'); return; }
     setReading(true);
-    try { const value = await file.text(); if (revision === inputRevision.current) setText(value); }
+    try {
+      const buffer = await file.arrayBuffer();
+      if (revision !== inputRevision.current) return;
+      try { setText(new TextDecoder('utf-8', { fatal: true }).decode(buffer)); }
+      catch { setError('This file is not valid UTF-8. Save it as UTF-8 and try again.'); }
+    }
     catch { if (revision === inputRevision.current) setError('This file could not be read.'); }
     finally { if (revision === inputRevision.current) setReading(false); }
   }
