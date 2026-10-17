@@ -678,7 +678,34 @@ impl Store {
                 "DELETE FROM requests WHERE timestamp < ?",
                 [now - i64::from(self.retention_days) * 86_400_000],
             )?;
-            let excess = tx.execute("DELETE FROM requests WHERE seq <= COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?),-1)", [self.max_records as i64])?;
+            // Distinct positive row IDs cannot outnumber their inclusive span.
+            // Two endpoint lookups avoid walking the whole retained history
+            // when it is provably within the cap. Gaps only widen this bound;
+            // larger spans and legacy nonpositive IDs keep the exact query.
+            let within_cap = match tx
+                .query_row("SELECT seq FROM requests ORDER BY seq LIMIT 1", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .optional()?
+            {
+                None => true,
+                Some(first) if first > 0 => {
+                    let last: i64 = tx.query_row(
+                        "SELECT seq FROM requests ORDER BY seq DESC LIMIT 1",
+                        [],
+                        |row| row.get(0),
+                    )?;
+                    last.checked_sub(first)
+                        .and_then(|span| span.checked_add(1))
+                        .is_some_and(|span| span <= self.max_records as i64)
+                }
+                Some(_) => false,
+            };
+            let excess = if within_cap {
+                0
+            } else {
+                tx.execute("DELETE FROM requests WHERE seq <= COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?),-1)", [self.max_records as i64])?
+            };
             // Parent/answer/group writes and cascading deletions are atomic.
             // A periodic pass that removed no parents cannot orphan a group.
             // Forced startup maintenance still repairs pre-existing orphans.

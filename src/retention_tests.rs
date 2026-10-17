@@ -65,8 +65,7 @@ fn assert_no_orphans(connection: &Connection) {
     );
 }
 
-#[test]
-fn no_parent_deletions_bound_group_work_and_complete_maintenance() {
+fn measured_maintenance(store: &Store, connection: &mut Connection) -> (bool, i64) {
     #[derive(Default)]
     struct Work {
         steps: i64,
@@ -96,15 +95,6 @@ fn no_parent_deletions_bound_group_work_and_complete_maintenance() {
         }
         0
     }
-    let dir = tempfile::tempdir().unwrap();
-    let store = Store::open(&dir.path().join("unchanged.sqlite"), 7, 100).unwrap();
-    let mut connection = store.writer_connection().unwrap();
-    let now = Utc::now().timestamp_millis();
-    let records = (0..16)
-        .map(|index| record(&index.to_string(), now, 256))
-        .collect::<Vec<_>>();
-    store.write_batch(&mut connection, &records).unwrap();
-    make_due(&connection);
     let mut work = Work::default();
     // The connection outlives the guard. Remove the callback before accessing
     // its stack context, including when maintenance returns an error.
@@ -118,13 +108,27 @@ fn no_parent_deletions_bound_group_work_and_complete_maintenance() {
         );
     }
     let trace = Trace(handle);
-    let result = store.maintenance(&mut connection, false);
+    let result = store.maintenance(connection, false);
     drop(trace);
-    assert!(result.unwrap());
+    (result.unwrap(), work.steps)
+}
+
+#[test]
+fn no_parent_deletions_bound_group_work_and_complete_maintenance() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("unchanged.sqlite"), 7, 100).unwrap();
+    let mut connection = store.writer_connection().unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records = (0..16)
+        .map(|index| record(&index.to_string(), now, 256))
+        .collect::<Vec<_>>();
+    store.write_batch(&mut connection, &records).unwrap();
+    make_due(&connection);
+    let (ran, steps) = measured_maintenance(&store, &mut connection);
+    assert!(ran);
     assert!(
-        (1..2_000).contains(&work.steps),
-        "No-op maintenance used {} VM steps",
-        work.steps
+        (1..2_000).contains(&steps),
+        "No-op maintenance used {steps} VM steps"
     );
     assert_eq!(counts(&connection), [16, 4096, 4096, 4096]);
     let completed = last_pruned(&connection);
@@ -244,6 +248,91 @@ fn failed_group_cleanup_rolls_back_parent_children_and_bookkeeping() {
         assert!(store.request("old").unwrap().is_none());
         assert!(store.request("new").unwrap().is_some());
         assert!(last_pruned(&connection) > 0);
+        assert_no_orphans(&connection);
+    }
+}
+
+#[test]
+fn below_cap_maintenance_does_not_walk_the_parent_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(&dir.path().join("below-cap.sqlite"), 7, 8192).unwrap();
+    let mut connection = store.writer_connection().unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records = (0..4096)
+        .map(|index| record(&index.to_string(), now, 0))
+        .collect::<Vec<_>>();
+    store.write_batch(&mut connection, &records).unwrap();
+    for cap in [8192, 4096] {
+        store.max_records = cap;
+        make_due(&connection);
+        let (ran, steps) = measured_maintenance(&store, &mut connection);
+        assert!(ran);
+        assert!(
+            (1..1_000).contains(&steps),
+            "Within-cap maintenance used {steps} VM steps at cap {cap}"
+        );
+        assert_eq!(counts(&connection), [4096, 0, 0, 0]);
+        assert!(last_pruned(&connection) >= now);
+    }
+}
+
+#[test]
+fn count_retention_handles_sparse_and_extreme_row_ids() {
+    for sequences in [
+        vec![1, 3],
+        vec![1, 3, 100],
+        vec![1, i64::MAX],
+        vec![i64::MAX - 1, i64::MAX],
+        vec![i64::MAX - 2, i64::MAX - 1, i64::MAX],
+        vec![-1, 0],
+        vec![-5, -1, 2],
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("sparse-sequences.sqlite"), 7, 2).unwrap();
+        let mut connection = store.writer_connection().unwrap();
+        let now = Utc::now().timestamp_millis();
+        let records = (0..sequences.len())
+            .map(|index| record(&index.to_string(), now, 1))
+            .collect::<Vec<_>>();
+        store.write_batch(&mut connection, &records).unwrap();
+        // Move away from the initially assigned positive IDs before assigning
+        // sparse/legacy/extreme values. Children refer to request IDs, not seq.
+        connection
+            .execute("UPDATE requests SET seq=-seq-100", [])
+            .unwrap();
+        for (index, seq) in sequences.iter().enumerate() {
+            connection
+                .execute(
+                    "UPDATE requests SET seq=? WHERE id=?",
+                    params![seq, index.to_string()],
+                )
+                .unwrap();
+        }
+        let cutoff: i64 = connection
+            .query_row(
+                "SELECT COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET 2),-1)",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let expected = sequences
+            .iter()
+            .enumerate()
+            .filter(|(_, seq)| **seq > cutoff)
+            .map(|(index, _)| index.to_string())
+            .collect::<Vec<_>>();
+        make_due(&connection);
+        assert!(store.maintenance(&mut connection, false).unwrap());
+        let actual = connection
+            .prepare("SELECT id FROM requests ORDER BY seq")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(actual, expected, "sequences={sequences:?}");
+        let kept = expected.len() as i64;
+        assert_eq!(counts(&connection), [kept, kept, kept, kept]);
         assert_no_orphans(&connection);
     }
 }
