@@ -238,6 +238,55 @@ for (const { name, latency, delay, failed } of [
   });
 }
 
+for (const endpoint of ['dashboard', 'health'] as const) {
+  test(`a stalled ${endpoint} read times out and polling recovers independently`, async ({ page }) => {
+    await page.clock.install({ time: new Date(now) });
+    await page.clock.pauseAt(new Date(now + 1000));
+    const state = await harness(page);
+    state.dashboard.health = { ...state.dashboard.health, process_id: 'timeout-test', sample_sequence: 1 };
+    const oldDashboard = structuredClone(state.dashboard);
+    const newHealth = { ...state.dashboard.health, sample_sequence: 2, dropped: 11 };
+    const recoveredDashboard = { ...structuredClone(state.dashboard), requests: [{ ...record, id: 'after-timeout' }] };
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    let started = 0;
+    await page.route(endpoint === 'dashboard' ? '**/api/dashboard?**' : '**/api/health', async route => {
+      started += 1;
+      if (started === 1) {
+        await pending;
+        await route.fulfill({ json: endpoint === 'dashboard' ? oldDashboard : oldDashboard.health });
+      } else await route.fulfill({ json: endpoint === 'dashboard' ? recoveredDashboard : newHealth });
+    });
+    if (endpoint === 'dashboard') await page.route('**/api/health', route => route.fulfill({ json: newHealth }));
+    else state.dashboard.requests = recoveredDashboard.requests;
+
+    try {
+      await page.clock.runFor(1000);
+      await expect.poll(() => started).toBe(1);
+      // The other endpoint continues updating while this request is stalled.
+      if (endpoint === 'dashboard') await expect(page.locator('.health-fields').getByText('11', { exact: true })).toBeVisible();
+      else await expect(page.getByLabel('Inspect request after-timeout')).toBeVisible();
+      await page.clock.runFor(14_999);
+      expect(started).toBe(1);
+      await page.clock.runFor(1);
+      if (endpoint === 'dashboard') {
+        await expect(page.getByRole('alert')).toContainText('Request timed out after 15 seconds');
+        await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeVisible();
+      }
+      await page.clock.runFor(1000);
+      await expect.poll(() => started).toBe(2);
+      if (endpoint === 'dashboard') {
+        await expect(page.getByLabel('Inspect request after-timeout')).toBeVisible();
+        await expect(page.getByRole('alert')).toHaveCount(0);
+      } else await expect(page.locator('.health-fields').getByText('11', { exact: true })).toBeVisible();
+      release();
+      // A late response from the abandoned read must not replace recovered data.
+      if (endpoint === 'dashboard') await expect(page.getByLabel('Inspect request request-one', { exact: true })).toHaveCount(0);
+      else await expect(page.locator('.health-fields').getByText('11', { exact: true })).toBeVisible();
+    } finally { release(); }
+  });
+}
+
 test('request labels persist through API and versions remain separate', async ({ page }) => {
   const state = await harness(page);
   await page.getByLabel('Inspect request request-one', { exact: true }).click();
@@ -252,6 +301,33 @@ test('request labels persist through API and versions remain separate', async ({
   await expect(page.getByText('Presentation: 2222222222')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('a stalled detail read offers Retry and recovers', async ({ page }) => {
+  await page.clock.install({ time: new Date(now) });
+  await harness(page);
+  // Load the lazy drawer before freezing timers used by React Suspense.
+  await page.getByLabel('Inspect request request-one', { exact: true }).click();
+  await expect(page.getByLabel('Review department')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let stalled = true;
+  await page.route('**/api/requests/request-one', async route => {
+    if (stalled) await pending;
+    await route.fulfill({ json: record });
+  });
+  try {
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('Loading request');
+    await page.clock.runFor(15_000);
+    await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Request timed out after 15 seconds');
+    stalled = false;
+    await page.getByRole('dialog').getByRole('button', { name: 'Retry' }).click();
+    await expect(page.getByRole('dialog')).toContainText('Test inbox');
+    await expect(page.getByRole('dialog').getByRole('alert')).toHaveCount(0);
+  } finally { release(); }
 });
 
 test('storage failures leave independent capture gaps visible', async ({ page }) => {
