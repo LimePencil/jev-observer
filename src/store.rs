@@ -998,6 +998,9 @@ impl Store {
         };
         let (start, end) = if let Some(period) = period.filter(|_| !custom) {
             (now.saturating_sub(period), now)
+        } else if let (Some(start), Some(end)) = (filter.from, filter.to) {
+            // Explicit limits already determine both bounds; history cannot change them.
+            (start, end.max(start))
         } else {
             let (first, last): (Option<i64>, Option<i64>) = conn.query_row(
                 &format!("SELECT min(timestamp),max(timestamp) FROM requests r INDEXED BY request_dashboard WHERE {predicate} AND event_kind='request' AND json_extract(data,'$.timestamp') IS NOT NULL"),
