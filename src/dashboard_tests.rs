@@ -284,7 +284,7 @@ fn filtered_request_pages_bound_query_work_and_keep_small_selections_direct() {
             let prefix = if index % 2 == 0 { "match" } else { "other" };
             // Groups of eight requests share timestamps; sequence must keep
             // ties stable when the cursor lands inside one of those groups.
-            let sparse = if index % 2 == 0 && (index >= 3896 || index < 4) {
+            let sparse = if index % 2 == 0 && !(4..3896).contains(&index) {
                 "sparse-"
             } else {
                 ""
