@@ -147,12 +147,24 @@ impl TimelineSpec {
 }
 
 fn plaintext_database(path: &Path) -> Result<bool> {
-    let mut file = match std::fs::File::open(path) {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Follow supported database symlinks, but never wait for a FIFO writer.
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let mut file = match options.open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error).context("Inspect existing history"),
     };
-    if file.metadata()?.len() == 0 {
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
+        bail!("History database must be a regular file");
+    }
+    if metadata.len() == 0 {
         return Ok(false);
     }
     let mut header = [0_u8; 16];
@@ -350,7 +362,12 @@ impl Store {
             max_records,
         };
         let existing = match std::fs::metadata(path) {
-            Ok(metadata) => metadata.len() > 0,
+            Ok(metadata) => {
+                if !metadata.file_type().is_file() {
+                    bail!("History database must be a regular file");
+                }
+                metadata.len() > 0
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
             Err(error) => return Err(error).context("Inspect existing history before opening"),
         };
@@ -373,7 +390,13 @@ impl Store {
                 .create(true)
                 .truncate(false)
                 .mode(0o600)
+                .custom_flags(libc::O_NONBLOCK)
                 .open(path)?;
+            // Recheck the opened descriptor before chmod if the path changed
+            // after the preflight. Regular database symlinks remain supported.
+            if !file.metadata()?.file_type().is_file() {
+                bail!("History database must be a regular file");
+            }
             file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
             // Existing journals may have arrived with permissive backup modes.
             // SQLite does not tighten their modes when the main file changes.
@@ -1800,15 +1823,105 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn named_pipe_database_is_rejected_before_io_or_permission_changes() {
+        const CHILD_PATH: &str = "JEV_OBSERVER_DATABASE_FIFO_TEST_PATH";
+        const CHILD_MODE: &str = "JEV_OBSERVER_DATABASE_FIFO_TEST_MODE";
+        if let Some(path) = std::env::var_os(CHILD_PATH) {
+            let result = if std::env::var(CHILD_MODE).unwrap() == "live" {
+                Store::open_encrypted(Path::new(&path), "c".repeat(64), 7, 100)
+            } else {
+                Store::open_demo(Path::new(&path), 7, 100)
+            };
+            let error = result.err().expect("Named-pipe database was accepted");
+            assert!(error.to_string().contains("regular file"), "{error:#}");
+            return;
+        }
+        use std::{
+            ffi::CString,
+            os::unix::{
+                ffi::OsStrExt,
+                fs::{PermissionsExt, symlink},
+            },
+            process::{Command, Stdio},
+            time::{Duration, Instant},
+        };
+        for mode in ["live", "demo"] {
+            for linked in [false, true] {
+                let directory = tempfile::tempdir().unwrap();
+                let target = directory.path().join("history.pipe");
+                let name = CString::new(target.as_os_str().as_bytes()).unwrap();
+                assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+                std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+                let path = if linked {
+                    let link = directory.path().join("history.sqlite");
+                    symlink(&target, &link).unwrap();
+                    link
+                } else {
+                    target.clone()
+                };
+                // A blocking open must fail this test rather than strand a test
+                // thread. No writer is ever attached to either FIFO path.
+                let mut child = Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "store::tests::named_pipe_database_is_rejected_before_io_or_permission_changes",
+                    ])
+                    .env(CHILD_PATH, &path)
+                    .env(CHILD_MODE, mode)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .unwrap();
+                let started = Instant::now();
+                loop {
+                    if let Some(status) = child.try_wait().unwrap() {
+                        assert_eq!(
+                            std::fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+                            0o640,
+                            "{mode} changed named-pipe permissions (linked={linked})"
+                        );
+                        assert!(
+                            status.success(),
+                            "{mode} accepted a non-file (linked={linked})"
+                        );
+                        if linked {
+                            assert!(path.is_symlink());
+                        }
+                        break;
+                    }
+                    if started.elapsed() > Duration::from_secs(2) {
+                        child.kill().unwrap();
+                        child.wait().unwrap();
+                        panic!("{mode} named-pipe database blocked startup (linked={linked})");
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn plaintext_migration_follows_database_symlink_without_leaving_target_plaintext() {
         use std::os::unix::fs::symlink;
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("target.sqlite");
         let link = directory.path().join("history.sqlite");
-        Store::open(&target, 7, 100).unwrap();
+        let plain = Store::open(&target, 7, 100).unwrap();
+        plain
+            .write_batch(
+                &mut plain.writer_connection().unwrap(),
+                &[record("before-migration")],
+            )
+            .unwrap();
+        drop(plain);
         symlink(&target, &link).unwrap();
-        Store::open_encrypted(&link, "c".repeat(64), 7, 100).unwrap();
+        let encrypted = Store::open_encrypted(&link, "c".repeat(64), 7, 100).unwrap();
+        assert!(encrypted.request("before-migration").unwrap().is_some());
+        drop(encrypted);
         assert!(!plaintext_database(&target).unwrap());
+        let reopened = Store::open_encrypted(&link, "c".repeat(64), 7, 100).unwrap();
+        assert!(reopened.request("before-migration").unwrap().is_some());
         assert!(link.is_symlink());
     }
 
