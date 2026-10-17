@@ -95,6 +95,8 @@ struct TimelineBucket {
 }
 
 const DASHBOARD_SELECTION: &str = "r.seq IN (SELECT seq FROM temp.dashboard_request_ids)";
+const GROUP_SELECTION: &str = "r.seq IN (SELECT seq FROM temp.group_request_ids)";
+const GROUP_TIMELINE_SELECTION: &str = "r.timestamp BETWEEN (SELECT min(timestamp) FROM temp.group_request_ids) AND (SELECT max(timestamp) FROM temp.group_request_ids) AND r.seq IN (SELECT seq FROM temp.group_request_ids)";
 const FAILED: &str = "(r.status>=400 OR json_extract(r.data,'$.transport_error') IS NOT NULL)";
 const DASHBOARD_INDEX: &str = "CREATE INDEX request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id,json_extract(data,'$.transport_error'))";
 
@@ -979,17 +981,89 @@ impl Store {
         Ok(Some(result))
     }
 
-    fn group_summary(conn: &Connection, id: &str, filter: &Filter) -> Result<Option<Value>> {
-        let Some(mut result) = Self::group_metadata(conn, id)? else {
-            return Ok(None);
-        };
+    // These conservative cutoffs are planning heuristics, not result limits.
+    // Inspect at most 16,384 covering-index entries per source/model scope,
+    // independently, without parsing saved bodies. Small date/filter scopes
+    // keep the original plan; otherwise consider at most a quarter of their
+    // candidates, capped at 4,096 group answers. Residual search/error/group
+    // predicates do not provide a narrower indexed parent entry point.
+    fn group_lookup_limit(conn: &Connection, filter: &Filter) -> Result<usize> {
+        let mut scopes = Vec::new();
+        for (field, value, index) in [
+            ("source", &filter.source, "request_source_time"),
+            ("model", &filter.model, "request_model_time"),
+        ] {
+            if let Some(value) = value.as_ref().filter(|value| !value.is_empty()) {
+                scopes.push((Some((field, value)), index));
+            }
+        }
+        if scopes.is_empty() {
+            scopes.push((None, "request_time"));
+        }
+        let mut candidates = 16_384_i64;
+        for (selection, index) in scopes {
+            let mut scope = filter.clone();
+            scope.source = None;
+            scope.model = None;
+            scope.search = None;
+            scope.status = None;
+            scope.group = None;
+            if let Some((field, value)) = selection {
+                if field == "source" {
+                    scope.source = Some(value.clone());
+                } else {
+                    scope.model = Some(value.clone());
+                }
+            }
+            let (predicate, args) = Self::predicate(&scope)?;
+            let count: i64 = conn.query_row(
+                &format!("SELECT count(*) FROM (SELECT 1 FROM requests r INDEXED BY {index} WHERE {predicate} LIMIT 16384)"),
+                params_from_iter(args), |row| row.get(0),
+            )?;
+            candidates = candidates.min(count);
+            if candidates < 512 {
+                return Ok(0);
+            }
+        }
+        Ok((candidates / 4).min(4096) as usize)
+    }
+
+    fn group_has_small_membership(conn: &Connection, id: &str, limit: usize) -> Result<bool> {
+        if limit == 0 {
+            return Ok(false);
+        }
+        // An OFFSET existence probe needs at most limit+1 answer entries; an
+        // exact count would do more work. Answers conservatively bound distinct
+        // parents, including families with several answers from one request.
+        let oversized: bool = conn.query_row(
+            &format!("SELECT EXISTS(SELECT 1 FROM groups g CROSS JOIN answers a ON a.group_id=g.id WHERE g.id=? OR g.family_id=? LIMIT 1 OFFSET {limit})"),
+            params![id, id], |row| row.get(0),
+        )?;
+        Ok(!oversized)
+    }
+
+    fn group_answer_join(group_first: bool) -> &'static str {
+        if group_first {
+            "FROM groups g CROSS JOIN answers a ON a.group_id=g.id CROSS JOIN requests r ON r.id=a.request_id"
+        } else {
+            "FROM answers a JOIN requests r ON r.id=a.request_id JOIN groups g ON g.id=a.group_id"
+        }
+    }
+
+    fn group_summary(
+        conn: &Connection,
+        id: &str,
+        filter: &Filter,
+        lookup_limit: usize,
+        mut result: Value,
+    ) -> Result<(Value, bool)> {
         let family = result["is_family"].as_bool().unwrap_or(false);
         let (predicate, mut args) = Self::predicate(filter)?;
         let selector = if family { "g.family_id=?" } else { "g.id=?" };
         args.push(id.to_owned().into());
-        let from = format!(
-            "FROM answers a JOIN requests r ON r.id=a.request_id JOIN groups g ON g.id=a.group_id WHERE {predicate} AND {selector}"
-        );
+        let group_first = Self::group_has_small_membership(conn, id, lookup_limit)?;
+        let answer_join = Self::group_answer_join(group_first);
+        let from = format!("{answer_join} WHERE {predicate} AND {selector}");
         let (count,valid,requests,last,mean,confidence): (i64,i64,i64,Option<i64>,Option<f64>,Option<f64>) = conn.query_row(&format!("SELECT count(*),coalesce(sum(a.valid),0),count(DISTINCT r.id),max(r.timestamp),avg(CASE WHEN a.valid THEN a.value_num END),avg(CASE WHEN a.valid THEN a.confidence END) {from}"), params_from_iter(&args), |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))?;
         result["answer_count"] = json!(count);
         result["valid_count"] = json!(valid);
@@ -997,10 +1071,13 @@ impl Store {
         result["last_seen"] = json!(last);
         result["mean_value"] = json!(mean);
         result["mean_confidence"] = json!(confidence);
-        result
-            .as_object_mut()
-            .unwrap()
-            .extend(Self::group_metrics(conn, id, family, filter)?);
+        result.as_object_mut().unwrap().extend(Self::group_metrics(
+            conn,
+            id,
+            family,
+            filter,
+            group_first,
+        )?);
         let kind = text(&result, "kind");
         let expression = match kind.as_str() {
             "choice" => "a.value_text",
@@ -1017,7 +1094,7 @@ impl Store {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         result["distribution"] = json!(distribution);
-        Ok(Some(result))
+        Ok((result, group_first))
     }
 
     fn group_metrics(
@@ -1025,6 +1102,7 @@ impl Store {
         id: &str,
         family: bool,
         filter: &Filter,
+        group_first: bool,
     ) -> Result<serde_json::Map<String, Value>> {
         let (predicate, mut args) = Self::predicate(filter)?;
         args.push(id.to_owned().into());
@@ -1093,8 +1171,9 @@ impl Store {
         };
         // Labels are unique by (request_id,key), so this join preserves answer
         // multiplicity while computing reviews and warnings in the same pass.
+        let answer_join = Self::group_answer_join(group_first);
         let answer_metrics: Value = conn.query_row(
-            &format!("SELECT coalesce(sum(coalesce(json_array_length(json_extract(a.data,'$.warnings')),0)>0),0),coalesce(sum(l.label='correct'),0),coalesce(sum(l.label='incorrect'),0),coalesce(sum(l.label='unknown'),0),coalesce(sum(l.label IS NULL),0) FROM answers a JOIN requests r ON r.id=a.request_id JOIN groups g ON g.id=a.group_id LEFT JOIN labels l ON l.request_id=a.request_id AND l.key=a.key WHERE {predicate} AND {selector}"),
+            &format!("SELECT coalesce(sum(coalesce(json_array_length(json_extract(a.data,'$.warnings')),0)>0),0),coalesce(sum(l.label='correct'),0),coalesce(sum(l.label='incorrect'),0),coalesce(sum(l.label='unknown'),0),coalesce(sum(l.label IS NULL),0) {answer_join} LEFT JOIN labels l ON l.request_id=a.request_id AND l.key=a.key WHERE {predicate} AND {selector}"),
             params_from_iter(&args), |row| Ok(json!({
                 "warning_count":row.get::<_,i64>(0)?,
                 "review_counts":{
@@ -1507,20 +1586,47 @@ impl Store {
         let filter = &anchored;
         let mut connection = self.reader()?;
         let conn = connection.transaction()?;
-        let Some(group) = Self::group_summary(&conn, id, filter)? else {
+        Self::group_from(&conn, id, filter)
+    }
+
+    fn group_from(
+        conn: &rusqlite::Transaction<'_>,
+        id: &str,
+        filter: &Filter,
+    ) -> Result<Option<Value>> {
+        let Some(metadata) = Self::group_metadata(conn, id)? else {
             return Ok(None);
         };
+        let lookup_limit = Self::group_lookup_limit(conn, filter)?;
+        let (group, group_first) = Self::group_summary(conn, id, filter, lookup_limit, metadata)?;
         // The requested group narrows the caller's parent scope. Replacing an
         // existing group filter would make feeds and observations disagree
         // with the aggregate above when parents contain multiple groups.
         let (mut predicate, mut args) = Self::predicate(filter)?;
-        if filter.group.as_deref() != Some(id) {
+        if group_first {
+            // Membership was bounded by at most 4096 answer rows. Keep only
+            // matching integer parent IDs/timestamps for repeated detail reads.
+            conn.execute_batch("CREATE TEMP TABLE group_request_ids(seq INTEGER PRIMARY KEY,timestamp INTEGER NOT NULL)")?;
+            args.push(id.to_owned().into());
+            args.push(id.to_owned().into());
+            conn.execute(
+                &format!("INSERT OR IGNORE INTO temp.group_request_ids SELECT r.seq,r.timestamp FROM groups g CROSS JOIN answers a ON a.group_id=g.id CROSS JOIN requests r ON r.id=a.request_id WHERE {predicate} AND (g.id=? OR g.family_id=?)"),
+                params_from_iter(&args),
+            )?;
+            predicate = GROUP_SELECTION.into();
+            args.clear();
+        } else if filter.group.as_deref() != Some(id) {
             predicate.push_str(" AND EXISTS(SELECT 1 FROM answers ga JOIN groups gg ON gg.id=ga.group_id WHERE ga.request_id=r.id AND (gg.id=? OR gg.family_id=?))");
             args.push(id.to_owned().into());
             args.push(id.to_owned().into());
         }
-        let requests = Self::request_summaries(&conn, &predicate, &args, 100)?;
-        let (timeline, timeline_meta) = Self::timeline(&conn, &predicate, &args, filter)?;
+        let requests = Self::request_summaries(conn, &predicate, &args, 100)?;
+        let timeline_predicate = if group_first {
+            GROUP_TIMELINE_SELECTION
+        } else {
+            &predicate
+        };
+        let (timeline, timeline_meta) = Self::timeline(conn, timeline_predicate, &args, filter)?;
         let family = group["is_family"].as_bool().unwrap_or(false);
         let (version_scope, mut version_args) = Self::predicate(filter)?;
         version_args.extend([
@@ -1545,14 +1651,23 @@ impl Store {
                 versions.push(group.clone());
                 continue;
             }
-            if let Some(version) = Self::group_summary(&conn, &id, filter)? {
+            if let Some(metadata) = Self::group_metadata(conn, &id)? {
+                let (version, _) = Self::group_summary(conn, &id, filter, lookup_limit, metadata)?;
                 versions.push(version);
             }
         }
         let mut answer_args = args.clone();
         answer_args.push(id.to_owned().into());
         answer_args.push(id.to_owned().into());
-        let mut stmt=conn.prepare(&format!("SELECT a.request_id,json_extract(r.data,'$.timestamp'),r.source,a.key,a.data,l.label,json_extract(r.data,'$.imported_at') FROM answers a JOIN requests r ON r.id=a.request_id JOIN groups g ON g.id=a.group_id LEFT JOIN labels l ON l.request_id=a.request_id AND l.key=a.key WHERE {predicate} AND (g.id=? OR g.family_id=?) ORDER BY r.timestamp DESC,r.seq DESC,a.rowid LIMIT 100"))?;
+        let answer_join = Self::group_answer_join(group_first);
+        // IN can combine the request-id and rowid constraints into a repeated
+        // scan of the selected set. Check its integer primary key directly.
+        let observation_predicate = if group_first {
+            "EXISTS(SELECT 1 FROM temp.group_request_ids selected WHERE selected.seq=r.seq)"
+        } else {
+            &predicate
+        };
+        let mut stmt=conn.prepare(&format!("SELECT a.request_id,json_extract(r.data,'$.timestamp'),r.source,a.key,a.data,l.label,json_extract(r.data,'$.imported_at') {answer_join} LEFT JOIN labels l ON l.request_id=a.request_id AND l.key=a.key WHERE {observation_predicate} AND (g.id=? OR g.family_id=?) ORDER BY r.timestamp DESC,r.seq DESC,a.rowid LIMIT 100"))?;
         let answers = stmt
             .query_map(params_from_iter(&answer_args), |r| {
                 let mut a = parse(r.get(4)?)?;
@@ -2360,9 +2475,10 @@ mod tests {
         assert!(groups.iter().any(|group| group["is_family"] == false));
         let connection = store.reader().unwrap();
         for group in groups {
-            let baseline = Store::group_summary(&connection, &text(group, "id"), &filter)
-                .unwrap()
-                .unwrap();
+            let id = text(group, "id");
+            let metadata = Store::group_metadata(&connection, &id).unwrap().unwrap();
+            let (baseline, _) =
+                Store::group_summary(&connection, &id, &filter, 0, metadata).unwrap();
             assert_overview_matches_detail(group, &baseline);
             assert_eq!(group["request_count"], 1);
             if group["is_family"] == true {
@@ -2380,9 +2496,17 @@ mod tests {
         assert_eq!(overview["groups"][0]["id"], "strict-129");
         assert_overview_matches_detail(
             &overview["groups"][0],
-            &Store::group_summary(&connection, "strict-129", &narrowed)
-                .unwrap()
-                .unwrap(),
+            &Store::group_summary(
+                &connection,
+                "strict-129",
+                &narrowed,
+                0,
+                Store::group_metadata(&connection, "strict-129")
+                    .unwrap()
+                    .unwrap(),
+            )
+            .unwrap()
+            .0,
         );
         let missing_source = Filter {
             source: Some("absent".into()),
@@ -3052,3 +3176,7 @@ mod tests {
 #[cfg(test)]
 #[path = "dashboard_tests.rs"]
 mod dashboard_tests;
+
+#[cfg(test)]
+#[path = "group_detail_tests.rs"]
+mod group_detail_tests;
