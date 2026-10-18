@@ -78,6 +78,13 @@ jobs:
         run: cargo build --release --locked
       - name: Configure reliable Ubuntu dependency downloads
         run: bash scripts/configure-ci-apt.sh
+      - name: Verify Linux credential-store upgrade and rollback
+        timeout-minutes: 5
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes dbus gnome-keyring
+          python3 scripts/download-release-baseline.py --version 0.3.0 --target x86_64-unknown-linux-musl --output-dir "$RUNNER_TEMP/keyring-baseline"
+          python3 scripts/test-linux-keyring.py --baseline "$RUNNER_TEMP/keyring-baseline/jev-observer" --candidate target/release/jev-observer --output "$RUNNER_TEMP/keyring-compatibility.json"
       - name: Run browser interaction and accessibility checks
         timeout-minutes: 12
         working-directory: ui
@@ -108,6 +115,7 @@ jobs:
           retention-days: 7
           path: |
             ${{ runner.temp }}/sdk-compatibility.json
+            ${{ runner.temp }}/keyring-compatibility.json
             ui/test-results/
             ui/test-results-integration/
       - name: Save Rust dependencies and build outputs

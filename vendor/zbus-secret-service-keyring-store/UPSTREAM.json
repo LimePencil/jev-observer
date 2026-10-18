@@ -1,0 +1,10 @@
+{
+  "crate": "zbus-secret-service-keyring-store",
+  "version": "1.0.1",
+  "vcs": {
+    "git": {
+      "sha1": "a97612aa64dd0148ad2504b3a9d4d82ca94e070b"
+    },
+    "path_in_vcs": ""
+  }
+}
