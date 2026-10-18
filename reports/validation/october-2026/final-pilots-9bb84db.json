@@ -1,0 +1,205 @@
+{
+  "backend_pilot": {
+    "cycles": [
+      {
+        "cycle": 1,
+        "at": "2026-10-17T23:54:37.978670+00:00",
+        "generation": 1,
+        "seconds": 32.138,
+        "process_forwarded": 68,
+        "records": 64,
+        "answers": 16048,
+        "export_bytes": 14920643,
+        "ordered_identity_projection_sha256": "50d88c6e854dd33938c40140bec5bdff112869694ba8ab01c27f9a5c58b919df"
+      },
+      {
+        "cycle": 2,
+        "at": "2026-10-17T23:55:37.947614+00:00",
+        "generation": 2,
+        "seconds": 32.107,
+        "process_forwarded": 20,
+        "records": 64,
+        "answers": 32032,
+        "export_bytes": 29721769,
+        "ordered_identity_projection_sha256": "cecff6bdf874ea65f857b31cf4c5bfaf167269dd055a1fd86d12f1ff88be838c"
+      }
+    ],
+    "restarts": [
+      {
+        "after_cycle": 1,
+        "seconds": 0.419,
+        "history_sha256": "50d88c6e854dd33938c40140bec5bdff112869694ba8ab01c27f9a5c58b919df",
+        "generation": 2
+      }
+    ],
+    "final_history": {
+      "records": 64,
+      "answers": 32032,
+      "export_bytes": 29721769,
+      "ordered_identity_projection_sha256": "cecff6bdf874ea65f857b31cf4c5bfaf167269dd055a1fd86d12f1ff88be838c"
+    },
+    "resources": {
+      "phase_peak_rss_kib": {
+        "bootstrap": 17372,
+        "ingestion": 60912,
+        "retention_export": 89640,
+        "running": 26660,
+        "waiting": 27972,
+        "final": 88388
+      },
+      "rss_samples": 923,
+      "peak_rss_kib": 89640,
+      "peak_fd_count": 22,
+      "peak_fixture_bytes": 62854034
+    },
+    "observed_queue_peaks": {
+      "queue_depth": 18,
+      "queued_bytes": 185520,
+      "active_captures": 18
+    },
+    "supervisor": {
+      "hard_timeout": false,
+      "forced_group_cleanup": false,
+      "adopted_children_reaped": 0,
+      "worker_exit_code": 0,
+      "hard_end_utc": "2026-10-18T02:30:00+00:00",
+      "elapsed_seconds": 93.094
+    },
+    "checks": {
+      "input_hashes_unchanged": true,
+      "final_ledger_identity_order_hash_recomputed": true,
+      "same_encrypted_database_restart_projection_preserved": true,
+      "exact_wire_privacy_and_drain_assertions_passed": true,
+      "warmup_counts_match_computed_oracle": true,
+      "fixture_directory_absent": true,
+      "browser_pilot_completed_before_backend_exit": true
+    },
+    "artifacts": {
+      "backend_report": "969f9116a2e47d8dfdd8059303fff0bee21f73ba56c1ac5c7c8d3f12d17417e2",
+      "backend_state": "0d3607bb37365d4eab9d3cb50bb103f2780f62f8b21c2044fd074ca20b12103d",
+      "backend_log": "601ddeb1ad58dfdf073b247f1d8db4fb632384babeed56d75b81de01049d51ad",
+      "selection_manifest": "fbbdf5ffbe5dc18e08dcdb278d921c72569dfb526e2fd392a7e2d270bcb32e56",
+      "warmup_clarification": "c3c54f939574e7bacc4d4624d46a8e68ba7828cacd3b3f5b157b03daee29775b",
+      "browser_summary": "784efbf84b29fc63fa2bca7a6c0463794dc8997d160bc8bb27a7d48732397f2b"
+    },
+    "notes": [
+      "This two-cycle pilot has16,048 then32,032 retained answers;48,016 is the long-run steady state fromcycle3.",
+      "Template oracle is frozen production normalization, not independent semantic proof.",
+      "All full projections omit only root id/timestamp/duration; identity and order are checked separately.",
+      "The100-cycle backend and90-minute browser runs remain unlaunched pending the original210-cycle terminal outcome and root acknowledgment."
+    ],
+    "verified_at": "2026-10-17T23:57:02.160626+00:00",
+    "passed": true,
+    "commit": "9bb84db756c76e834d6592d55dda5e9cd9689f3f",
+    "binary_sha256": "26fac2283a9d2c5ce5d0971a77092dc3652578d18be57aef103bd7ad12dc7e08",
+    "started_at": "2026-10-17T23:54:05.666850+00:00",
+    "finished_at": "2026-10-17T23:55:38.619658+00:00",
+    "total_forwarded": 88,
+    "total_ingested_answers": 32056,
+    "fixture_cleaned": true,
+    "terminal_phase": "stopped",
+    "terminal_outcome": "passed"
+  },
+  "browser_pilot": {
+    "counts": {
+      "http:health:200": 59,
+      "http:other_api:200": 2,
+      "http:dashboard:200": 63,
+      "successful_health": 6,
+      "successful_dashboard": 10,
+      "request_failed:controlled_cancel": 1,
+      "response_decode:controlled_cancel": 1,
+      "request_feed_expansions": 2,
+      "http:request_detail:200": 3,
+      "dense_request_drawer_checks": 2,
+      "decision_pagination_checks": 2,
+      "request_drawer_checks": 3,
+      "http:group_detail:200": 3,
+      "request_failed:restart_or_connect_window": 2,
+      "console_network:restart_or_connect_window": 2,
+      "group_drawer_checks": 3,
+      "workflow_failure:restart_or_connect_window": 1,
+      "completed_workflows": 2,
+      "normal_request_drawer_checks": 1
+    },
+    "watchdog": {
+      "elapsed_seconds": 61.58,
+      "reason": "monitor_exited",
+      "monitor_returncode": 0,
+      "forced_timeout_cleanup": false,
+      "remaining_descendants_cleaned": 0
+    },
+    "artifact_sha256": {
+      "monitor.mjs": "380b85f91d1f82f0e1994973fb0e26a5e8d29992440f02c39bd3b15c56453087",
+      "run.py": "1ab1e398ed22bafc04e666b55d267c3d95fa4a74eb4232c59acc5b031e980b9c",
+      "watch-report.py": "a3fed4606b8a68d51060caa2f200448ee3b67e703cf4fffa0ad47dca19f383c5",
+      "launch-plan.json": "1a5c3caaf499ed13af5ba8319d245c0faa37c9f4247acecb7fa90d3d27004bac",
+      "report.json": "eba7c2e0f70ec21d3abd0aaa084f20c6a07e64658407ebd46df2bf78a86691e8",
+      "events.jsonl": "20002bfbf8b7f07066034bc03049dd2a0dc427c86ba2d9c945a46f30eff93194",
+      "runner.log": "d0c1cdb5d47a353c55b5096bbd19321cd2e980e987cfe474a3bd7ada51d031d9",
+      "watchdog.json": "33670fd9d371949e08e17bedbdfd2b17bd5683cf38f94c39f9fb955db00ceedf"
+    },
+    "archived_at": "2026-10-17T23:55:37.671665+00:00",
+    "commit": "9bb84db756c76e834d6592d55dda5e9cd9689f3f",
+    "binary_sha256": "26fac2283a9d2c5ce5d0971a77092dc3652578d18be57aef103bd7ad12dc7e08",
+    "started_at": "2026-10-17T23:54:21.509Z",
+    "finished_at": "2026-10-17T23:55:21.962Z",
+    "complete": true,
+    "exit_reason": "duration_complete",
+    "elapsed_seconds": 60.452694062,
+    "generations": 2,
+    "samples": 2,
+    "max_heap_bytes": 8198024,
+    "max_browser_rss_kib": 476000,
+    "interpretation": "The final harness correctly correlated one actual controlled-cancel CDP body error to the same Request. Earlier mixed-segment failures remain unmodified; their exact Request identity was not recorded."
+  },
+  "warmup": {
+    "expected_warmup": [
+      {
+        "cycle": 1,
+        "retained_records": 64,
+        "retained_dense": 16,
+        "retained_normal": 48,
+        "retained_answers": 16048
+      },
+      {
+        "cycle": 2,
+        "retained_records": 64,
+        "retained_dense": 32,
+        "retained_normal": 32,
+        "retained_answers": 32032
+      },
+      {
+        "cycle": 3,
+        "retained_records": 64,
+        "retained_dense": 48,
+        "retained_normal": 16,
+        "retained_answers": 48016
+      }
+    ],
+    "two_cycle_pilot": {
+      "cycle1_answers": 16048,
+      "cycle2_final_answers": 32032,
+      "retained_records_each_cycle": 64,
+      "restart_after_cycle1_answers": 16048,
+      "expected_total_forwarded": 88,
+      "expected_total_ingested_answers": 32056
+    },
+    "long_run": {
+      "steady_state_begins_cycle": 3,
+      "steady_state_retained_records": 64,
+      "steady_state_retained_answers": 48016,
+      "total_cycles": 100,
+      "total_forwarded": 2048,
+      "total_ingested_answers": 1600448
+    },
+    "generated_at": "2026-10-17T23:55:04.512197+00:00",
+    "kind": "documentation_clarification_no_runtime_change",
+    "scope": "Correct warm-up counts stated in prepared metadata. Original prepared, selected manifest, active/frozen harness and runtime assertions remain unchanged.",
+    "original_prepared_sha256": "4dc4d5bd0f02f489022c50d78b7d731d32330acd3b90a8c75645c89d3f8c5019",
+    "original_selected_sha256": "fbbdf5ffbe5dc18e08dcdb278d921c72569dfb526e2fd392a7e2d270bcb32e56",
+    "frozen_harness_sha256": "4d78ee25ffb4b078e229795921b94fa8ef729dd3990f1f20fa8d582f5d1cc1fa",
+    "source_basis": "The64-entry ledger begins with48 normal captures; each cycle appends16 dense captures of1000 answers and4 normal captures. retained() derives expected answers from every retained ledger kind before comparing dashboard and full exported records; restart() compares the entire retained result before/after reopening.",
+    "acceptance": "Keep the exact computed oracle, wire/privacy/projection and restart checks; do not replace them with a weaker count assertion. This corrects metadata, not product behavior or recorded results."
+  }
+}

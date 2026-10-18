@@ -1,0 +1,105 @@
+{
+  "read_move": {
+    "tests": {
+      "store_passed": 61,
+      "store_ignored": 1,
+      "all_target_clippy": true,
+      "fmt": true,
+      "diff_check": true
+    },
+    "comparison": {
+      "cases": 3,
+      "alternating_pairs_per_case": 3,
+      "total_children": 18,
+      "checks": "Complete normalized content and answer/review order within each run; request bytes exactly equal JSONL record bytes; complete output hashes identical across before/after pairs."
+    },
+    "passed": true,
+    "scope": "Two ownership moves in Store::request_from; no SQL or snapshot changes.",
+    "base": "db24268f0e27ac34114c08040823452eea23c17c",
+    "commit": "466550bab5cfde4d4125598a682309de130e87f5"
+  },
+  "normalize_move": {
+    "checks": {
+      "model": {
+        "passed": 51,
+        "ignored": 1
+      },
+      "normalized_depth": {
+        "passed": 4
+      },
+      "corpus": {
+        "cases": 20574,
+        "accepted": 16798,
+        "rejected": 3776,
+        "exact_output_hashes": true,
+        "privacy_and_roundtrip_invariants": true,
+        "runtime_clock_unchanged": true
+      },
+      "all_target_clippy": "passed",
+      "fmt": "passed",
+      "diff_check": "passed"
+    },
+    "issue": 99,
+    "commit": "190f7ec99701e657d3b3c8b2726fbcfdf5335aad",
+    "base": "ec74f507726b7b16671e2541b7b53a6191db9934",
+    "source_matches_measured_prototype": true,
+    "pull_request": 100
+  },
+  "response_move": {
+    "exact_comparison": {
+      "live_privacy_corpus": {
+        "existing": {
+          "cases": 168,
+          "serialized_sha256": "eae8fbcc46763f8e6ad84cd19e7ca219e1fc229f3ef58838c413fff624bab717",
+          "canonical_sha256": "4382e4c279f2c70c1433b3c7df4e52fafa62a2c8f77ea0a07ab2f448a3ae2730",
+          "privacy_and_order_passed": true
+        },
+        "response_only": {
+          "cases": 18,
+          "serialized_sha256": "db68127286dcbf0fcc8934e2064545e0217cf4aaa31582b8521d583ecb7a31cb",
+          "response_only_secret_privacy_passed": true
+        }
+      },
+      "full_import_corpus": {
+        "cases": {
+          "cases": 20574,
+          "accepted": 16798,
+          "rejected": 3776
+        },
+        "same_acceptance_errors_normalized_bytes": true,
+        "comparison_sha256": "29706087d5160b9e1ee2e9f99f119bac7d6d55484d65a8871affc34883741757",
+        "clock_overlay": "Two imported_at assignments frozen equally in both private copies; production unchanged."
+      },
+      "allocation_children": 24,
+      "paired_fixtures": 4,
+      "pairs_per_fixture": 3,
+      "same_serialized_and_canonical_hashes": true
+    },
+    "bounds": {
+      "address_space_bytes": 536870912,
+      "cpu_seconds": 10,
+      "wall_seconds": 15,
+      "overall_seconds": 90,
+      "core_bytes": 0
+    },
+    "measurement_caveats": [
+      "Rust allocator traffic and peak extra allocation only; excludes native/library allocation outside Rust global allocator.",
+      "Ordinary1000-answer peak is unchanged; do not claim a large process-RSS reduction.",
+      "Paired instrumented timings are descriptive on a shared host.",
+      "All measured request+response byte lengths fit the default262144-byte per-body capture limit (the stronger combined-size assertion also holds)."
+    ],
+    "checks": {
+      "model_passed": 51,
+      "model_ignored": 1,
+      "normalized_json_passed": 4,
+      "all_target_clippy": true,
+      "fmt": true,
+      "diff_check": true
+    },
+    "status": "approved implemented and tested",
+    "scope": "Move owned parsed response into the existing-position envelope placeholder before privacy; retain original raw_request and drop temporary envelope immediately after privacy. No traversal/order/budget/privacy algorithm changes.",
+    "base_commit": "b18a2a5d7858f27454a516f1d02a220374fc5393",
+    "commit": "34bd46fdbe21e9abca51eb16c220faf9a52c0548",
+    "measured_model_base_commit": "d55808a9282a8583d0e97a2602870620fa4c1494"
+  }
+}

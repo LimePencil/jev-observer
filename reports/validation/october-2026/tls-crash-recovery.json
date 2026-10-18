@@ -1,0 +1,53 @@
+{
+  "tls": {
+    "checks": {
+      "untrusted_certificate_returns_gateway_error": true,
+      "failure_response_excludes_provider_key": true,
+      "failure_capture_persisted_before_deadline": true,
+      "one_failure_record": true,
+      "tls_failure_visible_as_incomplete_transport": true,
+      "history_excludes_provider_key": true,
+      "application_request_never_reaches_untrusted_server": true,
+      "capture_slot_released": true,
+      "plain_loopback_control_returns_exact_response": true,
+      "only_control_request_reaches_application": true
+    },
+    "binary_sha256": "abe7a427a71f5c84d3a0cb5d46c0a04629d91f019d4a62840b352f6331e34026",
+    "scope": "Self-signed synthetic localhost certificate rejection and plain loopback control; no external providers or trust-store changes",
+    "passed": true
+  },
+  "crash": {
+    "cases": [
+      {
+        "mode": "idle_committed",
+        "pending_records_after_restart": 0,
+        "committed_seed_unchanged": true,
+        "parent_answer_counts_consistent": true,
+        "write_after_recovery": true,
+        "encrypted_header": true,
+        "passed": true
+      },
+      {
+        "mode": "early_import",
+        "pending_records_after_restart": 0,
+        "committed_seed_unchanged": true,
+        "parent_answer_counts_consistent": true,
+        "write_after_recovery": true,
+        "encrypted_header": true,
+        "passed": true
+      },
+      {
+        "mode": "wal_growth",
+        "pending_records_after_restart": 0,
+        "committed_seed_unchanged": true,
+        "parent_answer_counts_consistent": true,
+        "write_after_recovery": true,
+        "encrypted_header": true,
+        "passed": true
+      }
+    ],
+    "binary_sha256": "3fabba94ec046d67cb7d313fa5bdb31be55899d2ccaf4ad7b9a3dee5f23cea14",
+    "scope": "Synthetic isolated encrypted databases only. SIGKILL process interruption, not power-loss durability. In-flight requests are allowed to fail; committed seed records and transactional atomicity must survive.",
+    "passed": true
+  }
+}

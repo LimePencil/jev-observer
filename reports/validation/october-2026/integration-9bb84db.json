@@ -1,0 +1,171 @@
+{
+  "final_build": {
+    "rust": {
+      "passed": 190,
+      "failed": 0,
+      "ignored": 2,
+      "seconds": 28.92
+    },
+    "formatting": {
+      "passed": true
+    },
+    "clippy_all_targets": {
+      "passed": true
+    },
+    "release_build": {
+      "passed": true
+    },
+    "packaged_browser": {
+      "scenarios": [
+        "packaged dashboard authentication, reviews, import and export",
+        "live workspace connection, capture, review, export and history after restart"
+      ],
+      "passed": 2,
+      "failed": 0,
+      "seconds": 12.0
+    },
+    "source_log_hashes": {
+      "rust_tests": "8b548e9e25b21046d6d4ec45a9ea2e7f72d0ed41c7b461aad789cc89a26730a4",
+      "formatting": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "clippy": "c7e7bea395c16d9e4af2b2022c34535fed3610f3854e3cc229d8f578e0492549",
+      "release_build": "21d691b537175c9ef66fa0995753ecc21f33aca331c24fb76fafd07d226aea01",
+      "ui_build": "25f0c3dd32301dd21635b88925342ae5e7531bac6601be16250ad684f9616f3f",
+      "packaged_browser": "59981da470f1cf57a18f49be6624cfa3d4717c78f217d81f9d2bf428f273f836"
+    },
+    "checked_at": "2026-10-17T23:58:53.596107+00:00",
+    "passed": true,
+    "commit": "9bb84db756c76e834d6592d55dda5e9cd9689f3f",
+    "tree": "a2961544ea52a70765a8dc5e502244dd26cc3c4a",
+    "binary_sha256": "26fac2283a9d2c5ce5d0971a77092dc3652578d18be57aef103bd7ad12dc7e08",
+    "ui_assets_equal_129_test_build": true,
+    "manifest_sha256": "7f5c6e491b355708d49517f690d99fb8fc14188b19a74af5217df768452fa3d1",
+    "basis": "Root recorded successful command exits. Test counts, completion markers, embedded asset equality and source log hashes were independently checked. No native-platform or endurance completion claim."
+  },
+  "final_sdk": {
+    "python": {
+      "sdk": "typesafe-sdk",
+      "version": "0.7.1",
+      "python": "3.12.14",
+      "attempts": 4,
+      "successes": 3,
+      "errors": 1,
+      "raw_bytes_preserved": true
+    },
+    "javascript": {
+      "sdk": "@typesafe-ai/sdk",
+      "version": "0.6.0",
+      "node": "v22.22.1",
+      "attempts": 4,
+      "successes": 3,
+      "errors": 1,
+      "raw_bytes_preserved": true,
+      "unknown_fields_preserved": true
+    },
+    "registered_python": {
+      "sdk": "typesafe-sdk",
+      "version": "0.7.1",
+      "python": "3.12.14",
+      "attempts": 4,
+      "successes": 3,
+      "errors": 1,
+      "raw_bytes_preserved": true
+    },
+    "registered_javascript": {
+      "sdk": "@typesafe-ai/sdk",
+      "version": "0.6.0",
+      "node": "v22.22.1",
+      "attempts": 4,
+      "successes": 3,
+      "errors": 1,
+      "raw_bytes_preserved": true,
+      "unknown_fields_preserved": true
+    },
+    "summary": {
+      "request_count": 16,
+      "answer_count": 48,
+      "error_count": 4,
+      "input_tokens": 1200,
+      "output_tokens": 144,
+      "cost_usd": 0.0025440000000000003,
+      "input_tokens_known_requests": 12,
+      "output_tokens_known_requests": 12,
+      "input_tokens_overflow": false,
+      "output_tokens_overflow": false,
+      "cost_known_requests": 12,
+      "sample_count": 0,
+      "incomplete_count": 0,
+      "action_count": 0,
+      "p50_ms": 41.606154,
+      "p95_ms": 42.555431
+    },
+    "checked_at": "2026-10-17T23:53:05.067081+00:00",
+    "scope": "Local mock only; no provider inference",
+    "binary_sha256": "26fac2283a9d2c5ce5d0971a77092dc3652578d18be57aef103bd7ad12dc7e08",
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "upstream_attempts": 16,
+    "groups": 8,
+    "valid_answers": 36,
+    "request_extensions_preserved": true,
+    "response_bytes_preserved": true,
+    "accept_encoding_identity_forwarded": true,
+    "health_endpoints_share_sample_order": true,
+    "credentials_and_state_excluded": true,
+    "registered_token_excluded": true,
+    "capture_gaps": 0,
+    "passed": true
+  },
+  "final_upgrade": {
+    "checks": {
+      "published_baseline_version": true,
+      "baseline_starts": true,
+      "baseline_history_created": true,
+      "baseline_export_excludes_credentials": true,
+      "baseline_clean_shutdown": true,
+      "baseline_history_encrypted": true,
+      "probe_seed-approval": true,
+      "probe_show": true,
+      "candidate_starts": true,
+      "candidate_derived_failure_projection": true,
+      "upgrade_preserves_history_labels_and_exports": true,
+      "upgrade_preserves_credential_approval": true,
+      "unavailable_system_credential_not_activated": true,
+      "candidate_can_append_to_upgraded_history": true,
+      "candidate_clean_shutdown": true,
+      "rollback_starts": true,
+      "baseline_can_read_candidate_database_and_new_record": true,
+      "rollback_clean_shutdown": true,
+      "rollback_preserves_credential_approval": true,
+      "backup_restore_starts": true,
+      "backup_restore_derived_failure_projection": true,
+      "restored_backup_retains_history_labels_and_exports": true,
+      "backup_restore_clean_shutdown": true,
+      "restored_backup_retains_credential_approval": true,
+      "wrong_key_rejected": true,
+      "wrong_key_expected_rejection_category": true,
+      "wrong_key_database_bytes_unchanged": true,
+      "probe_future-schema": true,
+      "future_encrypted_schema_rejected": true,
+      "future_encrypted_schema_expected_rejection_category": true,
+      "future_encrypted_schema_database_bytes_unchanged": true,
+      "probe_future-plaintext": true,
+      "future_plaintext_schema_rejected": true,
+      "future_plaintext_schema_expected_rejection_category": true,
+      "future_plaintext_schema_database_bytes_unchanged": true,
+      "two_loopback_inferences_no_remote_calls": true
+    },
+    "baseline": {
+      "version": "jev-observer 0.1.0",
+      "sha256": "337a9fb10958a0bd43cb312ea84aebe1dbe8eea90bd2a6d15a51be09e9e0216c"
+    },
+    "candidate": {
+      "version": "jev-observer 0.2.2",
+      "sha256": "26fac2283a9d2c5ce5d0971a77092dc3652578d18be57aef103bd7ad12dc7e08"
+    },
+    "checked_at": "2026-10-17T23:53:03.286583+00:00",
+    "scope": "Synthetic loopback upgrade; dummy database approval hash, no native credential-store persistence or provider calls",
+    "harness_sha256": "086a644e91f54267c1bada547e6a038aecc6aa6dcdc965397001629c53da4919",
+    "credential_limit": "Does not establish native keychain upgrade/downgrade compatibility. Re-register a provider key after downgrading if a saved credential was rotated in 0.2.0.",
+    "passed": true,
+    "probe_sha256": "90f84c6aeceb0b241fbe94d5b692e579498b34b75cc8098349df413ff463652b"
+  }
+}

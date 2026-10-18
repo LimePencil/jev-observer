@@ -1,0 +1,95 @@
+{
+  "retention": {
+    "settings": {
+      "cycles": 5,
+      "seconds": 300,
+      "rate": 50,
+      "max_records": 1000,
+      "restart_every": 2
+    },
+    "notes": [
+      "Synthetic loopback only; no provider or credential-store access.",
+      "Shared host. Latencies describe this run and do not establish capacity.",
+      "Each cycle waits for idle retention and verifies retained usage, answers, and export identities."
+    ],
+    "cycles": [
+      {
+        "latency_ms": {
+          "median": 2.432221983326599,
+          "p95": 9.405111020896584,
+          "maximum": 1075.0296079786494
+        },
+        "cycle": 1,
+        "at": "2026-10-17T18:05:58.649436+00:00",
+        "offered": 15000,
+        "elapsed_load_seconds": 299.98708136798814,
+        "retained": 1000,
+        "database_bytes": 13037568,
+        "rss_kib": 32072
+      },
+      {
+        "latency_ms": {
+          "median": 1.3428649981506169,
+          "p95": 5.524370004422963,
+          "maximum": 83.98539497284219
+        },
+        "cycle": 2,
+        "at": "2026-10-17T18:11:33.916666+00:00",
+        "offered": 15000,
+        "elapsed_load_seconds": 299.9879875210463,
+        "retained": 1000,
+        "database_bytes": 13082624,
+        "rss_kib": 34552
+      },
+      {
+        "latency_ms": {
+          "median": 1.4790419954806566,
+          "p95": 7.2172689833678305,
+          "maximum": 107.90531802922487
+        },
+        "cycle": 3,
+        "at": "2026-10-17T18:17:09.848218+00:00",
+        "offered": 15000,
+        "elapsed_load_seconds": 299.99518308998086,
+        "retained": 1000,
+        "database_bytes": 13094912,
+        "rss_kib": 38892
+      },
+      {
+        "latency_ms": {
+          "median": 1.6271594795398414,
+          "p95": 7.5860740034841,
+          "maximum": 179.1946699959226
+        },
+        "cycle": 4,
+        "at": "2026-10-17T18:22:45.443981+00:00",
+        "offered": 15000,
+        "elapsed_load_seconds": 300.07062398199923,
+        "retained": 1000,
+        "database_bytes": 13103104,
+        "rss_kib": 35368
+      },
+      {
+        "latency_ms": {
+          "median": 1.1638205032795668,
+          "p95": 5.877467978280038,
+          "maximum": 66.90705905202776
+        },
+        "cycle": 5,
+        "at": "2026-10-17T18:28:21.214298+00:00",
+        "offered": 15000,
+        "elapsed_load_seconds": 299.98650061001536,
+        "retained": 1000,
+        "database_bytes": 13103104,
+        "rss_kib": 38868
+      }
+    ],
+    "started_at": "2026-10-17T18:00:23.270122+00:00",
+    "finished_at": "2026-10-17T18:28:21.548726+00:00",
+    "passed": true,
+    "binary_sha256": "b3061c45f3063e5cdaff2d2f72a3067cfdb3cfd5bb8ebd202862aad8ab85bfba",
+    "harness_sha256": "070fb70186be9143a2c3d247ed7a371610d588e0b6d48dcad6874445a2eb8bf5",
+    "scope": "Session-local loopback soak: repeated ingestion, idle retention, and restart.",
+    "total_offered": 75000
+  }
+}

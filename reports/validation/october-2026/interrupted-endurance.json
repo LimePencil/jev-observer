@@ -1,0 +1,291 @@
+{
+  "varied": {
+    "runs": [
+      {
+        "completed_cycle_failure_counters": {
+          "dropped": 0,
+          "truncated": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0
+        },
+        "source_revision": "61ae6c8",
+        "outcome": "interrupted_at_user_request",
+        "passed": false,
+        "not_full_duration_pass": true,
+        "started_at": "2026-10-17T18:40:37.013085+00:00",
+        "finished_at": "2026-10-18T00:06:11.662390+00:00",
+        "configured_cycles": 44,
+        "completed_cycles": 30,
+        "fully_checked_offered_requests": 900000,
+        "total_offered_including_unfinished_cycle": 923084,
+        "verified_restarts": 5,
+        "retained_records_per_completed_cycle": 1000,
+        "max_sampled_rss_kib": 56780,
+        "binary_sha256": "3fabba94ec046d67cb7d313fa5bdb31be55899d2ccaf4ad7b9a3dee5f23cea14",
+        "harness_sha256": "6c9d36336dc6a0e1a8cc249c70b92d6336cb6bc217e7b72ec10d2d04f4b71574",
+        "raw_report_sha256": "9b22ea8364425c96aad94a2bffd8f8fa169af70b527c0763e22ed60370644bb6",
+        "raw_report_bytes": 36963,
+        "state_sha256": "38179461bf42d6ab04ca6b7160a92aae2ad03385615fe2c61b65372e6c29696c",
+        "state": "stopped",
+        "harness_exit_code": 130,
+        "owned_harness_and_app_processes_absent": true,
+        "cleanup_failure": null,
+        "failure": null
+      },
+      {
+        "completed_cycle_failure_counters": {
+          "dropped": 0,
+          "truncated": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0
+        },
+        "source_revision": "d66a9ae",
+        "outcome": "interrupted_at_user_request",
+        "passed": false,
+        "not_full_duration_pass": true,
+        "started_at": "2026-10-17T20:11:49.803316+00:00",
+        "finished_at": "2026-10-18T00:06:11.665949+00:00",
+        "configured_cycles": 36,
+        "completed_cycles": 22,
+        "fully_checked_offered_requests": 660000,
+        "total_offered_including_unfinished_cycle": 663421,
+        "verified_restarts": 3,
+        "retained_records_per_completed_cycle": 1000,
+        "max_sampled_rss_kib": 42740,
+        "binary_sha256": "e9fdf54da37dad458b10d0b5cc3b002050b761544d595e762eabc9d564a31467",
+        "harness_sha256": "6c9d36336dc6a0e1a8cc249c70b92d6336cb6bc217e7b72ec10d2d04f4b71574",
+        "raw_report_sha256": "1295b61a13a7e644d7b222f9b0b7ece2ddd6c5f01b17a0f20c56ba5cc8f56b8d",
+        "raw_report_bytes": 27295,
+        "state_sha256": "a2e92348cd7a6c10cbbf3cdc3e8ac9e6a04af6c738fa8956a779b9f7b36d4150",
+        "state": "stopped",
+        "harness_exit_code": 130,
+        "owned_harness_and_app_processes_absent": true,
+        "cleanup_failure": null,
+        "failure": null
+      }
+    ],
+    "checked_at": "2026-10-18T00:06:46.401556+00:00",
+    "reason": "User requested wrap-up before original ten-hour deadline.",
+    "scope": "Completed-cycle assertions cover accounting, exact retention, encrypted export/privacy, paging/group aggregates and each recorded restart. Requests offered in unfinished cycles are not claimed as fully checked. SIGINT ran the unchanged harness finally block; these shortened runs did not pass their configured full-duration gate."
+  },
+  "mixed_and_monitor": {
+    "mixed": {
+      "raw_failure": {
+        "type": "TimeoutError",
+        "detail": "bounded fixture failure"
+      },
+      "last_verified_cycle": {
+        "cycle": 179,
+        "at": "2026-10-18T00:05:23.236858+00:00",
+        "generation": 6,
+        "seconds": 2.731,
+        "process_forwarded": 580,
+        "records": 64,
+        "answers": 48016,
+        "export_bytes": 44523018,
+        "ordered_identity_projection_sha256": "7940e576355d358fb021bc570aabd07a7a9df87ec57c4acb3e8934f5fbfbacbc"
+      },
+      "verified_restarts": [
+        {
+          "after_cycle": 30,
+          "seconds": 1.169,
+          "history_sha256": "1873e7bbc9f85738b45b5ef6ef81d052417a76d73fa9952faf5d636e72c17feb",
+          "generation": 2
+        },
+        {
+          "after_cycle": 60,
+          "seconds": 1.084,
+          "history_sha256": "998062eaebd935909ec4c6cdaf9acb9b8f47ffea1ba864716ba4320bc78eb33e",
+          "generation": 3
+        },
+        {
+          "after_cycle": 90,
+          "seconds": 1.198,
+          "history_sha256": "3865cdf2a1b2300d2cbe3ac39ec7a7e51d69109b7c9105e224870ab784eec577",
+          "generation": 4
+        },
+        {
+          "after_cycle": 120,
+          "seconds": 1.662,
+          "history_sha256": "4688ece8a8df22f3baf15ddfa4bce700495e21149218e33db3cd0bf21bb348c3",
+          "generation": 5
+        },
+        {
+          "after_cycle": 150,
+          "seconds": 1.209,
+          "history_sha256": "ec8d6fbb25bda4f42a342b8486d8cc65f73ce17e8ce5e8daaed723ec12ad111c",
+          "generation": 6
+        }
+      ],
+      "resources": {
+        "phase_peak_rss_kib": {
+          "bootstrap": 17696,
+          "ingestion": 130360,
+          "retention_export": 135260,
+          "waiting": 129592,
+          "restarting": 14904,
+          "running": 62600
+        },
+        "rss_samples": 106873,
+        "peak_rss_kib": 135260,
+        "peak_fd_count": 23,
+        "peak_fixture_bytes": 148973946
+      },
+      "observed_queue_peaks": {
+        "queue_depth": 20,
+        "queued_bytes": 211904,
+        "active_captures": 20
+      },
+      "supervisor": {
+        "hard_timeout": false,
+        "forced_group_cleanup": false,
+        "adopted_children_reaped": 0,
+        "worker_exit_code": 1,
+        "hard_end_utc": "2026-10-18T02:30:00+00:00",
+        "elapsed_seconds": 10751.63
+      },
+      "binary_sha256": "d2a2c6fe474f02f521b4cc0369bee3d6531823494eea5268b8d3f8f9c3282f5d",
+      "harness_sha256": "4d78ee25ffb4b078e229795921b94fa8ef729dd3990f1f20fa8d582f5d1cc1fa",
+      "started_at": "2026-10-17T21:07:20.298674+00:00",
+      "finished_at": "2026-10-18T00:06:31.492140+00:00",
+      "raw_passed": false,
+      "planned_cycles": 210,
+      "completed_verified_cycles": 179,
+      "fully_cycle_checked_captures": 3628,
+      "total_forwarded": 3648,
+      "additional_captures_in_interrupted_cycle": 20,
+      "fixture_cleaned": true,
+      "owned_fixture_absent": true,
+      "owned_harness_worker_absent": true,
+      "terminal_state": "stopped",
+      "terminal_raw_outcome": "failed",
+      "signal": "SIGTERM to owned worker; designed cleanup retained the partial report; parent observed exit1 without forced cleanup"
+    },
+    "health_monitor": {
+      "started_at": "2026-10-17T18:50:23.911068+00:00",
+      "finished_at": "2026-10-18T00:06:24.158135+00:00",
+      "elapsed_seconds": 18960.247,
+      "raw_complete": true,
+      "exit_reason": "backend_stopped",
+      "current_segment_samples": 1264,
+      "previous_segment_samples": 9,
+      "total_observed_samples": 1273,
+      "generations": 6,
+      "anomalies": 0,
+      "scope": "Read-only loopback /api/health and Linux /proc RSS/fd observations.",
+      "monitor_exit_code": 0,
+      "owned_process_absent": true,
+      "interpretation": "The monitor naturally ended after the parent published stopped, before the planned monitor signal. Complete certifies observation coverage only; the underlying soak was interrupted, not fully passed."
+    },
+    "not_launched": {
+      "final_backend_cycles": 100,
+      "final_browser_seconds": 5400
+    },
+    "raw_hashes": {
+      "mixed_report": "00e96bf6d6300014cb0f7e3910c4fb511d754717237d13891ade23119fa42995",
+      "mixed_state": "02738d71fe3af0e86711080673c50c4711621f4245cace514932466a6657bc2f",
+      "monitor_report": "fc7a3e28208f806f03102bf3d4e6f641de5aa648009ea957254fda8d84410c2e",
+      "monitor_segment1": "7a72d24413e890235677538fbbe12007fee9b3249ab542384e070683c37b56a1",
+      "user_stop_request": "930d40cf4da9dfbffd7e37a5daf31d4ac356f8bc82c45ba0fe0ef292d6c54518"
+    },
+    "recorded_at": "2026-10-18T00:08:00.343156+00:00",
+    "status": "interrupted_by_user",
+    "reason": "The user requested immediate wrap-up, superseding the original ten-hour schedule. No replacement endurance run was launched."
+  },
+  "browser_interrupted": {
+    "counts": {
+      "http:health:200": 6451,
+      "http:other_api:200": 4,
+      "http:dashboard:200": 6557,
+      "successful_health": 315,
+      "successful_dashboard": 382,
+      "request_feed_expansions": 4,
+      "http:request_detail:200": 55,
+      "dense_request_drawer_checks": 29,
+      "decision_pagination_checks": 29,
+      "request_drawer_checks": 55,
+      "http:group_detail:200": 55,
+      "group_drawer_checks": 55,
+      "completed_workflows": 55,
+      "normal_request_drawer_checks": 26,
+      "request_failed:controlled_cancel": 11,
+      "console_network:steady_state": 6,
+      "request_failed:restart_or_connect_window": 6,
+      "response_decode:steady_state": 3,
+      "steady_state_failures": 3
+    },
+    "generation_numbers": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "preserved_steady_errors": [
+      {
+        "at": "2026-10-17T23:07:12.311Z",
+        "generation": 5,
+        "kind": "response_decode",
+        "classification": "steady_state",
+        "message": "response.json: Protocol error (Network.getResponseBody): No data found for resource with given identifier\nResponse body is not available for a response that was navigated away from. Read response.body() before triggering any navigation.",
+        "endpoint": "dashboard"
+      },
+      {
+        "at": "2026-10-17T23:19:18.632Z",
+        "generation": 5,
+        "kind": "response_decode",
+        "classification": "steady_state",
+        "message": "response.json: Protocol error (Network.getResponseBody): No data found for resource with given identifier\nResponse body is not available for a response that was navigated away from. Read response.body() before triggering any navigation.",
+        "endpoint": "dashboard"
+      },
+      {
+        "at": "2026-10-17T23:21:15.869Z",
+        "generation": 5,
+        "kind": "response_decode",
+        "classification": "steady_state",
+        "message": "response.json: Protocol error (Network.getResponseBody): No data found for resource with given identifier\nResponse body is not available for a response that was navigated away from. Read response.body() before triggering any navigation.",
+        "endpoint": "dashboard"
+      }
+    ],
+    "watchdog": {
+      "elapsed_seconds": 6518.291,
+      "reason": "external_signal",
+      "monitor_returncode": 1,
+      "forced_timeout_cleanup": false,
+      "remaining_descendants_cleaned": 0
+    },
+    "artifact_sha256": {
+      "monitor.mjs": "7cdd84cddcd9946fdb16360dd32015fe6fcf4f65315d0424bf7052e9f8a2493a",
+      "run.py": "d119912d34be81ecedf4dc22d71d2f0a0b71d1b1c5c8301a74aa8c6b14544881",
+      "watch-report.py": "a3fed4606b8a68d51060caa2f200448ee3b67e703cf4fffa0ad47dca19f383c5",
+      "preparation.json": "3d4f3ef6010539e78a67ba6a0f9a32dad0dce2b0bfdecbc0fefa7a9fdcb7a477",
+      "review.patch": "ad279f3ffd05de7e3b9e89bccf59b2eb47c1984bde186dd6bab07c62d9148bc2",
+      "pilot-coverage-fix.patch": "49bd4aaf5be52b207c2c75a3ba739e2221dd958844af7038c0a630274c638ffc",
+      "report.json": "e7457264230c9960b4a486fc6738e13e6ed786b4d1856315c8030624e17d1e73",
+      "events.jsonl": "ee75592a674115091c019ce60a37259a12bd8a93623d329564c11de9ac00f4d5",
+      "watchdog.json": "e55847c711776a93d0dd545a2081a9f420adb4f4c70c4b7872613cac1376d2c4"
+    },
+    "notes": [
+      "This partial segment is not a clean pass or a completed7200-second run.",
+      "Three body-observation errors occurred near cancellations, but exact Request identity was not recorded; they cannot be retrospectively reclassified.",
+      "Six duplicate console-network diagnostics were informational; expected request restart/cancellation counters remain separate.",
+      "The separate final9bb84db60-second pilot passed. The planned5400-second final browser segment was never launched."
+    ],
+    "archived_at": "2026-10-18T00:07:12.669042+00:00",
+    "outcome": "interrupted_at_user_request_with_preserved_observation_failures",
+    "complete": false,
+    "stop_reason": "User requested wrap-up before the planned duration completed. Existing response-decode failures remain unchanged.",
+    "binary_sha256": "d2a2c6fe474f02f521b4cc0369bee3d6531823494eea5268b8d3f8f9c3282f5d",
+    "source_commit": "0e04b1b2a93bba95e5b01e8c89509555d308a7aa",
+    "started_at": "2026-10-17T22:17:47.962Z",
+    "finished_at": "2026-10-18T00:06:25.195Z",
+    "requested_seconds": 7200,
+    "elapsed_seconds": 6517.232192446,
+    "exit_reason": "signal",
+    "sample_count": 22,
+    "max_post_gc_heap_bytes": 9655932,
+    "max_browser_rss_kib": 642528,
+    "max_monitor_rss_bytes": 193122304,
+    "final_polls_fresh": true,
+    "owned_watchdog_node_and_report_helper_absent": true
+  }
+}

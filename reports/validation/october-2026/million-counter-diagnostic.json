@@ -1,0 +1,217 @@
+{
+  "counters": {
+    "execution": {
+      "started_at": "2026-10-17T23:01:19.785228+00:00",
+      "finished_at": "2026-10-17T23:06:05.592732+00:00",
+      "elapsed_seconds": 285.807504
+    },
+    "correctness": {
+      "seed": {
+        "stage": "verified",
+        "parents": 1000000,
+        "answers": 3000000,
+        "groups": 3,
+        "first_timestamp": 1792178079926,
+        "last_timestamp": 1792278079826,
+        "foreign_key_violations": 0
+      },
+      "all_six_complete_json_equal": true,
+      "output_sha256": "fbc186b926d6377e6f136e7975c0c1a81b6bca1c0a7d2e3b6a086099e9dac027",
+      "all_8_helpers_exit_zero": true,
+      "encrypted_header_verified": true,
+      "stable_vm_per_scope": true,
+      "counter_starts_paired_and_valid": true
+    },
+    "resources": {
+      "rss_bytes": 160014336,
+      "private_file_bytes": 5112426496,
+      "wal_bytes": 26388632
+    },
+    "cleanup": {
+      "worker_children_reaped": true,
+      "worker_temp_removed": true,
+      "supervisor_passed": true,
+      "remaining_descendants": [],
+      "owned_directory_absent_independently": true
+    },
+    "calls": [
+      {
+        "strict_answers": {
+          "profile_ms": 14512.0,
+          "process_cpu_ms": 4307.003,
+          "vm_steps": 30000029,
+          "cache_misses": 99600,
+          "process_read_bytes": 385802240,
+          "process_rchar": 407961944,
+          "cache_used_last_bytes": 8626488
+        },
+        "name": "all-0",
+        "wall_ms": 21714.972535,
+        "vm_steps": 60004624,
+        "process_cpu_ms": 7383.41,
+        "process_read_bytes": 581771264,
+        "materialization": null
+      },
+      {
+        "strict_answers": {
+          "profile_ms": 7723.0,
+          "process_cpu_ms": 3715.192,
+          "vm_steps": 30000029,
+          "cache_misses": 99610,
+          "process_read_bytes": 174829568,
+          "process_rchar": 408002965,
+          "cache_used_last_bytes": 10798696
+        },
+        "materialization": {
+          "profile_ms": 7038.0,
+          "process_cpu_ms": 3005.37,
+          "vm_steps": 51000025,
+          "cache_misses": 45689,
+          "process_read_bytes": 182583296,
+          "process_write_bytes": 26103808,
+          "cache_writes": 1529,
+          "cache_spills": 1529,
+          "temp_spill_bytes": 6262784,
+          "cache_used_last_bytes": 9327720
+        },
+        "name": "search-0",
+        "wall_ms": 25098.138571,
+        "vm_steps": 112754719,
+        "process_cpu_ms": 10361.69,
+        "process_read_bytes": 664944640
+      },
+      {
+        "strict_answers": {
+          "profile_ms": 6887.0,
+          "process_cpu_ms": 3443.068,
+          "vm_steps": 30000029,
+          "cache_misses": 99610,
+          "process_read_bytes": 170725376,
+          "process_rchar": 408002965,
+          "cache_used_last_bytes": 10798696
+        },
+        "materialization": {
+          "profile_ms": 7235.0,
+          "process_cpu_ms": 2918.669,
+          "vm_steps": 51000025,
+          "cache_misses": 45689,
+          "process_read_bytes": 176283648,
+          "process_write_bytes": 26103808,
+          "cache_writes": 1529,
+          "cache_spills": 1529,
+          "temp_spill_bytes": 6262784,
+          "cache_used_last_bytes": 9327720
+        },
+        "name": "search-1",
+        "wall_ms": 21664.231776,
+        "vm_steps": 112754719,
+        "process_cpu_ms": 9486.398,
+        "process_read_bytes": 559902720
+      },
+      {
+        "strict_answers": {
+          "profile_ms": 8336.0,
+          "process_cpu_ms": 3528.766,
+          "vm_steps": 30000029,
+          "cache_misses": 99600,
+          "process_read_bytes": 170717184,
+          "process_rchar": 407961956,
+          "cache_used_last_bytes": 8626488
+        },
+        "name": "all-1",
+        "wall_ms": 15388.257932,
+        "vm_steps": 60004624,
+        "process_cpu_ms": 6586.327,
+        "process_read_bytes": 357146624,
+        "materialization": null
+      },
+      {
+        "strict_answers": {
+          "profile_ms": 6854.0,
+          "process_cpu_ms": 3583.149,
+          "vm_steps": 30000029,
+          "cache_misses": 99600,
+          "process_read_bytes": 169963520,
+          "process_rchar": 407961956,
+          "cache_used_last_bytes": 8626488
+        },
+        "name": "all-2",
+        "wall_ms": 13919.654261,
+        "vm_steps": 60004624,
+        "process_cpu_ms": 6653.504,
+        "process_read_bytes": 362242048,
+        "materialization": null
+      },
+      {
+        "strict_answers": {
+          "profile_ms": 7438.0,
+          "process_cpu_ms": 3744.227,
+          "vm_steps": 30000029,
+          "cache_misses": 99610,
+          "process_read_bytes": 170651648,
+          "process_rchar": 408002965,
+          "cache_used_last_bytes": 10798696
+        },
+        "materialization": {
+          "profile_ms": 6649.0,
+          "process_cpu_ms": 2947.652,
+          "vm_steps": 51000025,
+          "cache_misses": 45689,
+          "process_read_bytes": 176050176,
+          "process_write_bytes": 26103808,
+          "cache_writes": 1529,
+          "cache_spills": 1529,
+          "temp_spill_bytes": 6262784,
+          "cache_used_last_bytes": 9327720
+        },
+        "name": "search-2",
+        "wall_ms": 22965.640388,
+        "vm_steps": 112754719,
+        "process_cpu_ms": 10068.655,
+        "process_read_bytes": 556204032
+      }
+    ],
+    "medians": {
+      "all": {
+        "samples": 3,
+        "wall_ms": 15388.257932,
+        "process_cpu_ms": 6653.504,
+        "process_read_bytes": 362242048
+      },
+      "search": {
+        "samples": 3,
+        "wall_ms": 22965.640388,
+        "process_cpu_ms": 10068.655,
+        "process_read_bytes": 559902720
+      }
+    },
+    "findings": [
+      "Search took 21.66–25.10 s (median22.97 s) and remains above the15 s UI deadline in this synthetic shared-host run. This was a Store diagnostic, not an HTTP acceptance test.",
+      "All history took13.92–21.71 s; the first all call had higher measured storage reads and elapsed time; OS cache state was not explicitly reset. Query output and within-scope VM counts are exact, but elapsed comparisons include cache state and shared-host activity.",
+      "Search materialization alone took6.65–7.24 s with ~2.95 s median process CPU,51,000,025 VM,45,689 pager misses,~176 MB median Linux storage reads and26.1 MB writes.",
+      "Strict-answer statements have identical30,000,029 VM in both scopes. Warm all and search overlap in CPU (~3.4–4.0 s), misses (~99.6k) and storage reads (~170 MB); counters do not establish a search-specific answer-statistics or retained-temp-table slowdown.",
+      "Combined pager cache after strict answers is8,626,488 B for all vs10,798,696 B for search. The counters do not separate main and temp memory, and no causality or temp DROP recommendation follows.",
+      "The catalog candidate costs159 VM/~1 ms per call on this low-cardinality1M fixture. This diagnostic is not a before/after catalog timing comparison."
+    ],
+    "limitations": [
+      "Nested group-iterator values are inclusive and excluded from additive totals.",
+      "SQLite pager misses are not OS storage misses; CACHE_WRITE and TEMPBUF_SPILL overlap.",
+      "CPU/rchar include Rust processing, nested work and instrumentation overhead.",
+      "Cache-used bytes are combined across attached pagers; zero spill counters do not prove zero temporary I/O.",
+      "Per-component medians need not sum to median query wall time; first all call had higher measured storage reads and elapsed time.",
+      "Endurance workloads continue; paired timings are descriptive. PROFILE parent iteration includes nested queries.",
+      "RSS/WAL/private bytes sampled at100ms; early thresholds are not instantaneous kernel quotas.",
+      "No production query or schema change was made. Original failed HTTP and earlier guard-race reports remain unchanged."
+    ],
+    "passed": true,
+    "created_at": "2026-10-17T23:07:10.084320+00:00",
+    "scope": "One-binary diagnostic of actual encrypted catalog-candidate Store at1M requests/3M answers; all/search in three alternatingpairs. Samefe1a model. FullJSON equality, stable within-scopeVM and valid counters required. No HTTP/service-capacity guarantee or production query rewrite.",
+    "source_commit": "a3039cda24f889cc7f03efb3225ff0dd0fdce49b",
+    "source_store_sha256": "b32087d891269aa5381a8c6ad525dce2bcc4bd8c934a917c7ed7a3504c6afaae",
+    "model_source_commit": "fe1a4d6",
+    "artifact_bytes": 880695,
+    "report_sha256": "c0279536879e44e49d19033444d26164a28f4ef2edcc63e3e9105a74b6ef8218",
+    "supervisor_sha256": "e7d8ff125be4a54185e0a5fc764fae62bc4185d8557ab722a36aaa3e7a90cd51",
+    "prepared_sha256": "5beba8375a909b5b9e651486cc3c54c2070d122b2863da41f7e1948e4d25e2da"
+  }
+}
