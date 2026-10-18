@@ -34,7 +34,9 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
                 rusqlite::ffi::SQLITE_STMTSTATUS_VM_STEP,
                 1,
             ));
-            if sql.starts_with(b"SELECT min(timestamp),max(timestamp) FROM requests") {
+            if sql.starts_with(b"SELECT min(timestamp),max(timestamp) FROM requests")
+                || sql.starts_with(b"SELECT r.timestamp FROM (SELECT seq,id,timestamp")
+            {
                 work.timeline_bounds += steps;
             }
             if sql.starts_with(b"SELECT id,timestamp,event_kind,answer_count") {
@@ -98,7 +100,7 @@ fn explicit_timeline_limits_skip_history_bounds_and_preserve_eligibility() {
         as_of: Some(now),
         ..Default::default()
     };
-    // The tracer must observe the retained history scan for all three fallbacks.
+    // Automatic bounds use bounded edge probes instead of a full history scan.
     for (from, to) in [
         (None, None),
         (Some(now - 3000), None),
@@ -113,7 +115,7 @@ fn explicit_timeline_limits_skip_history_bounds_and_preserve_eligibility() {
             },
         );
         let snapshot = snapshot.unwrap();
-        assert!(work.timeline_bounds > 4096);
+        assert!(work.timeline_bounds > 0 && work.timeline_bounds < 40_000);
         assert_eq!(
             snapshot["timeline_meta"]["start"],
             from.unwrap_or(now - 2047)
@@ -169,6 +171,76 @@ fn explicit_timeline_limits_skip_history_bounds_and_preserve_eligibility() {
         assert_eq!(detail["timeline"], snapshot["timeline"]);
         assert_eq!(detail["timeline_meta"], snapshot["timeline_meta"]);
     }
+}
+
+#[test]
+fn automatic_timeline_bounds_match_aggregate_for_sparse_and_ineligible_edges() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("automatic-bounds.sqlite"), 7, 30_000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records: Vec<_> = (0..20_000)
+        .map(|index| {
+            let mut record = dashboard_record(&format!("edge-{index}"), now - index);
+            record["source"] = json!(if index == 10_000 { "rare" } else { "common" });
+            if !(600..19_400).contains(&index) {
+                record["timestamp"] = Value::Null;
+                record["imported_at"] = json!(now - index);
+            }
+            record
+        })
+        .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+    let conn = store.writer_connection().unwrap();
+    for source in [None, Some("rare"), Some("absent")] {
+        for (from, to) in [
+            (None, None),
+            (Some(now - 15_000), None),
+            (None, Some(now - 5000)),
+        ] {
+            let filter = Filter {
+                window: Some("all".into()),
+                source: source.map(str::to_owned),
+                from,
+                to,
+                as_of: Some(now),
+                ..Default::default()
+            };
+            let (predicate, args) = Store::predicate(&filter).unwrap();
+            let (first, last): (Option<i64>, Option<i64>) = conn.query_row(
+                &format!("SELECT min(timestamp),max(timestamp) FROM requests r WHERE {predicate} AND event_kind='request' AND json_extract(data,'$.timestamp') IS NOT NULL"),
+                params_from_iter(&args), |row| Ok((row.get(0)?, row.get(1)?))
+            ).unwrap();
+            let expected_end = to.or(last).unwrap_or(now);
+            let expected_start = from
+                .or(first)
+                .unwrap_or_else(|| expected_end.saturating_sub(86_400_000));
+            let spec = Store::timeline_spec(&conn, &predicate, &args, &filter).unwrap();
+            assert_eq!(
+                (spec.start, spec.end),
+                (expected_start, expected_end.max(expected_start))
+            );
+        }
+    }
+    // Make the edges eligible, then prove work is independent of the 20k rows.
+    conn.execute(
+        "UPDATE requests SET data=json_set(data,'$.timestamp',timestamp)",
+        [],
+    )
+    .unwrap();
+    let filter = Filter {
+        window: Some("all".into()),
+        as_of: Some(now),
+        ..Default::default()
+    };
+    let (snapshot, work) = measured_overview(&store, &filter);
+    assert_eq!(snapshot.unwrap()["summary"]["request_count"], 20_000);
+    assert!(
+        work.timeline_bounds > 0 && work.timeline_bounds < 40_000,
+        "{}",
+        work.timeline_bounds
+    );
 }
 
 #[test]

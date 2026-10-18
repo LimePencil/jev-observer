@@ -1002,10 +1002,40 @@ impl Store {
             // Explicit limits already determine both bounds; history cannot change them.
             (start, end.max(start))
         } else {
-            let (first, last): (Option<i64>, Option<i64>) = conn.query_row(
-                &format!("SELECT min(timestamp),max(timestamp) FROM requests r INDEXED BY request_dashboard WHERE {predicate} AND event_kind='request' AND json_extract(data,'$.timestamp') IS NOT NULL"),
-                params_from_iter(args), |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
+            // Probe a bounded number of oldest/newest parents before falling
+            // back to the covering aggregate. Dense histories usually resolve
+            // both bounds without scanning every retained request. The limit
+            // applies before filtering, so sparse/empty scopes add bounded work.
+            let edge_predicate = predicate.replace(
+                "json_extract(r.data,'$.transport_error')",
+                "r.transport_error",
+            );
+            let probe = |direction: &str| -> Result<Option<i64>> {
+                Ok(conn.query_row(
+                    &format!("SELECT r.timestamp FROM (SELECT seq,id,timestamp,source,model,status,event_kind,json_extract(data,'$.timestamp') AS original_time,json_extract(data,'$.transport_error') AS transport_error FROM requests INDEXED BY request_dashboard ORDER BY timestamp {direction} LIMIT 512) r WHERE {edge_predicate} AND r.event_kind='request' AND r.original_time IS NOT NULL ORDER BY r.timestamp {direction} LIMIT 1"),
+                    params_from_iter(args), |row| row.get(0),
+                ).optional()?)
+            };
+            let first = if filter.from.is_none() {
+                probe("ASC")?
+            } else {
+                None
+            };
+            let last = if filter.to.is_none() {
+                probe("DESC")?
+            } else {
+                None
+            };
+            let (first, last) = if (filter.from.is_none() && first.is_none())
+                || (filter.to.is_none() && last.is_none())
+            {
+                conn.query_row(
+                    &format!("SELECT min(timestamp),max(timestamp) FROM requests r INDEXED BY request_dashboard WHERE {predicate} AND event_kind='request' AND json_extract(data,'$.timestamp') IS NOT NULL"),
+                    params_from_iter(args), |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?)),
+                )?
+            } else {
+                (first, last)
+            };
             let end = filter.to.or(last).unwrap_or(now);
             let start = filter
                 .from
