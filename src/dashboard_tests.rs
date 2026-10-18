@@ -2171,6 +2171,7 @@ fn compact_answer_index_preserves_ids_and_duplicate_parent_order() {
         canonical.clone(),
         format!("group_v1_{}", "AB".repeat(32)),
         format!("{canonical}\0tail"),
+        format!("group_v1_{}\0", "a".repeat(63)),
         format!("group_v1_{}g", "a".repeat(63)),
         "plain-id".into(),
         "".into(),
@@ -2326,6 +2327,29 @@ fn repeated_answer_keys_reduce_search_work_without_changing_parent_selection() {
     );
     assert!(
         work.answer_keys > 0 && work.answer_keys < 1000,
+        "{}",
+        work.answer_keys
+    );
+    let writer = store.writer_connection().unwrap();
+    writer
+        .execute("UPDATE answers SET key=key || request_id", [])
+        .unwrap();
+    assert!(
+        Store::dashboard_answer_keys(&writer, "urgency")
+            .unwrap()
+            .is_none()
+    );
+    let (snapshot, work) = measured_overview(
+        &store,
+        &Filter {
+            window: Some("all".into()),
+            search: Some("urgency".into()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(snapshot.unwrap()["summary"]["request_count"], 2000);
+    assert!(
+        work.answer_keys > 0 && work.answer_keys < 30_000,
         "{}",
         work.answer_keys
     );

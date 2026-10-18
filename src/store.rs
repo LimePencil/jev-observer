@@ -144,7 +144,7 @@ const FAILED: &str = "(r.status>=400 OR json_extract(r.data,'$.transport_error')
 // and TEXT compare differently, so the transformation is injective. Preserve
 // every remaining index column/order for deterministic floating-point sums.
 // Built-in SQL functions keep the additive index writable by v0.3.0 too.
-const STRICT_ANSWER_QUERY: &str = "SELECT request_id,valid,value_num,confidence,value_text FROM answers INDEXED BY answer_overview WHERE (CASE WHEN length(CAST(group_id AS BLOB))=73 AND substr(group_id,1,9)='group_v1_' AND substr(group_id,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(group_id,10)) ELSE group_id END)=(CASE WHEN length(CAST(?1 AS BLOB))=73 AND substr(?1,1,9)='group_v1_' AND substr(?1,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(?1,10)) ELSE ?1 END) ORDER BY request_id";
+const STRICT_ANSWER_QUERY: &str = "SELECT request_id,valid,value_num,confidence,value_text FROM answers INDEXED BY answer_overview WHERE (CASE WHEN length(group_id)=73 AND length(CAST(group_id AS BLOB))=73 AND substr(group_id,1,9)='group_v1_' AND substr(group_id,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(group_id,10)) ELSE group_id END)=(CASE WHEN length(?1)=73 AND length(CAST(?1 AS BLOB))=73 AND substr(?1,1,9)='group_v1_' AND substr(?1,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(?1,10)) ELSE ?1 END) ORDER BY request_id";
 
 const DASHBOARD_INDEX: &str = "CREATE INDEX request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id,json_extract(data,'$.transport_error'))";
 
@@ -518,7 +518,7 @@ impl Store {
               valid INTEGER NOT NULL,value_num REAL,value_text TEXT,confidence REAL,data TEXT NOT NULL,
               PRIMARY KEY(request_id,key));
             CREATE INDEX IF NOT EXISTS answer_statistics ON answers(group_id,request_id,kind,valid,value_num,value_text,confidence);
-            CREATE INDEX IF NOT EXISTS answer_overview ON answers((CASE WHEN length(CAST(group_id AS BLOB))=73 AND substr(group_id,1,9)='group_v1_' AND substr(group_id,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(group_id,10)) ELSE group_id END),request_id,kind,valid,value_num,value_text,confidence);
+            CREATE INDEX IF NOT EXISTS answer_overview ON answers((CASE WHEN length(group_id)=73 AND length(CAST(group_id AS BLOB))=73 AND substr(group_id,1,9)='group_v1_' AND substr(group_id,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(group_id,10)) ELSE group_id END),request_id,kind,valid,value_num,value_text,confidence);
             CREATE INDEX IF NOT EXISTS answer_key ON answers(key,request_id);
             DROP INDEX IF EXISTS answer_group;
             CREATE TABLE IF NOT EXISTS labels(
