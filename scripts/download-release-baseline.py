@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Download and checksum-verify the published 0.1.0 native upgrade baseline."""
+"""Download and checksum-verify the published native upgrade baseline (0.1.0 by default)."""
 import argparse
 import hashlib
 import io
+import re
 from pathlib import Path
 import tarfile
 import urllib.request
@@ -15,11 +16,14 @@ def main():
         "x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-apple-darwin",
         "aarch64-apple-darwin", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"))
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--version", default="0.1.0")
     args = parser.parse_args()
+    if not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", args.version):
+        parser.error("Use a stable semantic version such as 0.3.0")
     windows = args.target.endswith("windows-msvc")
     extension = "zip" if windows else "tar.gz"
-    name = f"jev-observer-v0.1.0-{args.target}.{extension}"
-    base = "https://github.com/LimePencil/jev-observer/releases/download/v0.1.0/"
+    name = f"jev-observer-v{args.version}-{args.target}.{extension}"
+    base = f"https://github.com/LimePencil/jev-observer/releases/download/v{args.version}/"
 
     def download(asset):
         request = urllib.request.Request(base + asset, headers={"User-Agent": "Jev-Observer-upgrade-check"})
@@ -50,7 +54,7 @@ def main():
     destination.write_bytes(binary)
     destination.chmod(0o755)
     (args.output_dir / "SHA256SUMS").write_bytes(manifest)
-    print(f"Verified published 0.1.0 baseline: {args.target}; SHA256 {hashlib.sha256(binary).hexdigest()}")
+    print(f"Verified published {args.version} baseline: {args.target}; SHA256 {hashlib.sha256(binary).hexdigest()}")
 
 
 if __name__ == "__main__":

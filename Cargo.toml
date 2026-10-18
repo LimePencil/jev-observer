@@ -38,3 +38,7 @@ tower = { version = "0.5", features = ["util"] }
 [profile.release]
 lto = "thin"
 strip = true
+
+[patch.crates-io]
+secret-service = { path = "vendor/secret-service" }
+zbus-secret-service-keyring-store = { path = "vendor/zbus-secret-service-keyring-store" }
