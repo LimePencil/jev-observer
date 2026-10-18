@@ -1,0 +1,260 @@
+{
+  "c342d1c": {
+    "artifacts": {
+      "observer-c342d1c": {
+        "sha256": "abe7a427a71f5c84d3a0cb5d46c0a04629d91f019d4a62840b352f6331e34026"
+      },
+      "upgrade-probe-c342d1c": {
+        "sha256": "de8b76e14d3d0e01e2fed818f4d313f630befef3d42064527bf253a01287e010"
+      },
+      "hold-db-lock-c342d1c": {
+        "sha256": "f94c953a9e27dbf171a6c4197a5f52b81f9e89e88be9d683e815dd8e803bbc3f"
+      }
+    },
+    "ui_assets": {
+      "assets/Details-DSTp3kug.js": "7fe6b8c1519f8a7865b548d99bd74b2ca94a74372395de13e20489998d4a74f2",
+      "assets/geist-cyrillic-ext-wght-normal-DjL33-gN.woff2": "2317fa4bb293c9c0b110e18315d529235c47a0ddd3338cea3d8c7955e927899e",
+      "assets/geist-cyrillic-wght-normal-BEAKL7Jp.woff2": "6894439694946a589d157ece003086960a6a4013d74a813dab7602efdb3d8c09",
+      "assets/geist-latin-ext-wght-normal-DC-KSUi6.woff2": "824f485b5d26e2f2da3c2b236132ece1bc8e4e43373452950bb0e40548b4313f",
+      "assets/geist-latin-wght-normal-BgDaEnEv.woff2": "19f9c92546aa300c312235e3125af1b81394d8db9a4bc4a425cd5b641d2d54e1",
+      "assets/geist-mono-cyrillic-ext-wght-normal-X_5orZeX.woff2": "cd8800999070b729e1cc0bf7a48da6c3ac096a044251171b9a7574b56d96d4b4",
+      "assets/geist-mono-cyrillic-wght-normal-DiZS0aHC.woff2": "4866787fc952dbdbd591d6923d67bc21c2d894b93f34ab69d0cdf25d47bfb2df",
+      "assets/geist-mono-latin-ext-wght-normal-Bwz-egvJ.woff2": "1a189eb997c3e2ece68373e387afaec9e8617424186c4b1ab3cff7c54ba6223b",
+      "assets/geist-mono-latin-wght-normal-XN7g48iV.woff2": "684ad5b531f81d43c1e8c7038262d5db7cdc1f68006e04d6c7769efa8d33c8cc",
+      "assets/geist-mono-symbols2-wght-normal-CO5SzqOn.woff2": "5bb66d8319ba1602bb2eb67dce8d79c2b4687be8ce183a0574433e949b3c60ad",
+      "assets/geist-mono-vietnamese-wght-normal-DadHysG0.woff2": "d39b60889a94a527a7f73c7988a2d6efb6c081614aef683b0b386c02d74c2175",
+      "assets/geist-vietnamese-wght-normal-6IgcOCM7.woff2": "8fa40e5d248247735eb97a0bd593b8852440430600d6ba01364c31fe0abc1fe1",
+      "assets/index-D7mIr4Cn.css": "33c6070f94f471746e4056601a2795162951731c9a20fdd4390527d6f4e3f5ac",
+      "assets/index-Tk6hujP1.js": "c1befbe17b79c22a04a6c7d050f822161a278a819ca1e22f88fb33d8d525a4e8",
+      "icon.png": "4a02bf5907761c64e9e746dff71f739fb15d73ef3b5a23a4f606bf64660c85ea",
+      "index.html": "f5a1aac65af8bb802f602cdaf0bf4d7ddd599c508571b04959d73936643fa391",
+      "licenses/THIRD-PARTY-NOTICES.txt": "4e5618a46d992ceecd05ebec9856aad8a757835c30fd72dfb58670b9adfaf60f",
+      "licenses/geist-OFL.txt": "71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f",
+      "licenses/geist-mono-OFL.txt": "cc815ed4fc045f0e991abb10395b7932bd028c6a067deb13316d6002105074e6",
+      "licenses/jev-observer-MIT.txt": "1fd944d5d79dddd37d73cf8ccd1666ac569562e0cc5583443ac11c10e9e58c3f",
+      "licenses/musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+      "licenses/rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
+      "licenses/third-party-inventory.json": "d3ad30ac2429f2d0768e9ea33e69455824c05bd9b66162bd0a521f63140dc79a"
+    },
+    "commit": "c342d1cd874f92a4ebacd2755ba4a93d6e1f6876",
+    "tree": "c81506fb439962105b4dcee47a354d8e0820d864"
+  },
+  "d66a9ae": {
+    "artifacts": {
+      "observer-d66a9ae": {
+        "sha256": "e9fdf54da37dad458b10d0b5cc3b002050b761544d595e762eabc9d564a31467"
+      },
+      "upgrade-probe-d66a9ae": {
+        "sha256": "de8b76e14d3d0e01e2fed818f4d313f630befef3d42064527bf253a01287e010"
+      },
+      "hold-db-lock-d66a9ae": {
+        "sha256": "f94c953a9e27dbf171a6c4197a5f52b81f9e89e88be9d683e815dd8e803bbc3f"
+      }
+    },
+    "ui_assets": {
+      "assets/Details-DYgn6qJ8.js": "8e12e1653d42b1babf3bc381db7939d8b05d3ccb1cc3ed2a26701d94ee7b70ea",
+      "assets/geist-cyrillic-ext-wght-normal-DjL33-gN.woff2": "2317fa4bb293c9c0b110e18315d529235c47a0ddd3338cea3d8c7955e927899e",
+      "assets/geist-cyrillic-wght-normal-BEAKL7Jp.woff2": "6894439694946a589d157ece003086960a6a4013d74a813dab7602efdb3d8c09",
+      "assets/geist-latin-ext-wght-normal-DC-KSUi6.woff2": "824f485b5d26e2f2da3c2b236132ece1bc8e4e43373452950bb0e40548b4313f",
+      "assets/geist-latin-wght-normal-BgDaEnEv.woff2": "19f9c92546aa300c312235e3125af1b81394d8db9a4bc4a425cd5b641d2d54e1",
+      "assets/geist-mono-cyrillic-ext-wght-normal-X_5orZeX.woff2": "cd8800999070b729e1cc0bf7a48da6c3ac096a044251171b9a7574b56d96d4b4",
+      "assets/geist-mono-cyrillic-wght-normal-DiZS0aHC.woff2": "4866787fc952dbdbd591d6923d67bc21c2d894b93f34ab69d0cdf25d47bfb2df",
+      "assets/geist-mono-latin-ext-wght-normal-Bwz-egvJ.woff2": "1a189eb997c3e2ece68373e387afaec9e8617424186c4b1ab3cff7c54ba6223b",
+      "assets/geist-mono-latin-wght-normal-XN7g48iV.woff2": "684ad5b531f81d43c1e8c7038262d5db7cdc1f68006e04d6c7769efa8d33c8cc",
+      "assets/geist-mono-symbols2-wght-normal-CO5SzqOn.woff2": "5bb66d8319ba1602bb2eb67dce8d79c2b4687be8ce183a0574433e949b3c60ad",
+      "assets/geist-mono-vietnamese-wght-normal-DadHysG0.woff2": "d39b60889a94a527a7f73c7988a2d6efb6c081614aef683b0b386c02d74c2175",
+      "assets/geist-vietnamese-wght-normal-6IgcOCM7.woff2": "8fa40e5d248247735eb97a0bd593b8852440430600d6ba01364c31fe0abc1fe1",
+      "assets/index-CjpZpaEE.js": "3054d3e9740ae104714744fecacea801b73b4c7e18ef833c4055ce137d0cdcb3",
+      "assets/index-D7mIr4Cn.css": "33c6070f94f471746e4056601a2795162951731c9a20fdd4390527d6f4e3f5ac",
+      "icon.png": "4a02bf5907761c64e9e746dff71f739fb15d73ef3b5a23a4f606bf64660c85ea",
+      "index.html": "95ae5851db89c21865cb860e829f5dc77190de8d29ed5427761b4b70564fd335",
+      "licenses/THIRD-PARTY-NOTICES.txt": "4e5618a46d992ceecd05ebec9856aad8a757835c30fd72dfb58670b9adfaf60f",
+      "licenses/geist-OFL.txt": "71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f",
+      "licenses/geist-mono-OFL.txt": "cc815ed4fc045f0e991abb10395b7932bd028c6a067deb13316d6002105074e6",
+      "licenses/jev-observer-MIT.txt": "1fd944d5d79dddd37d73cf8ccd1666ac569562e0cc5583443ac11c10e9e58c3f",
+      "licenses/musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+      "licenses/rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
+      "licenses/third-party-inventory.json": "d3ad30ac2429f2d0768e9ea33e69455824c05bd9b66162bd0a521f63140dc79a"
+    },
+    "commit": "d66a9ae0461dddeec0265ad4cabef139d555dc93",
+    "tree": "7628c5b86e09d55dc03e9c04abb6b0869fc4027c"
+  },
+  "da68897": {
+    "artifacts": {
+      "observer-da68897": {
+        "sha256": "14943193dd4a9ecb401ee8a0ebbd7c8fb59db8749efdb93d3d4704ec3c7b5277"
+      },
+      "upgrade-probe-da68897": {
+        "sha256": "90f84c6aeceb0b241fbe94d5b692e579498b34b75cc8098349df413ff463652b"
+      },
+      "hold-db-lock-da68897": {
+        "sha256": "f94c953a9e27dbf171a6c4197a5f52b81f9e89e88be9d683e815dd8e803bbc3f"
+      }
+    },
+    "ui_assets": {
+      "assets/Details-BIhgvFIB.js": "8cba19a5318461b80e7962e4734b3aec375ad1b305af4c8b9a3afafb90446c88",
+      "assets/geist-cyrillic-ext-wght-normal-DjL33-gN.woff2": "2317fa4bb293c9c0b110e18315d529235c47a0ddd3338cea3d8c7955e927899e",
+      "assets/geist-cyrillic-wght-normal-BEAKL7Jp.woff2": "6894439694946a589d157ece003086960a6a4013d74a813dab7602efdb3d8c09",
+      "assets/geist-latin-ext-wght-normal-DC-KSUi6.woff2": "824f485b5d26e2f2da3c2b236132ece1bc8e4e43373452950bb0e40548b4313f",
+      "assets/geist-latin-wght-normal-BgDaEnEv.woff2": "19f9c92546aa300c312235e3125af1b81394d8db9a4bc4a425cd5b641d2d54e1",
+      "assets/geist-mono-cyrillic-ext-wght-normal-X_5orZeX.woff2": "cd8800999070b729e1cc0bf7a48da6c3ac096a044251171b9a7574b56d96d4b4",
+      "assets/geist-mono-cyrillic-wght-normal-DiZS0aHC.woff2": "4866787fc952dbdbd591d6923d67bc21c2d894b93f34ab69d0cdf25d47bfb2df",
+      "assets/geist-mono-latin-ext-wght-normal-Bwz-egvJ.woff2": "1a189eb997c3e2ece68373e387afaec9e8617424186c4b1ab3cff7c54ba6223b",
+      "assets/geist-mono-latin-wght-normal-XN7g48iV.woff2": "684ad5b531f81d43c1e8c7038262d5db7cdc1f68006e04d6c7769efa8d33c8cc",
+      "assets/geist-mono-symbols2-wght-normal-CO5SzqOn.woff2": "5bb66d8319ba1602bb2eb67dce8d79c2b4687be8ce183a0574433e949b3c60ad",
+      "assets/geist-mono-vietnamese-wght-normal-DadHysG0.woff2": "d39b60889a94a527a7f73c7988a2d6efb6c081614aef683b0b386c02d74c2175",
+      "assets/geist-vietnamese-wght-normal-6IgcOCM7.woff2": "8fa40e5d248247735eb97a0bd593b8852440430600d6ba01364c31fe0abc1fe1",
+      "assets/index-BBLjvY_B.js": "e38f19ec60ec744486324ccf48f865d3b946b980b3e0f39a36ac7e84e842c8fc",
+      "assets/index-C78oyozu.css": "a6fc65976c046ff41f6712295f589ac7358add3de6f1c10d9bed5bdd9f661256",
+      "icon.png": "4a02bf5907761c64e9e746dff71f739fb15d73ef3b5a23a4f606bf64660c85ea",
+      "index.html": "613b3db2aa45172900c136aef901da50657808cd94c3a9199532e26cd0a6d03b",
+      "licenses/THIRD-PARTY-NOTICES.txt": "4e5618a46d992ceecd05ebec9856aad8a757835c30fd72dfb58670b9adfaf60f",
+      "licenses/geist-OFL.txt": "71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f",
+      "licenses/geist-mono-OFL.txt": "cc815ed4fc045f0e991abb10395b7932bd028c6a067deb13316d6002105074e6",
+      "licenses/jev-observer-MIT.txt": "1fd944d5d79dddd37d73cf8ccd1666ac569562e0cc5583443ac11c10e9e58c3f",
+      "licenses/musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+      "licenses/rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
+      "licenses/third-party-inventory.json": "d3ad30ac2429f2d0768e9ea33e69455824c05bd9b66162bd0a521f63140dc79a"
+    },
+    "commit": "da6889765c957a069a15ee3fd95eab5d880d5729",
+    "tree": "39c9207caa983f124f8a4fa79bae3086479facee"
+  },
+  "0e04b1b": {
+    "artifacts": {
+      "observer-0e04b1b": {
+        "sha256": "d2a2c6fe474f02f521b4cc0369bee3d6531823494eea5268b8d3f8f9c3282f5d"
+      },
+      "upgrade-probe-0e04b1b": {
+        "sha256": "90f84c6aeceb0b241fbe94d5b692e579498b34b75cc8098349df413ff463652b"
+      },
+      "hold-db-lock-0e04b1b": {
+        "sha256": "f94c953a9e27dbf171a6c4197a5f52b81f9e89e88be9d683e815dd8e803bbc3f"
+      }
+    },
+    "ui_assets": {
+      "assets/Details-BIhgvFIB.js": "8cba19a5318461b80e7962e4734b3aec375ad1b305af4c8b9a3afafb90446c88",
+      "assets/geist-cyrillic-ext-wght-normal-DjL33-gN.woff2": "2317fa4bb293c9c0b110e18315d529235c47a0ddd3338cea3d8c7955e927899e",
+      "assets/geist-cyrillic-wght-normal-BEAKL7Jp.woff2": "6894439694946a589d157ece003086960a6a4013d74a813dab7602efdb3d8c09",
+      "assets/geist-latin-ext-wght-normal-DC-KSUi6.woff2": "824f485b5d26e2f2da3c2b236132ece1bc8e4e43373452950bb0e40548b4313f",
+      "assets/geist-latin-wght-normal-BgDaEnEv.woff2": "19f9c92546aa300c312235e3125af1b81394d8db9a4bc4a425cd5b641d2d54e1",
+      "assets/geist-mono-cyrillic-ext-wght-normal-X_5orZeX.woff2": "cd8800999070b729e1cc0bf7a48da6c3ac096a044251171b9a7574b56d96d4b4",
+      "assets/geist-mono-cyrillic-wght-normal-DiZS0aHC.woff2": "4866787fc952dbdbd591d6923d67bc21c2d894b93f34ab69d0cdf25d47bfb2df",
+      "assets/geist-mono-latin-ext-wght-normal-Bwz-egvJ.woff2": "1a189eb997c3e2ece68373e387afaec9e8617424186c4b1ab3cff7c54ba6223b",
+      "assets/geist-mono-latin-wght-normal-XN7g48iV.woff2": "684ad5b531f81d43c1e8c7038262d5db7cdc1f68006e04d6c7769efa8d33c8cc",
+      "assets/geist-mono-symbols2-wght-normal-CO5SzqOn.woff2": "5bb66d8319ba1602bb2eb67dce8d79c2b4687be8ce183a0574433e949b3c60ad",
+      "assets/geist-mono-vietnamese-wght-normal-DadHysG0.woff2": "d39b60889a94a527a7f73c7988a2d6efb6c081614aef683b0b386c02d74c2175",
+      "assets/geist-vietnamese-wght-normal-6IgcOCM7.woff2": "8fa40e5d248247735eb97a0bd593b8852440430600d6ba01364c31fe0abc1fe1",
+      "assets/index-BBLjvY_B.js": "e38f19ec60ec744486324ccf48f865d3b946b980b3e0f39a36ac7e84e842c8fc",
+      "assets/index-C78oyozu.css": "a6fc65976c046ff41f6712295f589ac7358add3de6f1c10d9bed5bdd9f661256",
+      "icon.png": "4a02bf5907761c64e9e746dff71f739fb15d73ef3b5a23a4f606bf64660c85ea",
+      "index.html": "613b3db2aa45172900c136aef901da50657808cd94c3a9199532e26cd0a6d03b",
+      "licenses/THIRD-PARTY-NOTICES.txt": "4e5618a46d992ceecd05ebec9856aad8a757835c30fd72dfb58670b9adfaf60f",
+      "licenses/geist-OFL.txt": "71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f",
+      "licenses/geist-mono-OFL.txt": "cc815ed4fc045f0e991abb10395b7932bd028c6a067deb13316d6002105074e6",
+      "licenses/jev-observer-MIT.txt": "1fd944d5d79dddd37d73cf8ccd1666ac569562e0cc5583443ac11c10e9e58c3f",
+      "licenses/musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+      "licenses/rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
+      "licenses/third-party-inventory.json": "d3ad30ac2429f2d0768e9ea33e69455824c05bd9b66162bd0a521f63140dc79a"
+    },
+    "commit": "0e04b1b2a93bba95e5b01e8c89509555d308a7aa",
+    "tree": "864151aa16b826c185abf6a83fb277c4eba5bc4e"
+  },
+  "d55808a": {
+    "artifacts": {
+      "observer-d55808a": {
+        "sha256": "696ba87b91aacb98bec2bf47a5bde863408f082857c2aaa45e85479e5b3b32be"
+      }
+    },
+    "ui_assets": {
+      "assets/Details-BHwlSgzc.js": "ea15f1ce9c688fa8ca7739edf0156c376fd5c57a5208304189e38ec6fff0882d",
+      "assets/geist-cyrillic-ext-wght-normal-DjL33-gN.woff2": "2317fa4bb293c9c0b110e18315d529235c47a0ddd3338cea3d8c7955e927899e",
+      "assets/geist-cyrillic-wght-normal-BEAKL7Jp.woff2": "6894439694946a589d157ece003086960a6a4013d74a813dab7602efdb3d8c09",
+      "assets/geist-latin-ext-wght-normal-DC-KSUi6.woff2": "824f485b5d26e2f2da3c2b236132ece1bc8e4e43373452950bb0e40548b4313f",
+      "assets/geist-latin-wght-normal-BgDaEnEv.woff2": "19f9c92546aa300c312235e3125af1b81394d8db9a4bc4a425cd5b641d2d54e1",
+      "assets/geist-mono-cyrillic-ext-wght-normal-X_5orZeX.woff2": "cd8800999070b729e1cc0bf7a48da6c3ac096a044251171b9a7574b56d96d4b4",
+      "assets/geist-mono-cyrillic-wght-normal-DiZS0aHC.woff2": "4866787fc952dbdbd591d6923d67bc21c2d894b93f34ab69d0cdf25d47bfb2df",
+      "assets/geist-mono-latin-ext-wght-normal-Bwz-egvJ.woff2": "1a189eb997c3e2ece68373e387afaec9e8617424186c4b1ab3cff7c54ba6223b",
+      "assets/geist-mono-latin-wght-normal-XN7g48iV.woff2": "684ad5b531f81d43c1e8c7038262d5db7cdc1f68006e04d6c7769efa8d33c8cc",
+      "assets/geist-mono-symbols2-wght-normal-CO5SzqOn.woff2": "5bb66d8319ba1602bb2eb67dce8d79c2b4687be8ce183a0574433e949b3c60ad",
+      "assets/geist-mono-vietnamese-wght-normal-DadHysG0.woff2": "d39b60889a94a527a7f73c7988a2d6efb6c081614aef683b0b386c02d74c2175",
+      "assets/geist-vietnamese-wght-normal-6IgcOCM7.woff2": "8fa40e5d248247735eb97a0bd593b8852440430600d6ba01364c31fe0abc1fe1",
+      "assets/index-C78oyozu.css": "a6fc65976c046ff41f6712295f589ac7358add3de6f1c10d9bed5bdd9f661256",
+      "assets/index-CmHlr8ql.js": "4deb1b8f7d5123af274681cb4ba1368578f91254d014e6115e9ca1ebbda29331",
+      "icon.png": "4a02bf5907761c64e9e746dff71f739fb15d73ef3b5a23a4f606bf64660c85ea",
+      "index.html": "2093ff659791bf289fa3c47d0ce6e7fac94bcadc62528a053f15cd0f9ade088f",
+      "licenses/THIRD-PARTY-NOTICES.txt": "4e5618a46d992ceecd05ebec9856aad8a757835c30fd72dfb58670b9adfaf60f",
+      "licenses/geist-OFL.txt": "71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f",
+      "licenses/geist-mono-OFL.txt": "cc815ed4fc045f0e991abb10395b7932bd028c6a067deb13316d6002105074e6",
+      "licenses/jev-observer-MIT.txt": "1fd944d5d79dddd37d73cf8ccd1666ac569562e0cc5583443ac11c10e9e58c3f",
+      "licenses/musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+      "licenses/rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
+      "licenses/third-party-inventory.json": "d3ad30ac2429f2d0768e9ea33e69455824c05bd9b66162bd0a521f63140dc79a"
+    },
+    "commit": "d55808a9282a8583d0e97a2602870620fa4c1494",
+    "tree": "120647ccce3d99d7665b1f7fdfe4e7064c019670"
+  },
+  "69c7305": {
+    "ui_assets": {
+      "assets/Details-CtSwLIgP.js": "4d3e346eefe0ec6e49bcfb5b427df0f16316a6ebb6f40cfaf54433534b7614bb",
+      "assets/geist-cyrillic-ext-wght-normal-DjL33-gN.woff2": "2317fa4bb293c9c0b110e18315d529235c47a0ddd3338cea3d8c7955e927899e",
+      "assets/geist-cyrillic-wght-normal-BEAKL7Jp.woff2": "6894439694946a589d157ece003086960a6a4013d74a813dab7602efdb3d8c09",
+      "assets/geist-latin-ext-wght-normal-DC-KSUi6.woff2": "824f485b5d26e2f2da3c2b236132ece1bc8e4e43373452950bb0e40548b4313f",
+      "assets/geist-latin-wght-normal-BgDaEnEv.woff2": "19f9c92546aa300c312235e3125af1b81394d8db9a4bc4a425cd5b641d2d54e1",
+      "assets/geist-mono-cyrillic-ext-wght-normal-X_5orZeX.woff2": "cd8800999070b729e1cc0bf7a48da6c3ac096a044251171b9a7574b56d96d4b4",
+      "assets/geist-mono-cyrillic-wght-normal-DiZS0aHC.woff2": "4866787fc952dbdbd591d6923d67bc21c2d894b93f34ab69d0cdf25d47bfb2df",
+      "assets/geist-mono-latin-ext-wght-normal-Bwz-egvJ.woff2": "1a189eb997c3e2ece68373e387afaec9e8617424186c4b1ab3cff7c54ba6223b",
+      "assets/geist-mono-latin-wght-normal-XN7g48iV.woff2": "684ad5b531f81d43c1e8c7038262d5db7cdc1f68006e04d6c7769efa8d33c8cc",
+      "assets/geist-mono-symbols2-wght-normal-CO5SzqOn.woff2": "5bb66d8319ba1602bb2eb67dce8d79c2b4687be8ce183a0574433e949b3c60ad",
+      "assets/geist-mono-vietnamese-wght-normal-DadHysG0.woff2": "d39b60889a94a527a7f73c7988a2d6efb6c081614aef683b0b386c02d74c2175",
+      "assets/geist-vietnamese-wght-normal-6IgcOCM7.woff2": "8fa40e5d248247735eb97a0bd593b8852440430600d6ba01364c31fe0abc1fe1",
+      "assets/index-C78oyozu.css": "a6fc65976c046ff41f6712295f589ac7358add3de6f1c10d9bed5bdd9f661256",
+      "assets/index-Dql1Y2Zl.js": "a80abff85577b42074215e55d1f3ba9c220d684a6d14b0d5d2c9020b139deb05",
+      "icon.png": "4a02bf5907761c64e9e746dff71f739fb15d73ef3b5a23a4f606bf64660c85ea",
+      "index.html": "72110908d6da3ab56250a68500833580a549299493b73c7c8b86946201c5ff24",
+      "licenses/THIRD-PARTY-NOTICES.txt": "4e5618a46d992ceecd05ebec9856aad8a757835c30fd72dfb58670b9adfaf60f",
+      "licenses/geist-OFL.txt": "71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f",
+      "licenses/geist-mono-OFL.txt": "cc815ed4fc045f0e991abb10395b7932bd028c6a067deb13316d6002105074e6",
+      "licenses/jev-observer-MIT.txt": "1fd944d5d79dddd37d73cf8ccd1666ac569562e0cc5583443ac11c10e9e58c3f",
+      "licenses/musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+      "licenses/rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
+      "licenses/third-party-inventory.json": "d3ad30ac2429f2d0768e9ea33e69455824c05bd9b66162bd0a521f63140dc79a"
+    },
+    "built_at_utc": "2026-10-17T23:09:31.795688+00:00",
+    "commit": "69c730519a7edd36d0cbb869e6298e2ec776d351",
+    "tree": "7f50e91d04624cbc26c7a32a264e3883e2fd01a0",
+    "sha256": "6ffb16fb64882fb41b6336626e6a011479b5a09d72ea8d8b7efcd3df88b833da",
+    "bytes": 20304440
+  },
+  "9bb84db": {
+    "ui_assets": {
+      "assets/Details-EWAMRdoj.js": "83112ff829d17e2f8937ecd397bc370a33ad3abcd426b597b80429c0227adf05",
+      "assets/geist-cyrillic-ext-wght-normal-DjL33-gN.woff2": "2317fa4bb293c9c0b110e18315d529235c47a0ddd3338cea3d8c7955e927899e",
+      "assets/geist-cyrillic-wght-normal-BEAKL7Jp.woff2": "6894439694946a589d157ece003086960a6a4013d74a813dab7602efdb3d8c09",
+      "assets/geist-latin-ext-wght-normal-DC-KSUi6.woff2": "824f485b5d26e2f2da3c2b236132ece1bc8e4e43373452950bb0e40548b4313f",
+      "assets/geist-latin-wght-normal-BgDaEnEv.woff2": "19f9c92546aa300c312235e3125af1b81394d8db9a4bc4a425cd5b641d2d54e1",
+      "assets/geist-mono-cyrillic-ext-wght-normal-X_5orZeX.woff2": "cd8800999070b729e1cc0bf7a48da6c3ac096a044251171b9a7574b56d96d4b4",
+      "assets/geist-mono-cyrillic-wght-normal-DiZS0aHC.woff2": "4866787fc952dbdbd591d6923d67bc21c2d894b93f34ab69d0cdf25d47bfb2df",
+      "assets/geist-mono-latin-ext-wght-normal-Bwz-egvJ.woff2": "1a189eb997c3e2ece68373e387afaec9e8617424186c4b1ab3cff7c54ba6223b",
+      "assets/geist-mono-latin-wght-normal-XN7g48iV.woff2": "684ad5b531f81d43c1e8c7038262d5db7cdc1f68006e04d6c7769efa8d33c8cc",
+      "assets/geist-mono-symbols2-wght-normal-CO5SzqOn.woff2": "5bb66d8319ba1602bb2eb67dce8d79c2b4687be8ce183a0574433e949b3c60ad",
+      "assets/geist-mono-vietnamese-wght-normal-DadHysG0.woff2": "d39b60889a94a527a7f73c7988a2d6efb6c081614aef683b0b386c02d74c2175",
+      "assets/geist-vietnamese-wght-normal-6IgcOCM7.woff2": "8fa40e5d248247735eb97a0bd593b8852440430600d6ba01364c31fe0abc1fe1",
+      "assets/index-4C2gSjRg.js": "3fcff23a7975add475f2fd700608e3bac89f961117014405865f414c6a7019bb",
+      "assets/index-C78oyozu.css": "a6fc65976c046ff41f6712295f589ac7358add3de6f1c10d9bed5bdd9f661256",
+      "icon.png": "4a02bf5907761c64e9e746dff71f739fb15d73ef3b5a23a4f606bf64660c85ea",
+      "index.html": "1ac1ea100f7499148d6468fca5e9fd10114fbaf35877e9c7d4dcf3de589ff9f4",
+      "licenses/THIRD-PARTY-NOTICES.txt": "4e5618a46d992ceecd05ebec9856aad8a757835c30fd72dfb58670b9adfaf60f",
+      "licenses/geist-OFL.txt": "71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f",
+      "licenses/geist-mono-OFL.txt": "cc815ed4fc045f0e991abb10395b7932bd028c6a067deb13316d6002105074e6",
+      "licenses/jev-observer-MIT.txt": "1fd944d5d79dddd37d73cf8ccd1666ac569562e0cc5583443ac11c10e9e58c3f",
+      "licenses/musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b",
+      "licenses/rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
+      "licenses/third-party-inventory.json": "d3ad30ac2429f2d0768e9ea33e69455824c05bd9b66162bd0a521f63140dc79a"
+    },
+    "built_at_utc": "2026-10-17T23:52:53.236228+00:00",
+    "commit": "9bb84db756c76e834d6592d55dda5e9cd9689f3f",
+    "tree": "a2961544ea52a70765a8dc5e502244dd26cc3c4a",
+    "sha256": "26fac2283a9d2c5ce5d0971a77092dc3652578d18be57aef103bd7ad12dc7e08",
+    "bytes": 20304696
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "comparison": {
+    "median": {
+      "baseline": {
+        "phase_peak_rss_kib": {
+          "startup": 14656,
+          "ingestion_and_drain": 141916,
+          "export": 193768
+        },
+        "peak_rss_kib": 193768,
+        "drain_seconds_after_unlock": 3.395829,
+        "case_seconds": 5.723555
+      },
+      "candidate": {
+        "phase_peak_rss_kib": {
+          "startup": 14728,
+          "ingestion_and_drain": 113096,
+          "export": 172760
+        },
+        "peak_rss_kib": 172760,
+        "drain_seconds_after_unlock": 2.957892,
+        "case_seconds": 4.814065
+      }
+    },
+    "all_runs": {
+      "excluded_projection_fields": [
+        "id",
+        "timestamp",
+        "duration_ms"
+      ],
+      "raw_export_bytes": [
+        74088511,
+        74088493,
+        74088492,
+        74088493,
+        74088492,
+        74088491
+      ],
+      "records": 9,
+      "answers": 80001,
+      "forwarded_captured_persisted": 9,
+      "drops_truncation_write_maintenance_failures": 0,
+      "queue_bytes_and_active_after_drain": 0,
+      "exact_ordered_projection_and_multiset": true
+    },
+    "shutdown": {
+      "normalized_projection_counts": {
+        "a22bcb2f100c029aa3760753041c56c0800e7f7a720485a76e9a4f2e8b3ffa5c": 1,
+        "964d048c78f33c1a2496844b6b90ce2f277ce207ce03bfff31e941dcc3d78934": 8
+      },
+      "ordered_projection_hashes": [
+        "a22bcb2f100c029aa3760753041c56c0800e7f7a720485a76e9a4f2e8b3ffa5c",
+        "964d048c78f33c1a2496844b6b90ce2f277ce207ce03bfff31e941dcc3d78934",
+        "964d048c78f33c1a2496844b6b90ce2f277ce207ce03bfff31e941dcc3d78934",
+        "964d048c78f33c1a2496844b6b90ce2f277ce207ce03bfff31e941dcc3d78934",
+        "964d048c78f33c1a2496844b6b90ce2f277ce207ce03bfff31e941dcc3d78934",
+        "964d048c78f33c1a2496844b6b90ce2f277ce207ce03bfff31e941dcc3d78934",
+        "964d048c78f33c1a2496844b6b90ce2f277ce207ce03bfff31e941dcc3d78934",
+        "964d048c78f33c1a2496844b6b90ce2f277ce207ce03bfff31e941dcc3d78934",
+        "964d048c78f33c1a2496844b6b90ce2f277ce207ce03bfff31e941dcc3d78934"
+      ],
+      "queued_before_unlock": {
+        "queue_depth": 9,
+        "queued_bytes": 1040349,
+        "active_captures": 9
+      },
+      "phase_peak_rss_kib": {
+        "startup": 14336,
+        "ingestion_and_drain": 17556,
+        "shutdown_drain": 102440,
+        "reopened": 33664,
+        "export": 84472
+      },
+      "supervisor": {
+        "hard_deadline_seconds": 120,
+        "hard_timeout": false,
+        "forced_group_cleanup": false,
+        "adopted_children_reaped": 0,
+        "worker_exit_code": 0
+      },
+      "passed": true,
+      "shutdown_seconds_after_sigterm": 2.970252,
+      "sigterm_sent_with_write_lock_held": true,
+      "shutdown_exit_code": 0,
+      "reopened_same_encrypted_database": true,
+      "evidence_checks_passed": true,
+      "lock_seconds": 0.067413,
+      "records": 9,
+      "answers": 80001,
+      "export_bytes": 74088502,
+      "peak_rss_kib": 102440,
+      "rss_limit_hit": false,
+      "rss_samples": 762,
+      "case_seconds": 4.953799
+    },
+    "notes": [
+      "Synthetic loopback captures and generated database keys; no production databases or remote providers.",
+      "Peak RSS includes separate startup, ingestion/drain and export measurements; no all-record export snapshot is retained.",
+      "Projection hashes omit only process-specific id, timestamp and duration_ms; invalid-answer evidence and all other fields remain.",
+      "The supervisor kills the owned process group at the 120s case deadline; kill/reap cleanup has a separate bounded grace.",
+      "Shared-host measurements describe this bounded fixture, not capacity or a guaranteed memory limit.",
+      "Only exercised Rust changes are the two owned-answer-array fixes; candidate also includes UI refresh and storage-documentation changes.",
+      "Combined process-memory measurement does not isolate the individual ownership changes."
+    ],
+    "passed": true,
+    "baseline": "0e04b1b",
+    "candidate": "d55808a",
+    "pairs": 3
+  },
+  "inputs": {
+    "baseline": {
+      "sha256": "d2a2c6fe474f02f521b4cc0369bee3d6531823494eea5268b8d3f8f9c3282f5d"
+    },
+    "candidate": {
+      "artifacts": {
+        "observer-d55808a": {
+          "sha256": "696ba87b91aacb98bec2bf47a5bde863408f082857c2aaa45e85479e5b3b32be"
+        }
+      },
+      "commit": "d55808a9282a8583d0e97a2602870620fa4c1494",
+      "tree": "120647ccce3d99d7665b1f7fdfe4e7064c019670"
+    },
+    "harnesses": {
+      "http-dense-array-moves-harness.py": {
+        "sha256": "2c99bfb7deb81c9183dd8836a0b6aeff3a87347fcb43373582058099d57ea5e5"
+      },
+      "http-shutdown-array-moves-harness.py": {
+        "sha256": "c552b37d1dc7ad4a89e310b20636e347358afb00ed223a37d706164b55120b51"
+      }
+    },
+    "dependency": {
+      "sha256": "086a644e91f54267c1bada547e6a038aecc6aa6dcdc965397001629c53da4919"
+    },
+    "fixture": {
+      "records": 9,
+      "answers": 80001,
+      "large_requests": 8,
+      "request_bytes": 130015,
+      "response_bytes": 14,
+      "source_bytes": 256,
+      "task_bytes": 256
+    },
+    "limits_unchanged": {
+      "pairs": 3,
+      "app_rss_kib": 786432,
+      "rss_interval_ms": 5,
+      "case_seconds": 120,
+      "cleanup_grace_seconds": 6,
+      "client_inactivity_seconds": 5,
+      "writer_unlock_watchdog_seconds": 1.5,
+      "export_line_bytes": 16777216
+    },
+    "measurement_caveats": [
+      "Combined two ownership changes on a shared host; cannot attribute a process RSS change separately to either change.",
+      "Project docs changes since baseline are not runtime changes; final candidate diff will be recorded before launch.",
+      "RSS sampling is descriptive and is not a guaranteed memory or throughput limit."
+    ]
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "native": {
+    "run": {
+      "id": 39068200648,
+      "html_url": "https://github.com/LimePencil/jev-observer/actions/runs/39068200648",
+      "head_sha": "8806c8497526d0f2802061093b5e157701803d7a",
+      "head_branch": "main",
+      "event": "workflow_dispatch",
+      "status": "completed",
+      "conclusion": "success",
+      "created_at": "2026-10-17T20:47:26Z",
+      "updated_at": "2026-10-17T21:22:56Z"
+    },
+    "platforms": [
+      {
+        "release_artifact": {
+          "name": "release-aarch64-apple-darwin",
+          "digest": "sha256:ec33f05e5b7e1c9587a94fb604e44c7e3dca0165dc627a0653625f16d5b296af"
+        },
+        "target": "aarch64-apple-darwin",
+        "runner": "macos-15",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39068200648/job/117500180615",
+        "result": "success",
+        "binary_sha256": "42316d60a538154174069c37bd9415b521cb70d6f31b8d8377edfd3a2bd9a0c7"
+      },
+      {
+        "release_artifact": {
+          "name": "release-x86_64-unknown-linux-musl",
+          "digest": "sha256:081db71ae4f5abb62b10b540c84d0a032461c98691f8995265f1bffb5c9d4b9c"
+        },
+        "target": "x86_64-unknown-linux-musl",
+        "runner": "ubuntu-24.04",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39068200648/job/117500180620",
+        "result": "success",
+        "binary_sha256": "c4219b4d76023166b5d2b9a92a76555bde1035e3fa68cf6274b76f79ce679b59"
+      },
+      {
+        "release_artifact": {
+          "name": "release-aarch64-pc-windows-msvc",
+          "digest": "sha256:00d95fd3c35755bd247846ae2b1ee38cd6836a0bb755a6423119a39728d09fa3"
+        },
+        "target": "aarch64-pc-windows-msvc",
+        "runner": "windows-11-arm",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39068200648/job/117500180621",
+        "result": "success",
+        "binary_sha256": "fac7a3848f5ec276e654ffa769e1c338c4fd6ee68c2c111fe9e8464635a8774f"
+      },
+      {
+        "release_artifact": {
+          "name": "release-x86_64-apple-darwin",
+          "digest": "sha256:8ea2dc1ddb45629d8c7ba60d5d4c9264e766db5d596eefee5efa071aa537f856"
+        },
+        "target": "x86_64-apple-darwin",
+        "runner": "macos-15-intel",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39068200648/job/117500180638",
+        "result": "success",
+        "binary_sha256": "57e5445f5d57aad732a0d5cd9e21d15ff683c16241a168e6a161543781b42dda"
+      },
+      {
+        "release_artifact": {
+          "name": "release-x86_64-pc-windows-msvc",
+          "digest": "sha256:234f852a20746c08355bc553b698425a4ac44ac06ae5a964bdd0ed2bc1e2d581"
+        },
+        "target": "x86_64-pc-windows-msvc",
+        "runner": "windows-2025",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39068200648/job/117500180645",
+        "result": "success",
+        "binary_sha256": "31537ab754ab6dad39099d30fac378f574d094df21991f4e02d73fec422de55d"
+      },
+      {
+        "release_artifact": {
+          "name": "release-aarch64-unknown-linux-musl",
+          "digest": "sha256:18221168e5ca0ac9db19105670c244d7b57087ad54ee34ba05ec8cf3ba130cd0"
+        },
+        "target": "aarch64-unknown-linux-musl",
+        "runner": "ubuntu-24.04-arm",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39068200648/job/117500180665",
+        "result": "success",
+        "binary_sha256": "c9a8f5827c711a7c093c2e218b32a76665f474955612b7ce5fc733ef4cd2fd2b"
+      }
+    ],
+    "checked_at": "2026-10-17T21:23:05.752247+00:00"
+  }
+}

@@ -1,5 +1,7 @@
 # Validation evidence and reproduction
 
+[October 2026 improvement report](october-2026/README.md) records 58 merged improvement PRs, final integrated and six-platform verification, and the endurance runs stopped at the user's request. Its compact archive preserves failed and partial outcomes and includes a standalone integrity verifier.
+
 [Deep audit](deep-audit/README.md) records the subsequent filter, import, startup, health, and export work, with fresh performance and transaction-mutation evidence. Historical evidence below remains unchanged. The retained storage scripts now support the shared parent-reader helper introduced by the CSV optimization.
 
 [Follow-up validation report](followup-bug-validation.md) summarizes the September 22, 2026 prelaunch observations. The JSON results and historical mutation logs contain synthetic local evidence. Public copies replace the original absolute checkout prefix with `<repo>`; recorded observations are preserved. [evidence-manifest.json](evidence-manifest.json) retains the original SHA-256 hashes and byte counts alongside the hashes and sizes of normalized copies. Temporary database paths, source-snapshot filenames and binary paths describe the original run; they are not links to files included in this archive. Earlier development commits are excluded from the fresh release history.

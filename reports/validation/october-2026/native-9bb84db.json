@@ -1,0 +1,255 @@
+{
+  "native_final": {
+    "run": {
+      "id": 39080475558,
+      "html_url": "https://github.com/LimePencil/jev-observer/actions/runs/39080475558",
+      "head_sha": "9bb84db756c76e834d6592d55dda5e9cd9689f3f",
+      "head_branch": "main",
+      "event": "workflow_dispatch",
+      "run_attempt": 1,
+      "status": "completed",
+      "conclusion": "success"
+    },
+    "targets": [
+      {
+        "rust_tests": [
+          "test result: ok. 190 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 32.04s"
+        ],
+        "validation_artifact": {
+          "id": 12118887204,
+          "name": "validation-x86_64-unknown-linux-musl",
+          "size_in_bytes": 106169,
+          "digest": "sha256:a9a9a71d10c82ce7b8ab1ca348e320f7bdcef7ef6dfbe58646cae7b9e7a39ed9",
+          "expired": false
+        },
+        "release_artifact": {
+          "id": 12118583832,
+          "name": "release-x86_64-unknown-linux-musl",
+          "size_in_bytes": 7543347,
+          "digest": "sha256:fd1481c26a5cc9ea7bcce5de3bd5fe33c21526577952472b08a0a4cb2144e936",
+          "expired": false
+        },
+        "ui_check_summary": [
+          "129 passed (3.5m)",
+          "2 passed (10.3s)"
+        ],
+        "target": "x86_64-unknown-linux-musl",
+        "runner": "ubuntu-24.04",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39080475558/job/117536241464",
+        "binary_sha256": "149ea7d70206a6f03ca1c6a05826b69ac8a9104a9d73d57d764f7a163c24303b",
+        "report_and_package_log_match": true,
+        "sdk_passed": true,
+        "upgrade_checks_passed": 36
+      },
+      {
+        "rust_tests": [
+          "test result: ok. 190 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 25.71s"
+        ],
+        "validation_artifact": {
+          "id": 12118594061,
+          "name": "validation-aarch64-apple-darwin",
+          "size_in_bytes": 135365,
+          "digest": "sha256:c992dfffd8b129fc8af23fdbdad3948291bc1344de15e65f171c0c618a8d2783",
+          "expired": false
+        },
+        "release_artifact": {
+          "id": 12118892313,
+          "name": "release-aarch64-apple-darwin",
+          "size_in_bytes": 6065948,
+          "digest": "sha256:1e50c7f2d574f06db1df9b182294879cc4757a326242bda12b5b4661c1473836",
+          "expired": false
+        },
+        "ui_check_summary": [
+          "129 passed (4.9m)",
+          "2 passed (11.1s)"
+        ],
+        "target": "aarch64-apple-darwin",
+        "runner": "macos-15",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39080475558/job/117536241486",
+        "binary_sha256": "e376f6ee5833a0b65f18dec15b994fefef5c1fcf25642fbdc087b818394c7aaa",
+        "report_and_package_log_match": true,
+        "sdk_passed": true,
+        "upgrade_checks_passed": 36
+      },
+      {
+        "rust_tests": [
+          "test result: ok. 183 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 35.78s"
+        ],
+        "validation_artifact": {
+          "id": 12119120847,
+          "name": "validation-x86_64-pc-windows-msvc",
+          "size_in_bytes": 125610,
+          "digest": "sha256:79d6ca2451935371b68b482e00e31c442d41c5a8d08667956532f0783bb81537",
+          "expired": false
+        },
+        "release_artifact": {
+          "id": 12119031215,
+          "name": "release-x86_64-pc-windows-msvc",
+          "size_in_bytes": 6804577,
+          "digest": "sha256:9b868c556a6de5fbeabcd867a39fe32a9090ba0cfcb9b85fa04aae405a3f681f",
+          "expired": false
+        },
+        "ui_check_summary": [
+          "129 passed (4.0m)",
+          "2 passed (11.5s)"
+        ],
+        "target": "x86_64-pc-windows-msvc",
+        "runner": "windows-2025",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39080475558/job/117536241508",
+        "binary_sha256": "f738a7636cd9636ab067dc74b4a11f3cf30fdf3c0a9e3d60a50dee9cddce9360",
+        "report_and_package_log_match": true,
+        "sdk_passed": true,
+        "upgrade_checks_passed": 36
+      },
+      {
+        "rust_tests": [
+          "test result: ok. 190 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 79.98s"
+        ],
+        "validation_artifact": {
+          "id": 12118763571,
+          "name": "validation-x86_64-apple-darwin",
+          "size_in_bytes": 135803,
+          "digest": "sha256:85692a71affa08331e62d1097b2b1b95561ed7aab513f960f296239dde5f300a",
+          "expired": false
+        },
+        "release_artifact": {
+          "id": 12118758629,
+          "name": "release-x86_64-apple-darwin",
+          "size_in_bytes": 5921740,
+          "digest": "sha256:1c9f4a2c8f9a61f76fa4f4030e0d691bd1917756cf62021c0682eb8dbb2d274d",
+          "expired": false
+        },
+        "ui_check_summary": [
+          "129 passed (6.7m)",
+          "2 passed (18.1s)"
+        ],
+        "target": "x86_64-apple-darwin",
+        "runner": "macos-15-intel",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39080475558/job/117536241515",
+        "binary_sha256": "425a192c3ba688e06fb3a5c14c05e806c23fa12499865438f416fc9d4eb3b4c5",
+        "report_and_package_log_match": true,
+        "sdk_passed": true,
+        "upgrade_checks_passed": 36
+      },
+      {
+        "rust_tests": [
+          "test result: ok. 183 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 45.96s"
+        ],
+        "validation_artifact": {
+          "id": 12118343883,
+          "name": "validation-aarch64-pc-windows-msvc",
+          "size_in_bytes": 125612,
+          "digest": "sha256:201379a6e2e99a6b19b53aa6a2c9dddcbacb22ed8e73b64938f300a84e361523",
+          "expired": false
+        },
+        "release_artifact": {
+          "id": 12118029644,
+          "name": "release-aarch64-pc-windows-msvc",
+          "size_in_bytes": 6018140,
+          "digest": "sha256:222ddeb705904e9ee085f330fda8a19bc49684c08ba61d2a7f657ddd8ae9fb8c",
+          "expired": false
+        },
+        "ui_check_summary": [
+          "129 passed (7.0m)",
+          "2 passed (21.8s)"
+        ],
+        "target": "aarch64-pc-windows-msvc",
+        "runner": "windows-11-arm",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39080475558/job/117536241523",
+        "binary_sha256": "b9800b2bdbbddaf80295cae6cd831515c51c6e4024bcfb2894c2474baf32362d",
+        "report_and_package_log_match": true,
+        "sdk_passed": true,
+        "upgrade_checks_passed": 36
+      },
+      {
+        "rust_tests": [
+          "test result: ok. 190 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 38.98s"
+        ],
+        "validation_artifact": {
+          "id": 12118068878,
+          "name": "validation-aarch64-unknown-linux-musl",
+          "size_in_bytes": 106180,
+          "digest": "sha256:e0b0d2025a83b5f069a30dc190841e96a9b8ff493f3a71f3b65e600c3c62eb55",
+          "expired": false
+        },
+        "release_artifact": {
+          "id": 12118128742,
+          "name": "release-aarch64-unknown-linux-musl",
+          "size_in_bytes": 7469087,
+          "digest": "sha256:fb05c519017b6b79c358f9c373560afaf914015cf80b4162d99ed9cabd3e8c74",
+          "expired": false
+        },
+        "ui_check_summary": [
+          "129 passed (2.9m)",
+          "2 passed (10.8s)"
+        ],
+        "target": "aarch64-unknown-linux-musl",
+        "runner": "ubuntu-24.04-arm",
+        "job_url": "https://github.com/LimePencil/jev-observer/actions/runs/39080475558/job/117536241836",
+        "binary_sha256": "e851ff517e0f50d8795e2d08b1d4c2b3370b821e8848ccc4f2a165f622f34a3d",
+        "report_and_package_log_match": true,
+        "sdk_passed": true,
+        "upgrade_checks_passed": 36
+      }
+    ],
+    "sdk_per_target": {
+      "requests": 16,
+      "answers": 48,
+      "expected_errors": 4,
+      "valid_answers": 36,
+      "gaps": 0
+    },
+    "aggregate": {
+      "artifact": {
+        "id": 12118599476,
+        "name": "verified-release-assets",
+        "size_in_bytes": 39821899,
+        "digest": "sha256:71c1a1dd8b70857016be1677e8af4f24ecbf33dba9af83cbab856f4c5aeb61a5",
+        "expired": false
+      },
+      "conclusion": "success",
+      "url": "https://github.com/LimePencil/jev-observer/actions/runs/39080475558/job/117539196035"
+    },
+    "source_hashes": {
+      ".github/workflows/release.yml": "5deb99387f731d24a440e72d92151a9d8ecf6bb101a0902e9812dc5cc7280d3e",
+      "scripts/test-upgrade.py": "086a644e91f54267c1bada547e6a038aecc6aa6dcdc965397001629c53da4919",
+      "scripts/sdk-compatibility.py": "a2964585aef67bfd404fa2608dfc7c0565db3f0ccaa5ecb271b787d39d92f650",
+      "scripts/package-release.py": "ccccf468dc77fc685d2c9ff23d91021a4c60a0a7db6f7d094fae04c98d07e5f2",
+      "scripts/verify-release-assets.py": "0a1849042fc67187c7cd0d0c7663d94385f77e535cf8ad772088a76c787205e7",
+      "scripts/download-release-baseline.py": "b7f1663c922ac9878e93078d5f0b741634747c2f8d61936bbd610472cb81db38"
+    },
+    "archive": {
+      "summary.json": {
+        "sha256": "8af30f3714d85f0105fa07d0ff34e1c746f9cc0125cee70221c6137746670ea5"
+      },
+      "run.json": {
+        "sha256": "be8e8b9c30e669d317800e3c368ccb42f492486046a9d9374cee0994f9a13c2d"
+      },
+      "jobs.json": {
+        "sha256": "c1272d80c8e0945ee5806a7669f4e98f0169b33cb59cdd5b6cddb787ac405cee"
+      },
+      "artifacts.json": {
+        "sha256": "120748b6f86ae59982879355e2b2d41526470b594032a6bd2881db9fe77c2290"
+      },
+      "validation-evidence.json": {
+        "sha256": "9092bef7a500f0381a6dd07fa8a483416a130cdaeaf761e65f12bd9dd5b2bb23"
+      }
+    },
+    "limitations": [
+      "Independently downloaded and hashed the six validation ZIPs, each below1MiB; executable package and aggregate archives were not downloaded. Their provenance/digests and successful native/aggregate verification steps were checked through GitHub metadata.",
+      "Candidate executable identity matches SDK/upgrade reports and package-step log SHA256 on each target. Synthetic SDK/upgrade checks do not establish native credential-store persistence compatibility."
+    ],
+    "ui_count_clarification": {
+      "main_suite": "129 UI checks per native target, not129 browser checks; the suite includes8 API unit checks and9 SSR checks.",
+      "packaged_suite": "2 additional packaged-backend browser checks per target.",
+      "evidence_sha256": "30369e1317146be365dfe6afdfa90d5f1d1c61014bd9ca27d3184033107f1eba"
+    },
+    "passed": true,
+    "checked_at": "2026-10-18T00:07:19.512849+00:00",
+    "all_required_steps_and_installers": "success",
+    "publish": "skipped",
+    "downloaded_validation_zip_bytes": 734739,
+    "reviewer_sha256": "a7b2a941be80d7f1c66dff502d470006eb80a424fa3c7a8567eb969f4430df65",
+    "monitoring_complete": true
+  }
+}

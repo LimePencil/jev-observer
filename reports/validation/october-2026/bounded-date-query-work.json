@@ -1,0 +1,417 @@
+{
+  "date": {
+    "scope_results": {
+      "no_date": {
+        "before": {
+          "wall_ms": 809.7459670000001,
+          "total_vm": 11279719,
+          "selection_ms": 269.0,
+          "selection_vm": 5100025
+        },
+        "after": {
+          "wall_ms": 1047.796585,
+          "total_vm": 11279719,
+          "selection_ms": 263.0,
+          "selection_vm": 5100025
+        },
+        "output_sha256": "51d6ff96ad3ceebcd4efb02c5470aca57e26fa88e82698191611f4f67fdcb4ce",
+        "selection_sql_and_total_vm_unchanged": true
+      },
+      "from": {
+        "before": {
+          "wall_ms": 479.162783,
+          "total_vm": 4781245,
+          "selection_ms": 66.0,
+          "selection_vm": 550021
+        },
+        "after": {
+          "wall_ms": 443.628301,
+          "total_vm": 4486247,
+          "selection_ms": 42.0,
+          "selection_vm": 255023
+        },
+        "output_sha256": "88748342e506e392975e2bf3cdb6e984f827805ac32b6975e3825d7a6f0952dd"
+      },
+      "to": {
+        "before": {
+          "wall_ms": 435.64242399999995,
+          "total_vm": 4786246,
+          "selection_ms": 40.0,
+          "selection_vm": 550021
+        },
+        "after": {
+          "wall_ms": 413.433118,
+          "total_vm": 4496249,
+          "selection_ms": 14.0,
+          "selection_vm": 260024
+        },
+        "output_sha256": "0e5b589bd602a3cd1fbf519280c552807b4f88b9638ce395adc6b1c0f421d0c2"
+      },
+      "middle": {
+        "before": {
+          "wall_ms": 437.700943,
+          "total_vm": 4946250,
+          "selection_ms": 40.0,
+          "selection_vm": 710022
+        },
+        "after": {
+          "wall_ms": 412.17224699999997,
+          "total_vm": 4496255,
+          "selection_ms": 14.0,
+          "selection_vm": 260027
+        },
+        "output_sha256": "c57d95c70c9b64814cb242ac53264afb9f471c77be1b838be0c29a43dfbf17fe"
+      },
+      "empty": {
+        "before": {
+          "wall_ms": 178.392984,
+          "total_vm": 1300320,
+          "selection_ms": 30.0,
+          "selection_vm": 300015
+        },
+        "after": {
+          "wall_ms": 147.924692,
+          "total_vm": 1000322,
+          "selection_ms": 0.0,
+          "selection_vm": 17
+        },
+        "output_sha256": "a60c035061030973e8f47ca6cbf8672172f32b6c2810de3cdf32b38f1af03321"
+      },
+      "wide": {
+        "before": {
+          "wall_ms": 731.4143789999999,
+          "total_vm": 11704728,
+          "selection_ms": 216.0,
+          "selection_vm": 5500027
+        },
+        "after": {
+          "wall_ms": 738.786029,
+          "total_vm": 11704728,
+          "selection_ms": 230.0,
+          "selection_vm": 5500027
+        },
+        "output_sha256": "68bcee0363acef874c0d0b1a514026c40c0215e15f8ed9cc693065fc1457e8c4",
+        "selection_sql_and_total_vm_unchanged": true
+      },
+      "source": {
+        "before": {
+          "wall_ms": 181.502783,
+          "total_vm": 1700328,
+          "selection_ms": 35.0,
+          "selection_vm": 700017
+        },
+        "after": {
+          "wall_ms": 180.263785,
+          "total_vm": 1700328,
+          "selection_ms": 33.0,
+          "selection_vm": 700017
+        },
+        "output_sha256": "4ed06fb8e1df64b2267793079bb869aa678dcc82f3b9456ce392598be8fd3993",
+        "selection_sql_and_total_vm_unchanged": true
+      },
+      "model": {
+        "before": {
+          "wall_ms": 191.00119199999997,
+          "total_vm": 1700328,
+          "selection_ms": 37.0,
+          "selection_vm": 700017
+        },
+        "after": {
+          "wall_ms": 185.09291,
+          "total_vm": 1700328,
+          "selection_ms": 34.0,
+          "selection_vm": 700017
+        },
+        "output_sha256": "4ed06fb8e1df64b2267793079bb869aa678dcc82f3b9456ce392598be8fd3993",
+        "selection_sql_and_total_vm_unchanged": true
+      },
+      "errors": {
+        "before": {
+          "wall_ms": 792.3162580000001,
+          "total_vm": 2800329,
+          "selection_ms": 572.0,
+          "selection_vm": 1100019
+        },
+        "after": {
+          "wall_ms": 771.562552,
+          "total_vm": 2800329,
+          "selection_ms": 554.0,
+          "selection_vm": 1100019
+        },
+        "output_sha256": "4ed06fb8e1df64b2267793079bb869aa678dcc82f3b9456ce392598be8fd3993",
+        "selection_sql_and_total_vm_unchanged": true
+      },
+      "group": {
+        "before": {
+          "wall_ms": 2053.0307350000003,
+          "total_vm": 16205105,
+          "selection_ms": 1497.0,
+          "selection_vm": 9400024
+        },
+        "after": {
+          "wall_ms": 2038.3245950000003,
+          "total_vm": 16205105,
+          "selection_ms": 1486.0,
+          "selection_vm": 9400024
+        },
+        "output_sha256": "68bcee0363acef874c0d0b1a514026c40c0215e15f8ed9cc693065fc1457e8c4",
+        "selection_sql_and_total_vm_unchanged": true
+      }
+    },
+    "resources": {
+      "rss_bytes": 28495872,
+      "private_file_bytes": 533073920,
+      "wal_bytes": 26248552
+    },
+    "limitations": [
+      "Synthetic100k actual encrypted Store SDK fixture, shared host. Three descriptive pairs; no million-row or HTTP improvement claim.",
+      "Existing bounded scope threshold is max(retained/4,512); tiny tables may use timestamp selection even for wide explicit date bounds.",
+      "Only date-only narrow searches change plan. Active source/model/error/group parent filters retain baseline behavior.",
+      "All source/index/schema/predicate/parameter/cursor semantics outside the narrow selection choice are unchanged.",
+      "PROFILE group iterator includes nested answer work; selection measurements are separate."
+    ],
+    "fallback_latency_interpretation": {
+      "no_date_chronological_calls": [
+        {
+          "pair": 0,
+          "version": "before",
+          "wall_ms": 2397.6401210000004
+        },
+        {
+          "pair": 0,
+          "version": "after",
+          "wall_ms": 1236.1146919999999
+        },
+        {
+          "pair": 1,
+          "version": "after",
+          "wall_ms": 1047.796585
+        },
+        {
+          "pair": 1,
+          "version": "before",
+          "wall_ms": 809.7459670000001
+        },
+        {
+          "pair": 2,
+          "version": "before",
+          "wall_ms": 732.711077
+        },
+        {
+          "pair": 2,
+          "version": "after",
+          "wall_ms": 720.29538
+        }
+      ],
+      "note": "The first scope warmed over time:2398,1236,1048,810,733,720ms. No-date median809.7ms before vs1047.8ms after cannot establish a regression or equivalence; unchanged SQL/VM and final paired733→720ms are reported separately. Cache state was not explicitly controlled."
+    },
+    "passed": true,
+    "source_commit": "69c730519a7edd36d0cbb869e6298e2ec776d351",
+    "candidate_source_sha256": "b3995a1f3b1c59cb30f00f55fc86b2bf3e741fab70b6f6304201c480f7f5474e",
+    "complete_json_comparisons": 60,
+    "alternating_pairs": 30,
+    "elapsed_seconds": 69.108824,
+    "artifact_bytes": 5608192,
+    "all_62_helpers_exit_zero": true,
+    "worker_and_supervisor_clean": true,
+    "source_manifest_hashes_verified": true,
+    "report_sha256": "07d4fa5f36043b05fd3aaa082030fadaa99edcae4a3dcaaddaa222564ac73815",
+    "supervisor_sha256": "a899178e0389fc6c160a2cc4088e1c072e75fdad9f4dad80fd76f1a3a38894b6",
+    "prepared_sha256": "53eaa8daa0169500764f70c339f62cd58d53f560d8483414bf0419f80f8db999"
+  },
+  "timeline": {
+    "scopes": {
+      "no_date": {
+        "before": {
+          "ms": 738.153878,
+          "vm_steps": 11279719,
+          "bounds_vm": 1200014,
+          "bounds_ms": 73.0
+        },
+        "after": {
+          "ms": 733.9969090000001,
+          "vm_steps": 11279719,
+          "bounds_vm": 1200014,
+          "bounds_ms": 75.0
+        },
+        "complete_json_equal": true,
+        "all_expanded_sql_and_total_vm_equal": true
+      },
+      "from": {
+        "before": {
+          "ms": 437.042507,
+          "vm_steps": 4486247,
+          "bounds_vm": 555014,
+          "bounds_ms": 75.0
+        },
+        "after": {
+          "ms": 442.67055799999997,
+          "vm_steps": 4486247,
+          "bounds_vm": 555014,
+          "bounds_ms": 75.0
+        },
+        "complete_json_equal": true,
+        "all_expanded_sql_and_total_vm_equal": true
+      },
+      "to": {
+        "before": {
+          "ms": 415.05531,
+          "vm_steps": 4496249,
+          "bounds_vm": 555014,
+          "bounds_ms": 73.0
+        },
+        "after": {
+          "ms": 410.415493,
+          "vm_steps": 4496249,
+          "bounds_vm": 555014,
+          "bounds_ms": 73.0
+        },
+        "complete_json_equal": true,
+        "all_expanded_sql_and_total_vm_equal": true
+      },
+      "middle": {
+        "before": {
+          "ms": 419.78714099999996,
+          "vm_steps": 4496255,
+          "bounds_vm": 555014,
+          "bounds_ms": 74.0
+        },
+        "after": {
+          "ms": 342.997009,
+          "vm_steps": 3941241,
+          "bounds_vm": 0,
+          "bounds_ms": 0
+        },
+        "complete_json_equal": true
+      },
+      "empty": {
+        "before": {
+          "ms": 149.86661700000002,
+          "vm_steps": 1000322,
+          "bounds_vm": 500014,
+          "bounds_ms": 70.0
+        },
+        "after": {
+          "ms": 149.073631,
+          "vm_steps": 1000322,
+          "bounds_vm": 500014,
+          "bounds_ms": 70.0
+        },
+        "complete_json_equal": true,
+        "all_expanded_sql_and_total_vm_equal": true
+      },
+      "wide": {
+        "before": {
+          "ms": 736.986494,
+          "vm_steps": 11704728,
+          "bounds_vm": 1200014,
+          "bounds_ms": 75.0
+        },
+        "after": {
+          "ms": 659.860501,
+          "vm_steps": 10504714,
+          "bounds_vm": 0,
+          "bounds_ms": 0
+        },
+        "complete_json_equal": true
+      },
+      "source": {
+        "before": {
+          "ms": 179.415074,
+          "vm_steps": 1700328,
+          "bounds_vm": 500014,
+          "bounds_ms": 67.0
+        },
+        "after": {
+          "ms": 113.09358,
+          "vm_steps": 1200314,
+          "bounds_vm": 0,
+          "bounds_ms": 0
+        },
+        "complete_json_equal": true
+      },
+      "model": {
+        "before": {
+          "ms": 179.656416,
+          "vm_steps": 1700328,
+          "bounds_vm": 500014,
+          "bounds_ms": 65.0
+        },
+        "after": {
+          "ms": 112.68508100000001,
+          "vm_steps": 1200314,
+          "bounds_vm": 0,
+          "bounds_ms": 0
+        },
+        "complete_json_equal": true
+      },
+      "errors": {
+        "before": {
+          "ms": 779.809557,
+          "vm_steps": 2800329,
+          "bounds_vm": 500014,
+          "bounds_ms": 67.0
+        },
+        "after": {
+          "ms": 697.91066,
+          "vm_steps": 2300315,
+          "bounds_vm": 0,
+          "bounds_ms": 0
+        },
+        "complete_json_equal": true
+      },
+      "group": {
+        "before": {
+          "ms": 2047.00709,
+          "vm_steps": 16205105,
+          "bounds_vm": 1600014,
+          "bounds_ms": 93.0
+        },
+        "after": {
+          "ms": 1995.707514,
+          "vm_steps": 14605091,
+          "bounds_vm": 0,
+          "bounds_ms": 0
+        },
+        "complete_json_equal": true
+      }
+    },
+    "resources": {
+      "rss_bytes": 28196864,
+      "private_file_bytes": 533073920,
+      "wal_bytes": 26248552
+    },
+    "limits": {
+      "overall_seconds": 120,
+      "seed_seconds": 30,
+      "query_seconds": 30,
+      "child_address_space_bytes": 536870912,
+      "rss_early_bytes": 536870912,
+      "rss_ceiling_bytes": 536870912,
+      "exit_confirmation_wait_milliseconds": 50,
+      "private_early_bytes": 786432000,
+      "private_ceiling_bytes": 786432000,
+      "wal_early_bytes": 100663296,
+      "wal_ceiling_bytes": 134217728,
+      "artifact_bytes_outside_sampled_fixture": 69206016,
+      "artifact_per_call_bytes": 1048576,
+      "artifact_max_calls": 62,
+      "artifact_tail_per_child_bytes": 65536
+    },
+    "caveats": [
+      "Synthetic encrypted100k parents/300k answers, shared host with ongoing endurance workloads. Three alternating pairs are descriptive, not a latency SLA or million-row improvement claim.",
+      "SQLite VM and disappearance of the unused bounds statement establish saved work; no-date/one-bound complete expanded SQL and total VM unchanged.",
+      "PROFILE outer group statements include nested statistics; no additive claim across overlapping traces."
+    ],
+    "passed": true,
+    "source_commit": "4ec57f7",
+    "source_after_sha256": "fa0b2ea867d0210ce22aa7e34019eb43cfea1ede1c207b0e9bbba3de6527f87c",
+    "full_json_comparisons": 60,
+    "children_reaped": true,
+    "temp_removed": true,
+    "report_sha256": "57c15515bde854a3fab77ca4a23c8576a7b833acca38cebfa1fc0ae45366108f",
+    "supervisor_sha256": "2a538093bbae5c5adcc664451cccaef320db67b33f3ffa44cf65e2c777af0982",
+    "prepared_sha256": "1656d3f17a5449c7b56c2116620b82ebc6756a15a98669e7c546ce3812aa59eb",
+    "validation_sha256": "642a9b2ac2245692c96ba9db957f39b4e141424293927c3b599529194da70b95"
+  }
+}

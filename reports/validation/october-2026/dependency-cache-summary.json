@@ -1,0 +1,68 @@
+{
+  "dependencies": {
+    "issues": [
+      60,
+      61
+    ],
+    "changes": {
+      "source-map-js": [
+        "1.2.1",
+        "1.2.2"
+      ],
+      "rustls": [
+        "0.23.45",
+        "0.23.46"
+      ]
+    },
+    "sources": {
+      "source_map_advisory": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q",
+      "source_map_maintainer_release": "https://github.com/7rulnik/source-map-js/releases/tag/v1.2.2",
+      "source_map_maintainer_fix": "https://github.com/7rulnik/source-map-js/commit/cf76580",
+      "rustls_maintainer_release": "https://github.com/rustls/rustls/releases/tag/v/0.23.46"
+    },
+    "scope": [
+      "source-map-js is dev-only via Vite 7.3.6 and PostCSS 8.5.28; the relevant input is a source map processed during frontend development/build, not an Observer API request.",
+      "The bounded regression constructs a consumer through actual PostCSS for an indexed map with line offset 10,000,001; it never expands or serializes the large mapping. Old package accepts it, patched package rejects it.",
+      "rustls is used for outbound TLS. Existing resolved feature tree is unchanged: ring, std, tls12; no features, certificate trust settings, or application configuration were changed.",
+      "The rustls release fixes conditional vulnerabilities; the patch does not claim all advisories are exploitable in this application configuration."
+    ],
+    "validation": {
+      "rust_tests": {
+        "passed": 144,
+        "failed": 0,
+        "ignored": 2,
+        "scope": "cargo test --locked --all-targets -- --test-threads=2"
+      },
+      "npm_ci": true,
+      "npm_audit_vulnerabilities": 0,
+      "production_ui_build": true,
+      "production_preview_tests_passed": 4,
+      "runtime_asset_files_identical_to_baseline": 14,
+      "rustls_resolved_feature_tree_unchanged": true,
+      "full_notice_regeneration": "cargo-about 0.9.2 --features cli; scripts/generate-license-notices.py",
+      "notice_hash_check": true,
+      "clippy": "all-targets -D warnings passed",
+      "independent_review": "storage_audit approved minimal scope and generated notices",
+      "format_check": true,
+      "diff_check": true
+    },
+    "commit": "72d09a7ef7e9498cf4ab69b85ab3acd6ad7355d2"
+  },
+  "cache": {
+    "cache_save_steps": [
+      {
+        "completedAt": "2026-10-17T19:37:52Z",
+        "conclusion": "skipped",
+        "name": "Save Rust dependencies and build outputs",
+        "number": 20,
+        "startedAt": "2026-10-17T19:37:52Z",
+        "status": "completed"
+      }
+    ],
+    "run": "https://github.com/LimePencil/jev-observer/actions/runs/39062927363",
+    "commit": "c342d1cd874f92a4ebacd2755ba4a93d6e1f6876",
+    "conclusion": "success",
+    "restored_key": "verify-v2-Linux-X64-b16df406397373e1667fe331e612cf0926ee24c127bb93a8fa4529cf65e0c3ad-0e7d93a907eb4d1df4a1075aa74a82b4d61a7d42fd1a5a3341e9d4cf4826f3b1",
+    "claim": "A subsequent source-change main run restored the stable dependency cache, ran all checks successfully, and skipped creating another archive. This is not an isolated timing benchmark."
+  }
+}

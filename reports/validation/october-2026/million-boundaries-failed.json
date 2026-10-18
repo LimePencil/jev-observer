@@ -1,0 +1,263 @@
+{
+  "http_failed": {
+    "limits": {
+      "app_seed_rss_early_bytes": 738197504,
+      "rss_ceiling_bytes": 805306368,
+      "disk_early_bytes": 5905580032,
+      "disk_ceiling_bytes": 6442450944,
+      "wal_early_bytes": 100663296,
+      "wal_ceiling_bytes": 134217728,
+      "overall_seconds": 600,
+      "query_seconds": 30,
+      "seed_seconds": 300,
+      "poll_seconds": 0.1
+    },
+    "queries": {
+      "all_warmup": {
+        "outcome": "complete",
+        "elapsed_ms": 24304.704604961444,
+        "response_bytes": 54207
+      },
+      "all": {
+        "outcome": "complete",
+        "elapsed_ms": 6915.806727018207,
+        "response_bytes": 54207
+      },
+      "source_warmup": {
+        "outcome": "complete",
+        "elapsed_ms": 7285.297678026836,
+        "response_bytes": 54207
+      },
+      "source": {
+        "outcome": "complete",
+        "elapsed_ms": 14587.766624987125,
+        "response_bytes": 54207
+      },
+      "search_warmup": {
+        "outcome": "complete",
+        "elapsed_ms": 27098.19517598953,
+        "response_bytes": 54216
+      },
+      "search": {
+        "outcome": "complete",
+        "elapsed_ms": 24941.13951502368,
+        "response_bytes": 54216
+      },
+      "errors_warmup": {
+        "outcome": "complete",
+        "elapsed_ms": 11629.892186028883,
+        "response_bytes": 15825
+      },
+      "errors": {
+        "outcome": "complete",
+        "elapsed_ms": 14019.870752992574,
+        "response_bytes": 15825
+      },
+      "second_page": {
+        "outcome": "complete",
+        "elapsed_ms": 15374.732613970991,
+        "response_bytes": 54300
+      },
+      "interval": {
+        "outcome": "complete",
+        "elapsed_ms": 2746.799568005372,
+        "response_bytes": 20692
+      },
+      "group_search": {
+        "outcome": "complete",
+        "elapsed_ms": 5350.393633998465,
+        "response_bytes": 52636
+      },
+      "content_0": {
+        "outcome": "complete",
+        "elapsed_ms": 1.6951359575614333,
+        "response_bytes": 3450
+      },
+      "content_1": {
+        "outcome": "complete",
+        "elapsed_ms": 1.565045036841184,
+        "response_bytes": 3423
+      },
+      "content_500000": {
+        "outcome": "complete",
+        "elapsed_ms": 1.8549090018495917,
+        "response_bytes": 3428
+      },
+      "content_999999": {
+        "outcome": "complete",
+        "elapsed_ms": 1.7072619521059096,
+        "response_bytes": 3428
+      }
+    },
+    "checks": {
+      "template_starts": true,
+      "template_persisted": true,
+      "seed_wall_deadline": true,
+      "seed_count_fk_timestamp_invariants": true,
+      "encrypted_header": true,
+      "queries_starts": true,
+      "all_parents_exact": true,
+      "all_answers_exact": true,
+      "source_parents_exact": true,
+      "source_answers_exact": true,
+      "search_parents_exact": true,
+      "search_answers_exact": true,
+      "errors_parents_exact": true,
+      "errors_answers_exact": true,
+      "groups_exact": true,
+      "first_page_bounded": true,
+      "pages_advance_without_duplicates": true,
+      "inclusive_fifty_parent_interval": true,
+      "group_search_exact": true,
+      "timeline_exact": true,
+      "full_content_0": true,
+      "full_content_1": true,
+      "full_content_500000": true,
+      "full_content_999999": true,
+      "query_phase_no_inference": true,
+      "one_loopback_call": true
+    },
+    "content_proofs": [
+      {
+        "index": 0,
+        "expected_sha256": "242e60f057b6b673b3758266bcf3cb7a333f3ba032cb2c05f8611f8d46440b1d",
+        "actual_sha256": "242e60f057b6b673b3758266bcf3cb7a333f3ba032cb2c05f8611f8d46440b1d"
+      },
+      {
+        "index": 1,
+        "expected_sha256": "1f7a22a3a476a4d1ab3c20ac855dbe746b050a83976fbd003ad9684c7d4e9e52",
+        "actual_sha256": "1f7a22a3a476a4d1ab3c20ac855dbe746b050a83976fbd003ad9684c7d4e9e52"
+      },
+      {
+        "index": 500000,
+        "expected_sha256": "d0699fd0511b1b72c8f4a717e6f6a18a23cd8ddc1d4a789fc3dd75cca6dca919",
+        "actual_sha256": "d0699fd0511b1b72c8f4a717e6f6a18a23cd8ddc1d4a789fc3dd75cca6dca919"
+      },
+      {
+        "index": 999999,
+        "expected_sha256": "96c1ad7b3dca0366d6340b3544d7101bd7d4df31ddf2d693a14f0bd2c7dd6816",
+        "actual_sha256": "96c1ad7b3dca0366d6340b3544d7101bd7d4df31ddf2d693a14f0bd2c7dd6816"
+      }
+    ],
+    "resources": {
+      "rss_bytes": 242294784,
+      "private_file_bytes": 5131661312,
+      "wal_bytes": 26491632
+    },
+    "failure": {
+      "phase": "queries",
+      "type": "AssertionError"
+    },
+    "passed": false,
+    "records": 1000000,
+    "source_commit": "0e04b1b2a93bba95e5b01e8c89509555d308a7aa",
+    "scope": "Quiet SQLCipher queries; three repeated definitions and small answers. Private chunked fixture preparation, production retention defaults. No ingestion or capacity guarantee.",
+    "shared_host": "Long endurance runs and a low-rate dense capture soak continue; single warmup/sample timings are descriptive.",
+    "database_bytes": 5105164288,
+    "children_reaped": true,
+    "temp_removed": true,
+    "started_at": "2026-10-17T21:29:37.246609+00:00",
+    "finished_at": "2026-10-17T21:34:52.900733+00:00",
+    "binary_sha256": "d2a2c6fe474f02f521b4cc0369bee3d6531823494eea5268b8d3f8f9c3282f5d"
+  },
+  "profile_failed": {
+    "limits": {
+      "overall_seconds": 600,
+      "seed_seconds": 300,
+      "query_seconds": 30,
+      "rss_early_bytes": 738197504,
+      "rss_ceiling_bytes": 805306368,
+      "private_early_bytes": 5905580032,
+      "private_ceiling_bytes": 6442450944,
+      "wal_early_bytes": 100663296,
+      "wal_ceiling_bytes": 134217728,
+      "artifact_bytes_outside_sampled_fixture": 169869312,
+      "artifact_per_call_bytes": 8388608,
+      "artifact_max_calls": 20,
+      "artifact_tail_per_child_bytes": 65536
+    },
+    "queries": [
+      {
+        "scope": "all",
+        "pair": 0,
+        "version": "before",
+        "ms": 24294.722590999998,
+        "vm_steps": 74004532,
+        "peak_rss_kib": 153964,
+        "output_sha256": "696da49308e53f2788dbd125df4597aae1c7e1aff548ec8113781b97805afd29"
+      },
+      {
+        "scope": "all",
+        "pair": 0,
+        "version": "after",
+        "ms": 6477.533378,
+        "vm_steps": 74004532,
+        "peak_rss_kib": 154496,
+        "output_sha256": "696da49308e53f2788dbd125df4597aae1c7e1aff548ec8113781b97805afd29"
+      },
+      {
+        "scope": "all",
+        "pair": 1,
+        "version": "after",
+        "ms": 6400.362872,
+        "vm_steps": 74004532,
+        "peak_rss_kib": 154444,
+        "output_sha256": "696da49308e53f2788dbd125df4597aae1c7e1aff548ec8113781b97805afd29"
+      },
+      {
+        "scope": "all",
+        "pair": 1,
+        "version": "before",
+        "ms": 7945.23775,
+        "vm_steps": 74004532,
+        "peak_rss_kib": 154468,
+        "output_sha256": "696da49308e53f2788dbd125df4597aae1c7e1aff548ec8113781b97805afd29"
+      }
+    ],
+    "seed": {
+      "stage": "verified",
+      "parents": 1000000,
+      "answers": 3000000,
+      "groups": 3,
+      "first_timestamp": 1792175677430,
+      "last_timestamp": 1792275677330,
+      "foreign_key_violations": 0
+    },
+    "resources": {
+      "rss_bytes": 158203904,
+      "private_file_bytes": 5112270848,
+      "wal_bytes": 26388632
+    },
+    "failure": {
+      "phase": "all-2-before",
+      "type": "AssertionError"
+    },
+    "passed": false,
+    "records": 1000000,
+    "source_commit": "0e04b1b",
+    "scope": "Actual encrypted Store query profiling with frozen before/after source; full production schema and SDK-shaped bodies. No HTTP, UI deadline or capacity guarantee.",
+    "database_bytes": 5085876224,
+    "encrypted_header_verified": true,
+    "children_reaped": true,
+    "temp_removed": true,
+    "artifact_bytes": 629690,
+    "started_at": "2026-10-17T22:21:17.296532+00:00",
+    "finished_at": "2026-10-17T22:24:27.533676+00:00"
+  },
+  "http_cleanup": {
+    "passed": false,
+    "wall_seconds": 590,
+    "worker_exit": 1,
+    "temp_removed": true,
+    "finished_at": "2026-10-17T21:34:52.978037+00:00",
+    "remaining_descendants": []
+  },
+  "profile_cleanup": {
+    "passed": false,
+    "wall_seconds": 590,
+    "worker_exit": 1,
+    "temp_removed": true,
+    "finished_at": "2026-10-17T22:24:27.622731+00:00",
+    "remaining_descendants": []
+  }
+}

@@ -1,0 +1,244 @@
+{
+  "transport": {
+    "cases": [
+      {
+        "after_failure": {
+          "forwarded": 1,
+          "captured": 1,
+          "persisted": 1,
+          "truncated": 1,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "after_successful_recovery": {
+          "forwarded": 2,
+          "captured": 2,
+          "persisted": 2,
+          "truncated": 1,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "case": "fixed_eof",
+        "client_outcome": "IncompleteRead",
+        "failure_recovered_seconds": 0.03,
+        "saved_status": 200,
+        "transport_error": "Upstream response transfer failed",
+        "capture_complete": false,
+        "upstream_request_bytes": 21
+      },
+      {
+        "after_failure": {
+          "forwarded": 3,
+          "captured": 3,
+          "persisted": 3,
+          "truncated": 2,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "after_successful_recovery": {
+          "forwarded": 4,
+          "captured": 4,
+          "persisted": 4,
+          "truncated": 2,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "case": "malformed_chunk",
+        "client_outcome": "IncompleteRead",
+        "failure_recovered_seconds": 0.029,
+        "saved_status": 200,
+        "transport_error": "Upstream response transfer failed",
+        "capture_complete": false,
+        "upstream_request_bytes": 27
+      },
+      {
+        "after_failure": {
+          "forwarded": 5,
+          "captured": 5,
+          "persisted": 5,
+          "truncated": 3,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "after_successful_recovery": {
+          "forwarded": 6,
+          "captured": 6,
+          "persisted": 6,
+          "truncated": 3,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "case": "incomplete_terminal",
+        "client_outcome": "IncompleteRead",
+        "failure_recovered_seconds": 0.03,
+        "saved_status": 200,
+        "transport_error": "Upstream response transfer failed",
+        "capture_complete": false,
+        "upstream_request_bytes": 31
+      },
+      {
+        "after_failure": {
+          "forwarded": 7,
+          "captured": 7,
+          "persisted": 7,
+          "truncated": 4,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "after_successful_recovery": {
+          "forwarded": 8,
+          "captured": 8,
+          "persisted": 8,
+          "truncated": 4,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "case": "disconnect_headers",
+        "client_outcome": "client disconnected; upstream cancelled",
+        "failure_recovered_seconds": 0.029,
+        "saved_status": 502,
+        "transport_error": "Transfer ended before the complete exchange was observed",
+        "capture_complete": false,
+        "upstream_request_bytes": 30
+      },
+      {
+        "after_failure": {
+          "forwarded": 9,
+          "captured": 9,
+          "persisted": 9,
+          "truncated": 5,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "after_successful_recovery": {
+          "forwarded": 10,
+          "captured": 10,
+          "persisted": 10,
+          "truncated": 5,
+          "dropped": 0,
+          "write_failures": 0,
+          "maintenance_failures": 0,
+          "queue_depth": 0,
+          "queued_bytes": 0,
+          "active_captures": 0,
+          "capture_slots": 1
+        },
+        "case": "disconnect_upload",
+        "client_outcome": "client disconnected; upstream cancelled",
+        "failure_recovered_seconds": 0.029,
+        "saved_status": 502,
+        "transport_error": "Upstream connection or request transfer failed",
+        "capture_complete": false,
+        "upstream_request_bytes": 29
+      }
+    ],
+    "final_health": {
+      "forwarded": 10,
+      "captured": 10,
+      "persisted": 10,
+      "truncated": 5,
+      "dropped": 0,
+      "write_failures": 0,
+      "maintenance_failures": 0,
+      "queue_depth": 0,
+      "queued_bytes": 0,
+      "active_captures": 0,
+      "capture_slots": 1
+    },
+    "sha256": "3fabba94ec046d67cb7d313fa5bdb31be55899d2ccaf4ad7b9a3dee5f23cea14",
+    "started_at": "2026-10-17T18:39:15Z",
+    "finished_at": "2026-10-17T18:39:16Z",
+    "success": true
+  },
+  "fifo": {
+    "cases": [
+      {
+        "mode": "live",
+        "linked": false,
+        "blocked": false,
+        "elapsed_seconds": 0.003,
+        "exit_code": 1,
+        "fifo_preserved": true,
+        "permissions": "0o640",
+        "symlink_preserved": null
+      },
+      {
+        "mode": "live",
+        "linked": true,
+        "blocked": false,
+        "elapsed_seconds": 0.009,
+        "exit_code": 1,
+        "fifo_preserved": true,
+        "permissions": "0o640",
+        "symlink_preserved": true
+      },
+      {
+        "mode": "demo",
+        "linked": false,
+        "blocked": false,
+        "elapsed_seconds": 0.005,
+        "exit_code": 1,
+        "fifo_preserved": true,
+        "permissions": "0o640",
+        "symlink_preserved": null
+      },
+      {
+        "mode": "demo",
+        "linked": true,
+        "blocked": false,
+        "elapsed_seconds": 0.003,
+        "exit_code": 1,
+        "fifo_preserved": true,
+        "permissions": "0o640",
+        "symlink_preserved": true
+      }
+    ],
+    "sha256": "3fabba94ec046d67cb7d313fa5bdb31be55899d2ccaf4ad7b9a3dee5f23cea14",
+    "success": true
+  }
+}

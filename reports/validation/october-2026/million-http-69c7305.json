@@ -1,0 +1,195 @@
+{
+  "http_v3": {
+    "queries": {
+      "all_warmup": {
+        "outcome": "complete",
+        "elapsed_ms": 22942.157149023842,
+        "response_bytes": 54207
+      },
+      "all": {
+        "outcome": "complete",
+        "elapsed_ms": 6550.756265991367,
+        "response_bytes": 54207
+      },
+      "source_warmup": {
+        "outcome": "complete",
+        "elapsed_ms": 6432.216082990635,
+        "response_bytes": 54216
+      },
+      "source": {
+        "outcome": "complete",
+        "elapsed_ms": 6408.562577038538,
+        "response_bytes": 54216
+      },
+      "search_warmup": {
+        "outcome": "complete",
+        "elapsed_ms": 13315.875280997716,
+        "response_bytes": 54216
+      },
+      "search": {
+        "outcome": "complete",
+        "elapsed_ms": 9263.336835021619,
+        "response_bytes": 54216
+      },
+      "errors_warmup": {
+        "outcome": "complete",
+        "elapsed_ms": 1550.227326049935,
+        "response_bytes": 15825
+      },
+      "errors": {
+        "outcome": "complete",
+        "elapsed_ms": 1552.870690007694,
+        "response_bytes": 15825
+      },
+      "second_page": {
+        "outcome": "complete",
+        "elapsed_ms": 6431.710859993473,
+        "response_bytes": 54300
+      },
+      "interval": {
+        "outcome": "complete",
+        "elapsed_ms": 2051.256046979688,
+        "response_bytes": 20702
+      },
+      "group_search": {
+        "outcome": "complete",
+        "elapsed_ms": 4295.139344991185,
+        "response_bytes": 52636
+      },
+      "content_0": {
+        "outcome": "complete",
+        "elapsed_ms": 1.5252450248226523,
+        "response_bytes": 3450
+      },
+      "content_1": {
+        "outcome": "complete",
+        "elapsed_ms": 1.58649095101282,
+        "response_bytes": 3423
+      },
+      "content_500000": {
+        "outcome": "complete",
+        "elapsed_ms": 1.6678840038366616,
+        "response_bytes": 3428
+      },
+      "content_999999": {
+        "outcome": "complete",
+        "elapsed_ms": 1.2334510101936758,
+        "response_bytes": 3428
+      }
+    },
+    "resources": {
+      "rss_bytes": 197521408,
+      "private_file_bytes": 5131665408,
+      "wal_bytes": 26491632
+    },
+    "limitations": [
+      "One quiet synthetic encrypted HTTP fixture on a shared host; timings are descriptive, not capacity/tail-latency guarantees.",
+      "No explicit OS-cache reset. First/repeated requests differ; prior runs used different code and cache/resource conditions.",
+      "UI timeout is not applied by this 30-second HTTP client. Initial all-history22.94s exceeds15s.",
+      "Original failed1M experiment remains failed and unchanged."
+    ],
+    "checked_at": "2026-10-17T23:17:26.553791+00:00",
+    "passed": true,
+    "source_commit": "69c730519a7edd36d0cbb869e6298e2ec776d351",
+    "started_at": "2026-10-17T23:10:09.153219+00:00",
+    "finished_at": "2026-10-17T23:15:16.780903+00:00",
+    "records": 1000000,
+    "data_checks": 26,
+    "all_data_checks_passed": true,
+    "children_reaped": true,
+    "temp_removed": true,
+    "supervisor_exit": 0,
+    "remaining_descendants": [],
+    "report_sha256": "4ddd5743c6108cfb8796ea3e32959f73e1108504aded79eeeae9687cb58b3904",
+    "supervisor_sha256": "9a86aa94d66716f8ce3eadfdb860c0f9670f3e8b303186ab486136728ad0bf10",
+    "controls_sha256": "0e1b7558b61ddb8ff522cf32a99ad0314a40c61d8a492af772f77008b4ceee31",
+    "binary_manifest_sha256": "f4ac9d7dbfc97eba8c1a31c05644e28418750bcc20b8cce72c5c088392e34a25"
+  },
+  "http_v3_stops": {
+    "limits": {
+      "app_seed_rss_early_bytes": 738197504,
+      "rss_ceiling_bytes": 805306368,
+      "disk_early_bytes": 5905580032,
+      "disk_ceiling_bytes": 6442450944,
+      "wal_early_bytes": 100663296,
+      "wal_ceiling_bytes": 134217728,
+      "overall_seconds": 600,
+      "query_seconds": 30,
+      "seed_seconds": 300,
+      "poll_seconds": 0.1
+    },
+    "stop_attempts": [
+      {
+        "signals": [
+          "TERM"
+        ],
+        "role": "app",
+        "phase_at_spawn": "template",
+        "phase_at_stop": "template",
+        "clean_expected": true,
+        "normal_grace_seconds": 16,
+        "elapsed_seconds": 0.031404462992213666,
+        "exit_code": 0,
+        "forced": false
+      },
+      {
+        "role": "seed",
+        "phase_at_spawn": "seed",
+        "phase_at_stop": "seed",
+        "clean_expected": true,
+        "signals": [],
+        "normal_grace_seconds": 3,
+        "elapsed_seconds": 9.511015377938747e-06,
+        "exit_code": 0,
+        "forced": false
+      },
+      {
+        "signals": [
+          "TERM"
+        ],
+        "role": "app",
+        "phase_at_spawn": "queries",
+        "phase_at_stop": "queries",
+        "clean_expected": true,
+        "normal_grace_seconds": 16,
+        "elapsed_seconds": 0.015324564010370523,
+        "exit_code": 0,
+        "forced": false
+      },
+      {
+        "role": "app",
+        "phase_at_spawn": "template",
+        "phase_at_stop": "queries",
+        "clean_expected": false,
+        "signals": [],
+        "normal_grace_seconds": 16,
+        "elapsed_seconds": 2.8850045055150986e-06,
+        "exit_code": 0,
+        "forced": false
+      },
+      {
+        "role": "seed",
+        "phase_at_spawn": "seed",
+        "phase_at_stop": "queries",
+        "clean_expected": false,
+        "signals": [],
+        "normal_grace_seconds": 3,
+        "elapsed_seconds": 1.2590317055583e-06,
+        "exit_code": 0,
+        "forced": false
+      },
+      {
+        "role": "app",
+        "phase_at_spawn": "queries",
+        "phase_at_stop": "queries",
+        "clean_expected": false,
+        "signals": [],
+        "normal_grace_seconds": 16,
+        "elapsed_seconds": 8.919741958379745e-07,
+        "exit_code": 0,
+        "forced": false
+      }
+    ],
+    "template_sha256": "54d6f4fd99c3685a849e1edca66d59638e7659b5adc4eec8e9ddb737289110a1"
+  }
+}

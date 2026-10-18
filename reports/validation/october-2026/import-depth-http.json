@@ -1,0 +1,293 @@
+{
+  "import": {
+    "checks": {
+      "service_starts": true,
+      "bounded_response": true,
+      "GET_/api/health_status": true,
+      "GET_/api/dashboard?window=all_status": true,
+      "initially_empty_dashboard": true,
+      "GET_/api/export?window=all&format=jsonl_status": true,
+      "initially_empty_export": true,
+      "prepare_observer_fixture_small_fixture": true,
+      "prepare_observer_fixture": true,
+      "prepare_observer_fixture_counts": true,
+      "DELETE_/api/data_status": true,
+      "isolated_fixture_delete": true,
+      "empty_after_delete_dashboard": true,
+      "empty_after_delete_export": true,
+      "annotation_expansion_small_fixture": true,
+      "annotation_expansion": true,
+      "annotation_expansion_safe_error": true,
+      "annotation_failure_atomic_dashboard": true,
+      "annotation_failure_atomic_export": true,
+      "task_expansion_small_fixture": true,
+      "task_expansion": true,
+      "task_expansion_safe_error": true,
+      "raw_failure_atomic_dashboard": true,
+      "raw_failure_atomic_export": true,
+      "malformed_small_fixture": true,
+      "malformed": true,
+      "malformed_failure_atomic_dashboard": true,
+      "malformed_failure_atomic_export": true,
+      "slot_recovery_small_fixture": true,
+      "slot_recovery": true,
+      "slot_recovery_counts": true,
+      "recovery_dedup_small_fixture": true,
+      "recovery_dedup": true,
+      "recovery_dedup_counts": true,
+      "recovered_dashboard": true,
+      "recovered_export": true,
+      "long_metadata_small_fixture": true,
+      "long_metadata": true,
+      "long_metadata_counts": true,
+      "long_source_preserved": true,
+      "long_task_preserved": true,
+      "same_identity_dedup_small_fixture": true,
+      "same_identity_dedup": true,
+      "same_identity_dedup_counts": true,
+      "long_metadata_roundtrip_small_fixture": true,
+      "long_metadata_roundtrip": true,
+      "long_metadata_roundtrip_counts": true,
+      "full_long_metadata_roundtrip_json": true,
+      "roundtrip_dedup_small_fixture": true,
+      "roundtrip_dedup": true,
+      "roundtrip_dedup_counts": true,
+      "roundtrip_dedup_unchanged": true,
+      "receipt_privacy_small_fixture": true,
+      "receipt_privacy": true,
+      "receipt_privacy_counts": true,
+      "receipt_and_inference_separate": true,
+      "receipt_no_inference_answers": true,
+      "receipt_answers_retained": true,
+      "receipt_action_provenance_matches": true,
+      "receipt_secret_removed_everywhere": true,
+      "receipt_echoes_redacted": true,
+      "receipt_dedup_small_fixture": true,
+      "receipt_dedup": true,
+      "receipt_dedup_counts": true,
+      "receipt_dedup_unchanged": true,
+      "no_proxy_or_collector_failures": true,
+      "clean_shutdown": true,
+      "encrypted_database_header": true
+    },
+    "requests": [
+      {
+        "name": "prepare_observer_fixture",
+        "status": 200,
+        "response_bytes": 29,
+        "elapsed_ms": 1.952,
+        "decoded_text_bytes": 236
+      },
+      {
+        "name": "annotation_expansion",
+        "status": 413,
+        "response_bytes": 89,
+        "elapsed_ms": 1.127,
+        "decoded_text_bytes": 15816
+      },
+      {
+        "name": "task_expansion",
+        "status": 413,
+        "response_bytes": 89,
+        "elapsed_ms": 22.378,
+        "decoded_text_bytes": 203850
+      },
+      {
+        "name": "malformed",
+        "status": 400,
+        "response_bytes": 77,
+        "elapsed_ms": 0.42,
+        "decoded_text_bytes": 2
+      },
+      {
+        "name": "slot_recovery",
+        "status": 200,
+        "response_bytes": 29,
+        "elapsed_ms": 2.628,
+        "decoded_text_bytes": 723
+      },
+      {
+        "name": "recovery_dedup",
+        "status": 200,
+        "response_bytes": 29,
+        "elapsed_ms": 1.173,
+        "decoded_text_bytes": 723
+      },
+      {
+        "name": "long_metadata",
+        "status": 200,
+        "response_bytes": 29,
+        "elapsed_ms": 2.863,
+        "decoded_text_bytes": 12800
+      },
+      {
+        "name": "same_identity_dedup",
+        "status": 200,
+        "response_bytes": 29,
+        "elapsed_ms": 1.433,
+        "decoded_text_bytes": 18623
+      },
+      {
+        "name": "long_metadata_roundtrip",
+        "status": 200,
+        "response_bytes": 29,
+        "elapsed_ms": 3.278,
+        "decoded_text_bytes": 18623
+      },
+      {
+        "name": "roundtrip_dedup",
+        "status": 200,
+        "response_bytes": 29,
+        "elapsed_ms": 1.369,
+        "decoded_text_bytes": 18620
+      },
+      {
+        "name": "receipt_privacy",
+        "status": 200,
+        "response_bytes": 29,
+        "elapsed_ms": 2.416,
+        "decoded_text_bytes": 4772
+      },
+      {
+        "name": "receipt_dedup",
+        "status": 200,
+        "response_bytes": 29,
+        "elapsed_ms": 2.298,
+        "decoded_text_bytes": 4772
+      }
+    ],
+    "limits": {
+      "decoded_fixture_text_bytes": 262144,
+      "response_bytes": 2097152,
+      "http_timeout_seconds": 5,
+      "startup_seconds": 15,
+      "overall_seconds": 120
+    },
+    "long_metadata": {
+      "source_utf8_bytes": 8199,
+      "task_utf8_bytes": 4200,
+      "export_bytes": 18620,
+      "full_canonical_sha256": "69b2bbc8983cc6b3d8a20e485d9880010f55acdb48828fbcde08aa02d4236ae1"
+    },
+    "passed": true,
+    "scope": "Bounded encrypted HTTP import checks on an isolated synthetic database.",
+    "binary_sha256": "14943193dd4a9ecb401ee8a0ebbd7c8fb59db8749efdb93d3d4704ec3c7b5277",
+    "harness_sha256": "a2b0d0c949a6438d33127c4fb234978e54da251362a68de003f2ef05343b0d4f",
+    "final_history_count": 2,
+    "finished_at": "2026-10-17T20:43:20Z"
+  },
+  "depth": {
+    "binaries": {
+      "baseline": {
+        "sha256": "e9fdf54da37dad458b10d0b5cc3b002050b761544d595e762eabc9d564a31467"
+      },
+      "candidate": {
+        "sha256": "14943193dd4a9ecb401ee8a0ebbd7c8fb59db8749efdb93d3d4704ec3c7b5277"
+      }
+    },
+    "cases": [
+      {
+        "before": {
+          "detail_status": 200,
+          "extension_preserved": true,
+          "jsonl_status": 200,
+          "jsonl_bytes": 3715,
+          "reimport_status": 200,
+          "csv_status": 200,
+          "csv_bytes": 261
+        },
+        "after": {
+          "detail_status": 200,
+          "extension_preserved": true,
+          "jsonl_status": 200,
+          "jsonl_bytes": 3715,
+          "reimport_status": 200,
+          "csv_status": 200,
+          "csv_bytes": 261
+        },
+        "location": "definition",
+        "nested_arrays": 123,
+        "request_bytes": 825
+      },
+      {
+        "before": {
+          "detail_status": 200,
+          "extension_preserved": true,
+          "jsonl_status": 200,
+          "jsonl_bytes": 3718,
+          "reimport_status": 400,
+          "csv_status": 200,
+          "csv_bytes": 262
+        },
+        "after": {
+          "detail_status": 200,
+          "extension_preserved": true,
+          "jsonl_status": 200,
+          "jsonl_bytes": 3718,
+          "reimport_status": 200,
+          "csv_status": 200,
+          "csv_bytes": 262
+        },
+        "location": "definition",
+        "nested_arrays": 124,
+        "request_bytes": 827
+      },
+      {
+        "before": {
+          "detail_status": 200,
+          "extension_preserved": true,
+          "jsonl_status": 200,
+          "jsonl_bytes": 3733,
+          "reimport_status": 200,
+          "csv_status": 200,
+          "csv_bytes": 275
+        },
+        "after": {
+          "detail_status": 200,
+          "extension_preserved": true,
+          "jsonl_status": 200,
+          "jsonl_bytes": 3733,
+          "reimport_status": 200,
+          "csv_status": 200,
+          "csv_bytes": 275
+        },
+        "location": "request_extra",
+        "nested_arrays": 125,
+        "request_bytes": 829
+      },
+      {
+        "before": {
+          "detail_status": 503,
+          "jsonl_status": 503,
+          "jsonl_bytes": 47,
+          "csv_status": 503,
+          "csv_bytes": 47
+        },
+        "after": {
+          "detail_status": 200,
+          "extension_preserved": true,
+          "jsonl_status": 200,
+          "jsonl_bytes": 3724,
+          "reimport_status": 200,
+          "csv_status": 200,
+          "csv_bytes": 264
+        },
+        "location": "request_extra",
+        "nested_arrays": 126,
+        "request_bytes": 831
+      }
+    ],
+    "baseline_counters": {
+      "forwarded": 4,
+      "captured": 4,
+      "persisted": 4,
+      "dropped": 0,
+      "truncated": 0,
+      "write_failures": 0
+    },
+    "scope": "Synthetic loopback captures, same encrypted temporary DB opened by old and candidate binary; no existing databases or external providers",
+    "passed": true,
+    "same_database_reopened_without_migration": true,
+    "harness_sha256": "f6765662de48dac8b5c8a69b32ede50731f952f2878f38585a7b8c68265ce26e"
+  }
+}
