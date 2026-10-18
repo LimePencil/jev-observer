@@ -4,6 +4,7 @@ use super::*;
 struct OverviewWork {
     overview: i64,
     selection: i64,
+    answer_keys: i64,
     feed: i64,
     feed_statements: usize,
     catalogs: i64,
@@ -41,6 +42,9 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
             }
             if sql.starts_with(b"SELECT id,timestamp,event_kind,answer_count") {
                 work.overview += steps;
+            }
+            if sql.starts_with(b"WITH RECURSIVE keys(key)") {
+                work.answer_keys += steps;
             }
             if sql.starts_with(b"INSERT INTO temp.dashboard_request_ids") {
                 work.selection += steps;
@@ -2154,4 +2158,210 @@ fn malformed_capture_definitions_survive_stored_jsonl_export_and_reimport() {
     let dashboard = restored.dashboard(&filter).unwrap();
     assert_eq!(dashboard["summary"]["request_count"], 2);
     assert_eq!(dashboard["groups"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn compact_answer_index_preserves_ids_and_duplicate_parent_order() {
+    use rusqlite::{StatementStatus, types::Value as SqlValue};
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("compact.sqlite"), 7, 100).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let canonical = format!("group_v1_{}", "ab".repeat(32));
+    let ids = [
+        canonical.clone(),
+        format!("group_v1_{}", "AB".repeat(32)),
+        format!("{canonical}\0tail"),
+        format!("group_v1_{}\0", "a".repeat(63)),
+        format!("group_v1_{}g", "a".repeat(63)),
+        "plain-id".into(),
+        "".into(),
+        format!("group_v1_{}", "é".repeat(64)),
+        format!("group_v1_{}", "00".repeat(32)),
+    ];
+    let mut writer = store.writer_connection().unwrap();
+    for (i, id) in ids.iter().enumerate() {
+        let mut record = dashboard_record(&format!("parent-{i}"), now);
+        let original = record["answers"][0].clone();
+        record["answers"] = json!([]);
+        for (n, value) in [1e16, 1.0, -1e16, 0.25].into_iter().enumerate() {
+            let mut answer = original.clone();
+            answer["key"] = json!(format!("key-{n}"));
+            answer["group_id"] = json!(id);
+            // Imported groups may reuse an ID with inconsistent kinds; the
+            // compact index must preserve the previous tie order even here.
+            answer["kind"] = json!(if n % 2 == 0 { "noul" } else { "number" });
+            answer["value"] = json!(value);
+            record["answers"].as_array_mut().unwrap().push(answer);
+        }
+        store.write_batch(&mut writer, &[record]).unwrap();
+    }
+    // These inserts use the original columns, as an older writer does. The
+    // expression index is maintained by SQLite without app-specific functions.
+    writer
+        .execute("UPDATE answers SET confidence=0.7 WHERE key='key-1'", [])
+        .unwrap();
+    for id in &ids {
+        let mut previous = writer.prepare("SELECT request_id,valid,value_num,confidence,value_text FROM answers INDEXED BY answer_statistics WHERE group_id=? ORDER BY request_id").unwrap();
+        let mut compact = writer.prepare(super::STRICT_ANSWER_QUERY).unwrap();
+        let collect = |stmt: &mut rusqlite::Statement<'_>| {
+            stmt.query_map([id], |row| {
+                (0..5)
+                    .map(|i| row.get::<_, SqlValue>(i))
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+        };
+        let expected = collect(&mut previous);
+        assert_eq!(expected.len(), 4, "{id:?}");
+        assert_eq!(collect(&mut compact), expected, "{id:?}");
+        assert_eq!(compact.get_status(StatementStatus::Sort), 0);
+        assert_eq!(compact.get_status(StatementStatus::FullscanStep), 0);
+    }
+    writer
+        .execute("DELETE FROM requests WHERE id='parent-0'", [])
+        .unwrap();
+    assert!(
+        !writer
+            .query_row(super::STRICT_ANSWER_QUERY, [&canonical], |_| Ok(true))
+            .optional()
+            .unwrap()
+            .unwrap_or(false)
+    );
+}
+
+#[test]
+fn answer_key_discovery_skips_duplicates_and_bounds_high_cardinality() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("keys.sqlite"), 7, 20_000).unwrap();
+    let mut writer = store.writer_connection().unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut template = dashboard_record("template", now);
+    template["answers"][0]["key"] = json!("UrGency_%");
+    store.write_batch(&mut writer, &[template]).unwrap();
+    writer.execute_batch("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000) INSERT INTO answers SELECT request_id,'repeat-'||x,group_id,kind,valid,value_num,value_text,confidence,data FROM answers CROSS JOIN n WHERE key='UrGency_%'").unwrap();
+    // 513 distinct keys proves the bounded dictionary is incomplete. Never
+    // silently omit the matching answer in the original scan fallback.
+    assert!(
+        Store::dashboard_answer_keys(&writer, "urgency")
+            .unwrap()
+            .is_none()
+    );
+    writer
+        .execute("DELETE FROM answers WHERE key LIKE 'repeat-%'", [])
+        .unwrap();
+    assert_eq!(
+        Store::dashboard_answer_keys(&writer, "urgency").unwrap(),
+        Some(vec!["UrGency_%".into()])
+    );
+    assert_eq!(
+        Store::dashboard_answer_keys(&writer, "_%").unwrap(),
+        Some(vec!["UrGency_%".into()])
+    );
+    assert_eq!(
+        Store::dashboard_answer_keys(&writer, "missing").unwrap(),
+        Some(vec![])
+    );
+    writer
+        .execute(
+            "UPDATE answers SET key=?",
+            [format!("large-{}", "x".repeat(128 * 1024))],
+        )
+        .unwrap();
+    assert!(
+        Store::dashboard_answer_keys(&writer, "large")
+            .unwrap()
+            .is_none()
+    );
+    writer.execute("DELETE FROM answers", []).unwrap();
+    assert_eq!(
+        Store::dashboard_answer_keys(&writer, "x").unwrap(),
+        Some(vec![])
+    );
+}
+
+#[test]
+fn repeated_answer_keys_reduce_search_work_without_changing_parent_selection() {
+    use rusqlite::StatementStatus;
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("key-search.sqlite"), 7, 3000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records: Vec<_> = (0..2000)
+        .map(|i| {
+            let mut record = dashboard_record(&format!("parent-{i}"), now - i);
+            let answer = record["answers"][0].clone();
+            record["answers"] = json!([]);
+            for key in ["UrGency_%", "sentiment", "category"] {
+                let mut answer = answer.clone();
+                answer["key"] = json!(key);
+                record["answers"].as_array_mut().unwrap().push(answer);
+            }
+            record
+        })
+        .collect();
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+    let conn = store.reader().unwrap();
+    for search in ["urgency", "_%", "missing", "parent-12"] {
+        let keys = Store::dashboard_answer_keys(&conn, search)
+            .unwrap()
+            .unwrap();
+        let filter = Filter {
+            window: Some("all".into()),
+            search: Some(search.into()),
+            ..Default::default()
+        };
+        let query = |keys: Option<&[String]>| {
+            let (predicate, args) = Store::request_predicate(&filter, true, keys).unwrap();
+            let mut stmt = conn.prepare(&format!("SELECT r.id FROM requests r INDEXED BY request_join_scope WHERE {predicate} ORDER BY r.id")).unwrap();
+            let ids = stmt
+                .query_map(params_from_iter(&args), |r| r.get::<_, String>(0))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap();
+            (ids, stmt.get_status(StatementStatus::VmStep))
+        };
+        let (expected, before) = query(None);
+        let (actual, after) = query(Some(&keys));
+        assert_eq!(actual, expected, "{search}");
+        assert!(after < before * 9 / 10, "{search}: {before} -> {after}");
+    }
+    let (_, work) = measured_overview(
+        &store,
+        &Filter {
+            window: Some("all".into()),
+            search: Some("urgency".into()),
+            ..Default::default()
+        },
+    );
+    assert!(
+        work.answer_keys > 0 && work.answer_keys < 1000,
+        "{}",
+        work.answer_keys
+    );
+    let writer = store.writer_connection().unwrap();
+    writer
+        .execute("UPDATE answers SET key=key || request_id", [])
+        .unwrap();
+    assert!(
+        Store::dashboard_answer_keys(&writer, "urgency")
+            .unwrap()
+            .is_none()
+    );
+    let (snapshot, work) = measured_overview(
+        &store,
+        &Filter {
+            window: Some("all".into()),
+            search: Some("urgency".into()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(snapshot.unwrap()["summary"]["request_count"], 2000);
+    assert!(
+        work.answer_keys > 0 && work.answer_keys < 30_000,
+        "{}",
+        work.answer_keys
+    );
 }

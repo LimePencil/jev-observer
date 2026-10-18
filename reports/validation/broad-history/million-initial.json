@@ -1,0 +1,1508 @@
+{
+  "started_at": "2026-10-18T05:32:02.515320+00:00",
+  "passed": true,
+  "records": 1000000,
+  "source_commit": "9f56edee15c94c130df807e48d9cfa72ff3abd92",
+  "scope": "Quiet SQLCipher queries; three repeated definitions and small answers. Private chunked fixture preparation, production retention defaults. No ingestion or capacity guarantee.",
+  "resource_sampling_limit": "RSS, WAL and file totals are sampled at 100 ms; early thresholds leave margins, but are not instantaneous kernel RSS/directory quotas.",
+  "shared_host": "Shared host; no OS-cache reset. Single first/repeat timings are descriptive.",
+  "hashes": {
+    ".git/session-binaries/compact-dashboard-9f56ede": "acc88b3bdd0c2df123185f4c9c79e6b8b6f82c96909ce01b9cd02438f8cbf9da",
+    ".git/compact-http-audit/upgrade-probe": "c173d3bc35ff24165f50fad3b0505349ff2ca396c196cd444c12a9406303516f",
+    ".git/compact-http-audit/upgrade-probe.rs": "7761adf193925609dc0a4365d6d3b7f240598ccb84ee36ad5ef32791704f4ac5",
+    ".git/compact-http-audit/upgrade-probe-original.rs": "cb5128c3f744dabbc2d95b63b924390d1249ce2e2cfc7028eb66778a751a7976",
+    ".git/compact-http-audit/run-v3.py": "4980aeec7647575c3c71fb58e9ed9a5ad3e12546515bd3b9c46c8a84a4273752",
+    ".git/compact-http-audit/supervise-v3.py": "6cd64fa91aa8d92d6a0286685a1a8254471f6a602744e982777b06b714d89ab7",
+    ".git/compact-http-audit/guard-v3.py": "135f9286842e1d91da696c340a809574d1ff3eac2de7e9690ae82db2c06cde42",
+    "scripts/test-upgrade.py": "086a644e91f54267c1bada547e6a038aecc6aa6dcdc965397001629c53da4919"
+  },
+  "queries": {
+    "all_warmup": {
+      "outcome": "complete",
+      "elapsed_ms": 13876.764636021107,
+      "response_bytes": 54207
+    },
+    "all": {
+      "outcome": "complete",
+      "elapsed_ms": 4661.905456974637,
+      "response_bytes": 54207
+    },
+    "source_warmup": {
+      "outcome": "complete",
+      "elapsed_ms": 4851.485426013824,
+      "response_bytes": 54207
+    },
+    "source": {
+      "outcome": "complete",
+      "elapsed_ms": 4873.926287982613,
+      "response_bytes": 54207
+    },
+    "search_warmup": {
+      "outcome": "complete",
+      "elapsed_ms": 9250.025202985853,
+      "response_bytes": 54216
+    },
+    "search": {
+      "outcome": "complete",
+      "elapsed_ms": 6608.408025989775,
+      "response_bytes": 54216
+    },
+    "errors_warmup": {
+      "outcome": "complete",
+      "elapsed_ms": 1474.7542460099794,
+      "response_bytes": 15825
+    },
+    "errors": {
+      "outcome": "complete",
+      "elapsed_ms": 1494.917172996793,
+      "response_bytes": 15825
+    },
+    "second_page": {
+      "outcome": "complete",
+      "elapsed_ms": 4930.196765984874,
+      "response_bytes": 54300
+    },
+    "interval": {
+      "outcome": "complete",
+      "elapsed_ms": 1507.670307008084,
+      "response_bytes": 20692
+    },
+    "group_search": {
+      "outcome": "complete",
+      "elapsed_ms": 3012.476983014494,
+      "response_bytes": 52636
+    },
+    "content_0": {
+      "outcome": "complete",
+      "elapsed_ms": 1.589035033248365,
+      "response_bytes": 3450
+    },
+    "content_1": {
+      "outcome": "complete",
+      "elapsed_ms": 1.7396120238117874,
+      "response_bytes": 3423
+    },
+    "content_500000": {
+      "outcome": "complete",
+      "elapsed_ms": 1.8604779615998268,
+      "response_bytes": 3428
+    },
+    "content_999999": {
+      "outcome": "complete",
+      "elapsed_ms": 1.695518963970244,
+      "response_bytes": 3428
+    }
+  },
+  "checks": {
+    "template_starts": true,
+    "template_persisted": true,
+    "seed_wall_deadline": true,
+    "seed_count_fk_timestamp_invariants": true,
+    "encrypted_header": true,
+    "queries_starts": true,
+    "all_parents_exact": true,
+    "all_answers_exact": true,
+    "source_parents_exact": true,
+    "source_answers_exact": true,
+    "search_parents_exact": true,
+    "search_answers_exact": true,
+    "errors_parents_exact": true,
+    "errors_answers_exact": true,
+    "groups_exact": true,
+    "first_page_bounded": true,
+    "pages_advance_without_duplicates": true,
+    "inclusive_fifty_parent_interval": true,
+    "group_search_exact": true,
+    "timeline_exact": true,
+    "full_content_0": true,
+    "full_content_1": true,
+    "full_content_500000": true,
+    "full_content_999999": true,
+    "query_phase_no_inference": true,
+    "one_loopback_call": true
+  },
+  "limits": {
+    "app_seed_rss_early_bytes": 738197504,
+    "rss_ceiling_bytes": 805306368,
+    "disk_early_bytes": 5905580032,
+    "disk_ceiling_bytes": 6442450944,
+    "wal_early_bytes": 100663296,
+    "wal_ceiling_bytes": 134217728,
+    "overall_seconds": 600,
+    "query_seconds": 30,
+    "seed_seconds": 300,
+    "poll_seconds": 0.1
+  },
+  "owned_temp_directory": "<repo>/.git/session-tmp/history-million-vv8khn_f",
+  "phase": "queries",
+  "template_sha256": "ead39ad5c688f198db404f51ce5805750e823523b190220ef831c44696949912",
+  "stop_attempts": [
+    {
+      "role": "app",
+      "phase_at_spawn": "template",
+      "phase_at_stop": "template",
+      "pid": 2322814,
+      "clean_expected": true,
+      "signals": [
+        "TERM"
+      ],
+      "normal_grace_seconds": 16,
+      "elapsed_seconds": 0.03158367198193446,
+      "exit_code": 0,
+      "forced": false
+    },
+    {
+      "role": "seed",
+      "phase_at_spawn": "seed",
+      "phase_at_stop": "seed",
+      "pid": 2322823,
+      "clean_expected": true,
+      "signals": [],
+      "normal_grace_seconds": 3,
+      "elapsed_seconds": 8.076021913439035e-06,
+      "exit_code": 0,
+      "forced": false
+    },
+    {
+      "role": "app",
+      "phase_at_spawn": "queries",
+      "phase_at_stop": "queries",
+      "pid": 2325615,
+      "clean_expected": true,
+      "signals": [
+        "TERM"
+      ],
+      "normal_grace_seconds": 16,
+      "elapsed_seconds": 0.03141425299691036,
+      "exit_code": 0,
+      "forced": false
+    },
+    {
+      "role": "app",
+      "phase_at_spawn": "template",
+      "phase_at_stop": "queries",
+      "pid": 2322814,
+      "clean_expected": false,
+      "signals": [],
+      "normal_grace_seconds": 16,
+      "elapsed_seconds": 3.4989789128303528e-06,
+      "exit_code": 0,
+      "forced": false
+    },
+    {
+      "role": "seed",
+      "phase_at_spawn": "seed",
+      "phase_at_stop": "queries",
+      "pid": 2322823,
+      "clean_expected": false,
+      "signals": [],
+      "normal_grace_seconds": 3,
+      "elapsed_seconds": 1.23301288112998e-06,
+      "exit_code": 0,
+      "forced": false
+    },
+    {
+      "role": "app",
+      "phase_at_spawn": "queries",
+      "phase_at_stop": "queries",
+      "pid": 2325615,
+      "clean_expected": false,
+      "signals": [],
+      "normal_grace_seconds": 16,
+      "elapsed_seconds": 7.550115697085857e-07,
+      "exit_code": 0,
+      "forced": false
+    }
+  ],
+  "seed_checkpoints": [
+    {
+      "stage": "checkpoint",
+      "parents": 5001,
+      "database_bytes": 27164672,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 10001,
+      "database_bytes": 54235136,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 15001,
+      "database_bytes": 81481728,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 20001,
+      "database_bytes": 108724224,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 25001,
+      "database_bytes": 135962624,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 30001,
+      "database_bytes": 163209216,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 35001,
+      "database_bytes": 190468096,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 40001,
+      "database_bytes": 217776128,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 45001,
+      "database_bytes": 245035008,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 50001,
+      "database_bytes": 272330752,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 55001,
+      "database_bytes": 299601920,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 60001,
+      "database_bytes": 326897664,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 65001,
+      "database_bytes": 354185216,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 70001,
+      "database_bytes": 381480960,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 75001,
+      "database_bytes": 408752128,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 80001,
+      "database_bytes": 436051968,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 85001,
+      "database_bytes": 463343616,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 90001,
+      "database_bytes": 490635264,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 95001,
+      "database_bytes": 517918720,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 100001,
+      "database_bytes": 545202176,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 105001,
+      "database_bytes": 572661760,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 110001,
+      "database_bytes": 600059904,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 115001,
+      "database_bytes": 627511296,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 120001,
+      "database_bytes": 654946304,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 125001,
+      "database_bytes": 682360832,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 130001,
+      "database_bytes": 709791744,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 135001,
+      "database_bytes": 737218560,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 140001,
+      "database_bytes": 764645376,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 145001,
+      "database_bytes": 792072192,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 150001,
+      "database_bytes": 819499008,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 155001,
+      "database_bytes": 846917632,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 160001,
+      "database_bytes": 874377216,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 165001,
+      "database_bytes": 901779456,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 170001,
+      "database_bytes": 929230848,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 175001,
+      "database_bytes": 956645376,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 180001,
+      "database_bytes": 984076288,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 185001,
+      "database_bytes": 1011499008,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 190001,
+      "database_bytes": 1038929920,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 195001,
+      "database_bytes": 1066369024,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 200001,
+      "database_bytes": 1093795840,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 205001,
+      "database_bytes": 1121210368,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 210001,
+      "database_bytes": 1148653568,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 215001,
+      "database_bytes": 1176068096,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 220001,
+      "database_bytes": 1203515392,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 225001,
+      "database_bytes": 1230934016,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 230001,
+      "database_bytes": 1258364928,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 235001,
+      "database_bytes": 1285787648,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 240001,
+      "database_bytes": 1313226752,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 245001,
+      "database_bytes": 1340641280,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 250001,
+      "database_bytes": 1368080384,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 255001,
+      "database_bytes": 1395499008,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 260001,
+      "database_bytes": 1422921728,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 265001,
+      "database_bytes": 1450348544,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 270001,
+      "database_bytes": 1477779456,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 275001,
+      "database_bytes": 1505198080,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 280001,
+      "database_bytes": 1532596224,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 285001,
+      "database_bytes": 1560072192,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 290001,
+      "database_bytes": 1587494912,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 295001,
+      "database_bytes": 1614893056,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 300001,
+      "database_bytes": 1642307584,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 305001,
+      "database_bytes": 1669763072,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 310001,
+      "database_bytes": 1697206272,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 315001,
+      "database_bytes": 1724633088,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 320001,
+      "database_bytes": 1752051712,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 325001,
+      "database_bytes": 1779503104,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 330001,
+      "database_bytes": 1806913536,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 335001,
+      "database_bytes": 1834352640,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 340001,
+      "database_bytes": 1861783552,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 345001,
+      "database_bytes": 1889222656,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 350001,
+      "database_bytes": 1916657664,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 355001,
+      "database_bytes": 1944104960,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 360001,
+      "database_bytes": 1971527680,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 365001,
+      "database_bytes": 1998970880,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 370001,
+      "database_bytes": 2026385408,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 375001,
+      "database_bytes": 2053824512,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 380001,
+      "database_bytes": 2081255424,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 385001,
+      "database_bytes": 2108682240,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 390001,
+      "database_bytes": 2136125440,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 395001,
+      "database_bytes": 2163568640,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 400001,
+      "database_bytes": 2190987264,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 405001,
+      "database_bytes": 2218438656,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 410001,
+      "database_bytes": 2245853184,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 415001,
+      "database_bytes": 2273267712,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 420001,
+      "database_bytes": 2300723200,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 425001,
+      "database_bytes": 2328145920,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 430001,
+      "database_bytes": 2355593216,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 435001,
+      "database_bytes": 2382999552,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 440001,
+      "database_bytes": 2410442752,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 445001,
+      "database_bytes": 2437857280,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 450001,
+      "database_bytes": 2465288192,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 455001,
+      "database_bytes": 2492719104,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 460001,
+      "database_bytes": 2520150016,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 465001,
+      "database_bytes": 2547597312,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 470001,
+      "database_bytes": 2575036416,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 475001,
+      "database_bytes": 2602446848,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 480001,
+      "database_bytes": 2629885952,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 485001,
+      "database_bytes": 2657337344,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 490001,
+      "database_bytes": 2684751872,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 495001,
+      "database_bytes": 2712182784,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 500001,
+      "database_bytes": 2739589120,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 505001,
+      "database_bytes": 2767036416,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 510001,
+      "database_bytes": 2794467328,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 515001,
+      "database_bytes": 2821881856,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 520001,
+      "database_bytes": 2849333248,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 525001,
+      "database_bytes": 2876764160,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 530001,
+      "database_bytes": 2904186880,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 535001,
+      "database_bytes": 2931605504,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 540001,
+      "database_bytes": 2959028224,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 545001,
+      "database_bytes": 2986483712,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 550001,
+      "database_bytes": 3013902336,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 555001,
+      "database_bytes": 3041337344,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 560001,
+      "database_bytes": 3068772352,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 565001,
+      "database_bytes": 3096207360,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 570001,
+      "database_bytes": 3123625984,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 575001,
+      "database_bytes": 3151077376,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 580001,
+      "database_bytes": 3178487808,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 585001,
+      "database_bytes": 3205910528,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 590001,
+      "database_bytes": 3233337344,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 595001,
+      "database_bytes": 3260755968,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 600001,
+      "database_bytes": 3288199168,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 605001,
+      "database_bytes": 3315617792,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 610001,
+      "database_bytes": 3343065088,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 615001,
+      "database_bytes": 3370500096,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 620001,
+      "database_bytes": 3397931008,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 625001,
+      "database_bytes": 3425366016,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 630001,
+      "database_bytes": 3452784640,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 635001,
+      "database_bytes": 3480215552,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 640001,
+      "database_bytes": 3507671040,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 645001,
+      "database_bytes": 3535073280,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 650001,
+      "database_bytes": 3562504192,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 655001,
+      "database_bytes": 3589943296,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 660001,
+      "database_bytes": 3617382400,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 665001,
+      "database_bytes": 3644788736,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 670001,
+      "database_bytes": 3672231936,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 675001,
+      "database_bytes": 3699662848,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 680001,
+      "database_bytes": 3727081472,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 685001,
+      "database_bytes": 3754491904,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 690001,
+      "database_bytes": 3781931008,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 695001,
+      "database_bytes": 3809370112,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 700001,
+      "database_bytes": 3836821504,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 705001,
+      "database_bytes": 3864260608,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 710001,
+      "database_bytes": 3891675136,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 715001,
+      "database_bytes": 3919106048,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 720001,
+      "database_bytes": 3946541056,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 725001,
+      "database_bytes": 3973984256,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 730001,
+      "database_bytes": 4001398784,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 735001,
+      "database_bytes": 4028846080,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 740001,
+      "database_bytes": 4056256512,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 745001,
+      "database_bytes": 4083691520,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 750001,
+      "database_bytes": 4111138816,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 755001,
+      "database_bytes": 4138573824,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 760001,
+      "database_bytes": 4166017024,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 765001,
+      "database_bytes": 4193431552,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 770001,
+      "database_bytes": 4220874752,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 775001,
+      "database_bytes": 4248301568,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 780001,
+      "database_bytes": 4275720192,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 785001,
+      "database_bytes": 4303163392,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 790001,
+      "database_bytes": 4330606592,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 795001,
+      "database_bytes": 4358041600,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 800001,
+      "database_bytes": 4385480704,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 805001,
+      "database_bytes": 4412919808,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 810001,
+      "database_bytes": 4440350720,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 815001,
+      "database_bytes": 4467785728,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 820001,
+      "database_bytes": 4495224832,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 825001,
+      "database_bytes": 4522655744,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 830001,
+      "database_bytes": 4550078464,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 835001,
+      "database_bytes": 4577521664,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 840001,
+      "database_bytes": 4604956672,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 845001,
+      "database_bytes": 4632375296,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 850001,
+      "database_bytes": 4659806208,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 855001,
+      "database_bytes": 4687233024,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 860001,
+      "database_bytes": 4714659840,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 865001,
+      "database_bytes": 4742107136,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 870001,
+      "database_bytes": 4769542144,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 875001,
+      "database_bytes": 4796977152,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 880001,
+      "database_bytes": 4824416256,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 885001,
+      "database_bytes": 4851867648,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 890001,
+      "database_bytes": 4879282176,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 895001,
+      "database_bytes": 4906733568,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 900001,
+      "database_bytes": 4934160384,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 905001,
+      "database_bytes": 4961574912,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 910001,
+      "database_bytes": 4989009920,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 915001,
+      "database_bytes": 5016461312,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 920001,
+      "database_bytes": 5043871744,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 925001,
+      "database_bytes": 5071306752,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 930001,
+      "database_bytes": 5098758144,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 935001,
+      "database_bytes": 5126205440,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 940001,
+      "database_bytes": 5153628160,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 945001,
+      "database_bytes": 5181075456,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 950001,
+      "database_bytes": 5208489984,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 955001,
+      "database_bytes": 5235912704,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 960001,
+      "database_bytes": 5263368192,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 965001,
+      "database_bytes": 5290786816,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 970001,
+      "database_bytes": 5318217728,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 975001,
+      "database_bytes": 5345644544,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 980001,
+      "database_bytes": 5373083648,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 985001,
+      "database_bytes": 5400526848,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 990001,
+      "database_bytes": 5427982336,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 995001,
+      "database_bytes": 5455400960,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "checkpoint",
+      "parents": 1000000,
+      "database_bytes": 5482807296,
+      "checkpoint_busy": 0
+    },
+    {
+      "stage": "verified",
+      "parents": 1000000,
+      "answers": 3000000,
+      "groups": 3,
+      "first_timestamp": 1792201522747,
+      "last_timestamp": 1792301522647,
+      "foreign_key_violations": 0
+    }
+  ],
+  "database_bytes": 5482807296,
+  "content_proofs": [
+    {
+      "index": 0,
+      "expected_sha256": "ead39ad5c688f198db404f51ce5805750e823523b190220ef831c44696949912",
+      "actual_sha256": "ead39ad5c688f198db404f51ce5805750e823523b190220ef831c44696949912"
+    },
+    {
+      "index": 1,
+      "expected_sha256": "40baf4957816ca8b1ff14bf8ebc05441c515e75d972990cc7be6c8e8377d6abd",
+      "actual_sha256": "40baf4957816ca8b1ff14bf8ebc05441c515e75d972990cc7be6c8e8377d6abd"
+    },
+    {
+      "index": 500000,
+      "expected_sha256": "d4f26410a52bf2e16e613aca064324a607113a445206160b53f216ccabda58ed",
+      "actual_sha256": "d4f26410a52bf2e16e613aca064324a607113a445206160b53f216ccabda58ed"
+    },
+    {
+      "index": 999999,
+      "expected_sha256": "4709445fe8973b736a27cf1b66af629ce6e4c8a6ba2f793c8fe13b82dc0f5500",
+      "actual_sha256": "4709445fe8973b736a27cf1b66af629ce6e4c8a6ba2f793c8fe13b82dc0f5500"
+    }
+  ],
+  "resources": {
+    "rss_bytes": 197378048,
+    "private_file_bytes": 5511610368,
+    "wal_bytes": 28798832
+  },
+  "children_reaped": true,
+  "child_pids": [
+    2322814,
+    2322823,
+    2325615
+  ],
+  "saved_process_logs": [
+    {
+      "role": "app",
+      "phase_at_spawn": "template",
+      "pid": 2322814,
+      "exit_code": 0,
+      "path": "<repo>/.git/compact-http-audit/million-private-logs/app-0.log",
+      "original_bytes": 154,
+      "saved_bytes": 154,
+      "tail_only": false,
+      "sha256": "af0836ccc4d2bfeac8ade51e80a40f710ca8df749919bf468569b4c9e736f9ee"
+    },
+    {
+      "role": "seed",
+      "phase_at_spawn": "seed",
+      "pid": 2322823,
+      "exit_code": 0,
+      "path": "<repo>/.git/compact-http-audit/million-private-logs/seed-1.log",
+      "original_bytes": 17700,
+      "saved_bytes": 17700,
+      "tail_only": false,
+      "sha256": "62c42152a6d5019121785d5e37d9102020292f91a94bf96cae63b9d8aa5ff926"
+    },
+    {
+      "role": "app",
+      "phase_at_spawn": "queries",
+      "pid": 2325615,
+      "exit_code": 0,
+      "path": "<repo>/.git/compact-http-audit/million-private-logs/app-2.log",
+      "original_bytes": 154,
+      "saved_bytes": 154,
+      "tail_only": false,
+      "sha256": "1c32c1c1fc8ac3d4fa4207951200d975438c3f5da5f9052f301ee0c4269447ae"
+    }
+  ],
+  "seed_logs": [
+    {
+      "bytes": 17700,
+      "saved_sha256": "62c42152a6d5019121785d5e37d9102020292f91a94bf96cae63b9d8aa5ff926",
+      "tail": "parents\":780001,\"database_bytes\":4275720192,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":785001,\"database_bytes\":4303163392,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":790001,\"database_bytes\":4330606592,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":795001,\"database_bytes\":4358041600,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":800001,\"database_bytes\":4385480704,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":805001,\"database_bytes\":4412919808,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":810001,\"database_bytes\":4440350720,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":815001,\"database_bytes\":4467785728,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":820001,\"database_bytes\":4495224832,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":825001,\"database_bytes\":4522655744,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":830001,\"database_bytes\":4550078464,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":835001,\"database_bytes\":4577521664,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":840001,\"database_bytes\":4604956672,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":845001,\"database_bytes\":4632375296,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":850001,\"database_bytes\":4659806208,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":855001,\"database_bytes\":4687233024,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":860001,\"database_bytes\":4714659840,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":865001,\"database_bytes\":4742107136,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":870001,\"database_bytes\":4769542144,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":875001,\"database_bytes\":4796977152,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":880001,\"database_bytes\":4824416256,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":885001,\"database_bytes\":4851867648,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":890001,\"database_bytes\":4879282176,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":895001,\"database_bytes\":4906733568,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":900001,\"database_bytes\":4934160384,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":905001,\"database_bytes\":4961574912,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":910001,\"database_bytes\":4989009920,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":915001,\"database_bytes\":5016461312,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":920001,\"database_bytes\":5043871744,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":925001,\"database_bytes\":5071306752,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":930001,\"database_bytes\":5098758144,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":935001,\"database_bytes\":5126205440,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":940001,\"database_bytes\":5153628160,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":945001,\"database_bytes\":5181075456,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":950001,\"database_bytes\":5208489984,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":955001,\"database_bytes\":5235912704,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":960001,\"database_bytes\":5263368192,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":965001,\"database_bytes\":5290786816,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":970001,\"database_bytes\":5318217728,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":975001,\"database_bytes\":5345644544,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":980001,\"database_bytes\":5373083648,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":985001,\"database_bytes\":5400526848,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":990001,\"database_bytes\":5427982336,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":995001,\"database_bytes\":5455400960,\"checkpoint_busy\":0}\n{\"stage\":\"checkpoint\",\"parents\":1000000,\"database_bytes\":5482807296,\"checkpoint_busy\":0}\n{\"stage\":\"verified\",\"parents\":1000000,\"answers\":3000000,\"groups\":3,\"first_timestamp\":1792201522747,\"last_timestamp\":1792301522647,\"foreign_key_violations\":0}\n"
+    }
+  ],
+  "temp_removed": true,
+  "finished_at": "2026-10-18T05:36:29.578799+00:00",
+  "diagnostic_errors": [],
+  "private_source_report_sha256": "58f6bb7c347a1f68b2bed97175705d88418ef6e570893173a32e4c68fc089b48"
+}
