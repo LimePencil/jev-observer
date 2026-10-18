@@ -953,6 +953,7 @@ impl Store {
         )?;
         let mut rows = stmt.query([search])?;
         let mut matched = Vec::new();
+        let mut matched_bytes = 0;
         let mut count = 0;
         while let Some(row) = rows.next()? {
             count += 1;
@@ -960,7 +961,14 @@ impl Store {
                 return Ok(None);
             }
             if row.get::<_, bool>(1)? {
-                matched.push(row.get(0)?);
+                let key = row.get_ref(0)?.as_str()?;
+                // Imported keys can be large. Bound copied bind values as well
+                // as key count; fallback keeps the original search semantics.
+                if key.len() > 128 * 1024 - matched_bytes {
+                    return Ok(None);
+                }
+                matched_bytes += key.len();
+                matched.push(key.to_owned());
             }
         }
         Ok(Some(matched))

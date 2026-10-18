@@ -2263,6 +2263,17 @@ fn answer_key_discovery_skips_duplicates_and_bounds_high_cardinality() {
         Store::dashboard_answer_keys(&writer, "missing").unwrap(),
         Some(vec![])
     );
+    writer
+        .execute(
+            "UPDATE answers SET key=?",
+            [format!("large-{}", "x".repeat(128 * 1024))],
+        )
+        .unwrap();
+    assert!(
+        Store::dashboard_answer_keys(&writer, "large")
+            .unwrap()
+            .is_none()
+    );
     writer.execute("DELETE FROM answers", []).unwrap();
     assert_eq!(
         Store::dashboard_answer_keys(&writer, "x").unwrap(),
