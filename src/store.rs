@@ -139,6 +139,13 @@ const DASHBOARD_SELECTION: &str = "r.seq IN (SELECT seq FROM temp.dashboard_requ
 const GROUP_SELECTION: &str = "r.seq IN (SELECT seq FROM temp.group_request_ids)";
 const GROUP_TIMELINE_SELECTION: &str = "r.timestamp BETWEEN (SELECT min(timestamp) FROM temp.group_request_ids) AND (SELECT max(timestamp) FROM temp.group_request_ids) AND r.seq IN (SELECT seq FROM temp.group_request_ids)";
 const FAILED: &str = "(r.status>=400 OR json_extract(r.data,'$.transport_error') IS NOT NULL)";
+// A canonical group digest occupies 32 index bytes instead of 73 text bytes.
+// Noncanonical IDs retain TEXT identity, including embedded NULs. SQLite BLOB
+// and TEXT compare differently, so the transformation is injective. Preserve
+// every remaining index column/order for deterministic floating-point sums.
+// Built-in SQL functions keep the additive index writable by v0.3.0 too.
+const STRICT_ANSWER_QUERY: &str = "SELECT request_id,valid,value_num,confidence,value_text FROM answers INDEXED BY answer_overview WHERE (CASE WHEN length(CAST(group_id AS BLOB))=73 AND substr(group_id,1,9)='group_v1_' AND substr(group_id,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(group_id,10)) ELSE group_id END)=(CASE WHEN length(CAST(?1 AS BLOB))=73 AND substr(?1,1,9)='group_v1_' AND substr(?1,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(?1,10)) ELSE ?1 END) ORDER BY request_id";
+
 const DASHBOARD_INDEX: &str = "CREATE INDEX request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id,json_extract(data,'$.transport_error'))";
 
 fn check_schema(conn: &Connection) -> Result<()> {
@@ -511,6 +518,8 @@ impl Store {
               valid INTEGER NOT NULL,value_num REAL,value_text TEXT,confidence REAL,data TEXT NOT NULL,
               PRIMARY KEY(request_id,key));
             CREATE INDEX IF NOT EXISTS answer_statistics ON answers(group_id,request_id,kind,valid,value_num,value_text,confidence);
+            CREATE INDEX IF NOT EXISTS answer_overview ON answers((CASE WHEN length(CAST(group_id AS BLOB))=73 AND substr(group_id,1,9)='group_v1_' AND substr(group_id,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(group_id,10)) ELSE group_id END),request_id,kind,valid,value_num,value_text,confidence);
+            CREATE INDEX IF NOT EXISTS answer_key ON answers(key,request_id);
             DROP INDEX IF EXISTS answer_group;
             CREATE TABLE IF NOT EXISTS labels(
               request_id TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,key TEXT NOT NULL,
@@ -750,10 +759,14 @@ impl Store {
     }
 
     fn predicate(filter: &Filter) -> Result<(String, Vec<SqlValue>)> {
-        Self::request_predicate(filter, false)
+        Self::request_predicate(filter, false, None)
     }
 
-    fn request_predicate(filter: &Filter, batch_search: bool) -> Result<(String, Vec<SqlValue>)> {
+    fn request_predicate(
+        filter: &Filter,
+        batch_search: bool,
+        answer_keys: Option<&[String]>,
+    ) -> Result<(String, Vec<SqlValue>)> {
         let mut clauses = vec!["1=1".to_owned()];
         let mut args = Vec::new();
         let period = match filter.window.as_deref().unwrap_or("24h") {
@@ -801,15 +814,26 @@ impl Store {
             args.push(group.clone().into());
         }
         if let Some(search) = filter.search.as_ref().filter(|s| !s.is_empty()) {
-            let answer_match = if batch_search {
-                "r.id IN (SELECT sa.request_id FROM answers sa WHERE instr(lower(sa.key),lower(?))>0)"
+            args.extend([search.clone().into(), search.clone().into()]);
+            let answer_match = if let Some(keys) = answer_keys {
+                if keys.is_empty() {
+                    "0".to_owned()
+                } else {
+                    args.extend(keys.iter().cloned().map(SqlValue::from));
+                    let placeholders = vec!["?"; keys.len()].join(",");
+                    format!(
+                        "r.id IN (SELECT sa.request_id FROM answers sa INDEXED BY answer_key WHERE sa.key IN ({placeholders}))"
+                    )
+                }
             } else {
-                "EXISTS(SELECT 1 FROM answers sa WHERE sa.request_id=r.id AND instr(lower(sa.key),lower(?))>0)"
+                args.push(search.clone().into());
+                if batch_search {
+                    "r.id IN (SELECT sa.request_id FROM answers sa WHERE instr(lower(sa.key),lower(?))>0)".to_owned()
+                } else {
+                    "EXISTS(SELECT 1 FROM answers sa WHERE sa.request_id=r.id AND instr(lower(sa.key),lower(?))>0)".to_owned()
+                }
             };
             clauses.push(format!("(instr(lower(r.source),lower(?))>0 OR instr(lower(r.id),lower(?))>0 OR {answer_match})"));
-            for _ in 0..3 {
-                args.push(search.clone().into());
-            }
         }
         Ok((clauses.join(" AND "), args))
     }
@@ -915,6 +939,33 @@ impl Store {
         Ok(stmt.query_map(params_from_iter(&values), |r| Ok(json!({"id":r.get::<_,String>(0)?,"timestamp":r.get::<_,Option<i64>>(1)?,"source":r.get::<_,String>(2)?,"model":r.get::<_,Option<String>>(3)?,"status":r.get::<_,Option<i64>>(4)?,"duration_ms":r.get::<_,Option<f64>>(5)?,"input_tokens":r.get::<_,Option<i64>>(6)?,"output_tokens":r.get::<_,Option<i64>>(7)?,"cost_usd":r.get::<_,Option<f64>>(8)?,"cost_basis":r.get::<_,String>(9)?,"answer_count":r.get::<_,i64>(10)?,"capture_complete":r.get::<_,bool>(11)?,"sample":r.get::<_,bool>(12)?,"event_kind":r.get::<_,String>(13)?,"imported_at":r.get::<_,Option<i64>>(14)?,"transport_error":r.get::<_,Option<String>>(15)?,"failed":r.get::<_,bool>(16)?,"_cursor":format!("{}:{}",r.get::<_,i64>(17)?,r.get::<_,i64>(18)?)})))?.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// Seek over repeated keys, evaluating SQLite's original substring match
+    /// once per distinct key. Bound discovery before filtering: high-cardinality
+    /// histories fall back to the original scan rather than unbounded seeks.
+    fn dashboard_answer_keys(conn: &Connection, search: &str) -> Result<Option<Vec<String>>> {
+        let mut stmt = conn.prepare(
+            "WITH RECURSIVE keys(key) AS (
+               SELECT (SELECT key FROM answers INDEXED BY answer_key ORDER BY key LIMIT 1)
+               UNION ALL
+               SELECT (SELECT key FROM answers INDEXED BY answer_key WHERE key>keys.key ORDER BY key LIMIT 1)
+               FROM keys WHERE key IS NOT NULL LIMIT 513
+             ) SELECT key,instr(lower(key),lower(?))>0 FROM keys WHERE key IS NOT NULL",
+        )?;
+        let mut rows = stmt.query([search])?;
+        let mut matched = Vec::new();
+        let mut count = 0;
+        while let Some(row) = rows.next()? {
+            count += 1;
+            if count > 512 {
+                return Ok(None);
+            }
+            if row.get::<_, bool>(1)? {
+                matched.push(row.get(0)?);
+            }
+        }
+        Ok(Some(matched))
+    }
+
     /// Expensive answer-key/group filters select parent requests once per
     /// snapshot. Reuse their integer row IDs for every aggregate and feed query.
     fn dashboard_predicate(conn: &Connection, filter: &Filter) -> Result<(String, Vec<SqlValue>)> {
@@ -946,7 +997,13 @@ impl Store {
                 && filter.model.as_ref().is_none_or(|value| value.is_empty())
                 && filter.status.as_deref() != Some("error");
         }
-        let (predicate, args) = Self::request_predicate(filter, batch_search)?;
+        let answer_keys = if batch_search {
+            Self::dashboard_answer_keys(conn, filter.search.as_deref().unwrap_or(""))?
+        } else {
+            None
+        };
+        let (predicate, args) =
+            Self::request_predicate(filter, batch_search, answer_keys.as_deref())?;
         if !has_group
             && filter
                 .search
@@ -1440,9 +1497,7 @@ impl Store {
         }
         let mut ids = conn.prepare("SELECT id,kind FROM groups WHERE family_id IS NULL AND instr(lower(key || ' ' || source || ' ' || kind || ' ' || id || ' ' || coalesce(task_version,'')),lower(?))>0 ORDER BY id")?;
         let after = Self::group_cursor(filter)?;
-        let mut answers = conn.prepare(
-            "SELECT request_id,valid,value_num,confidence,value_text FROM answers INDEXED BY answer_statistics WHERE group_id=? ORDER BY request_id",
-        )?;
+        let mut answers = conn.prepare(STRICT_ANSWER_QUERY)?;
         let mut selected: Vec<(String, Value)> = Vec::new();
         for row in ids.query_map([filter.group_search.as_deref().unwrap_or("")], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
