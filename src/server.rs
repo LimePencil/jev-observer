@@ -3024,9 +3024,83 @@ mod tests {
             assert_eq!(record["answers"], json!([]));
             assert_eq!(
                 record["normalization_error"],
-                "Credential redaction caused an object key collision; request and response content were not retained"
+                "Credential redaction caused an identifier or object key collision; request and response content were not retained"
             );
             assert!(!record.to_string().contains("audit-"));
+        }
+    }
+
+    #[tokio::test]
+    async fn semantic_identifier_collisions_preserve_wire_bytes_and_report_live_gaps() {
+        let request_body = br#"{"questions":{"q":{"type":"choice","instructions":"Choose","criteria":{"option-X":null}}},"credentials":["X","Y"]}"#;
+        let response_body = br#"{"answers":{"q":{"type":"choice","choice":"option-Y","probabilities":{"option-Y":1},"confidence":0.7}}}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(
+                    request.headers()[header::AUTHORIZATION],
+                    "Bearer test-secret"
+                );
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        for _ in 0..2 {
+            let response = router(fixture.state.clone())
+                .oneshot(native(request_body.as_slice()))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+                response_body
+            );
+        }
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted", "truncated"] {
+            assert_eq!(health[field], 2, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+        let output = fixture
+            .state
+            .store
+            .export(
+                &Filter {
+                    window: Some("all".into()),
+                    ..Default::default()
+                },
+                "jsonl",
+            )
+            .unwrap();
+        let records = output
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0]["id"], records[1]["id"]);
+        for record in records {
+            assert_eq!(record["capture_complete"], false);
+            assert_eq!(record["answers"], json!([]));
+            assert_eq!(
+                record["normalization_error"],
+                "Credential redaction caused an identifier or object key collision; request and response content were not retained"
+            );
+            assert!(!record.to_string().contains("option-"));
         }
     }
 
@@ -3090,7 +3164,71 @@ mod tests {
                     assert!(fixture.state.store.is_empty().unwrap());
                     assert_eq!(
                         body,
-                        json!({"error":"Import rejected because credential redaction makes distinct object keys identical."})
+                        json!({"error":"Import rejected because credential redaction makes distinct identifiers or object keys identical."})
+                    );
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn semantic_identifier_imports_are_atomic_and_release_the_slot() {
+        let raw = json!({"id":"good-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{"q":{"type":"choice","instructions":"Choose","criteria":{"option-X":null}}}},
+            "response":{"answers":{"q":{"type":"choice","choice":"option-Y","probabilities":{"option-Y":1},"confidence":0.7}}}});
+        let observer = model::import_records(
+            &raw.to_string(),
+            "systemone-capture",
+            &model::NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        assert_eq!(observer["answers"][0]["valid"], false);
+        for (format, good) in [("systemone-capture", raw), ("observer-jsonl", observer)] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 4096, true);
+            let mut bad = good.clone();
+            let extra = if format == "systemone-capture" {
+                &mut bad["request"]
+            } else {
+                &mut bad["request_extra"]
+            };
+            extra["credentials"] = json!(["X", "Y"]);
+            let valid_text = good.to_string();
+            for (text, expected, counts) in [
+                (
+                    format!("{good}\n{bad}\n{good}"),
+                    StatusCode::BAD_REQUEST,
+                    None,
+                ),
+                (valid_text.clone(), StatusCode::OK, Some((1, 0))),
+                (valid_text, StatusCode::OK, Some((0, 1))),
+            ] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), expected, "{format}");
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if let Some((imported, duplicates)) = counts {
+                    assert_eq!(body, json!({"imported":imported,"duplicates":duplicates}));
+                } else {
+                    assert!(fixture.state.store.is_empty().unwrap());
+                    assert_eq!(
+                        body,
+                        json!({"error":"Import rejected because credential redaction makes distinct identifiers or object keys identical."})
                     );
                 }
                 assert_eq!(fixture.state.import_slots.available_permits(), 1);
