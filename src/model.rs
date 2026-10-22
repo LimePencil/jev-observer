@@ -8,14 +8,32 @@
 //! contain the original complete question definitions or necessarily timings.
 
 use crate::catalog::{self, Profile};
+use aho_corasick::{AhoCorasick, AhoCorasickKind, MatchKind};
 use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 const REDACTED: &str = "[REDACTED]";
+const INPUT_FIELDS: [&str; 5] = ["state", "images", "image", "audio", "video"];
 const MAX_IMPORT_RECORDS: usize = 10_000;
 const PROBABILITY_TOLERANCE: f64 = 0.0001;
+
+#[derive(Clone, Copy)]
+struct RedactionLimits {
+    patterns: usize,
+    pattern_bytes: usize,
+    work: usize,
+}
+
+const REDACTION_LIMITS: RedactionLimits = RedactionLimits {
+    patterns: 32_768,
+    pattern_bytes: 1024 * 1024,
+    work: 64 * 1024 * 1024,
+};
+
+const REDACTION_LIMIT_MESSAGE: &str =
+    "Credential redaction exceeded its work limit; request and response content were not retained";
 
 #[derive(Debug)]
 pub struct ImportLimitError(&'static str);
@@ -83,6 +101,7 @@ struct ImportBudget {
     limits: ImportLimits,
     work: usize,
     normalized: usize,
+    redaction_remaining: usize,
 }
 
 struct ImportRecordBudget<'a> {
@@ -288,25 +307,99 @@ fn collect_secrets(value: &Value, options: &NormalizeOptions, found: &mut Vec<St
     }
 }
 
-fn scrub_string(value: &str, secrets: &[&str]) -> String {
-    if secrets.is_empty() {
-        return value.to_owned();
+struct SecretMatcher<'a> {
+    secrets: Vec<&'a str>,
+    prefilter: Option<AhoCorasick>,
+    remaining: usize,
+}
+
+impl<'a> SecretMatcher<'a> {
+    fn new(secrets: Vec<&'a str>, limits: RedactionLimits) -> Result<Self> {
+        ensure!(
+            secrets.len() <= limits.patterns,
+            ImportLimitError("redaction work")
+        );
+        let mut pattern_bytes = 0;
+        for secret in &secrets {
+            pattern_bytes = limited_add(
+                pattern_bytes,
+                secret.len(),
+                limits.pattern_bytes,
+                "redaction work",
+            )?;
+        }
+        let remaining = limits
+            .work
+            .checked_sub(pattern_bytes)
+            .ok_or(ImportLimitError("redaction work"))?;
+        // Only ask whether an original string contains any secret. Leftmost
+        // semantics avoid the standard automaton's inherited suffix-output
+        // lists; its replacement order must never replace our priority rules.
+        // Force an NFA so automatic DFA selection cannot multiply state space.
+        let prefilter = if secrets.len() > 4 {
+            Some(
+                AhoCorasick::builder()
+                    .kind(Some(AhoCorasickKind::NoncontiguousNFA))
+                    .match_kind(MatchKind::LeftmostFirst)
+                    .dense_depth(0)
+                    .build(&secrets)
+                    .map_err(|_| ImportLimitError("redaction work"))?,
+            )
+        } else {
+            None
+        };
+        Ok(Self {
+            secrets,
+            prefilter,
+            remaining,
+        })
+    }
+
+    fn charge(&mut self, work: usize) -> Result<()> {
+        self.remaining = self
+            .remaining
+            .checked_sub(work)
+            .ok_or(ImportLimitError("redaction work"))?;
+        Ok(())
+    }
+}
+
+fn scrub_string(value: &str, matcher: &mut SecretMatcher<'_>) -> Result<String> {
+    if matcher.secrets.is_empty() {
+        return Ok(value.to_owned());
+    }
+    matcher.charge(value.len())?;
+    if matcher
+        .prefilter
+        .as_ref()
+        .is_some_and(|prefilter| !prefilter.is_match(value))
+    {
+        return Ok(value.to_owned());
     }
     // Only original text participates in later matches. Replacing into a
     // String repeatedly can match the marker itself and amplify tiny inputs.
     let mut fragments = vec![Some(value)];
-    for &secret in secrets {
-        if secret.is_empty() {
+    for pattern in 0..matcher.secrets.len() {
+        matcher.charge(1)?;
+        let secret = matcher.secrets[pattern];
+        if secret.is_empty() || secret.len() > value.len() {
             continue;
         }
+        // Charge all fragment visits, including markers with no text, before
+        // reserving the next vector. A split string must not make later absent
+        // secrets perform unbounded marker-only scans.
+        matcher.charge(fragments.len())?;
         let mut next = Vec::with_capacity(fragments.len());
         for fragment in fragments {
             let Some(text) = fragment else {
                 next.push(None);
                 continue;
             };
+            matcher.charge(text.len())?;
+            matcher.charge(secret.len())?;
             let mut start = 0;
             for (index, _) in text.match_indices(secret) {
+                matcher.charge(REDACTED.len() + 2)?;
                 if start < index {
                     next.push(Some(&text[start..index]));
                 }
@@ -314,23 +407,31 @@ fn scrub_string(value: &str, secrets: &[&str]) -> String {
                 start = index + secret.len();
             }
             if start < text.len() {
+                matcher.charge(1)?;
                 next.push(Some(&text[start..]));
             }
         }
         fragments = next;
     }
-    fragments
+    Ok(fragments
         .into_iter()
         .map(|fragment| fragment.unwrap_or(REDACTED))
-        .collect()
+        .collect())
 }
 
-fn scrub(value: &Value, options: &NormalizeOptions, secrets: &[&str]) -> Value {
-    match value {
-        Value::String(s) => json!(scrub_string(s, secrets)),
-        Value::Array(values) => {
-            Value::Array(values.iter().map(|v| scrub(v, options, secrets)).collect())
-        }
+fn scrub(
+    value: &Value,
+    options: &NormalizeOptions,
+    matcher: &mut SecretMatcher<'_>,
+) -> Result<Value> {
+    Ok(match value {
+        Value::String(s) => json!(scrub_string(s, matcher)?),
+        Value::Array(values) => Value::Array(
+            values
+                .iter()
+                .map(|v| scrub(v, options, matcher))
+                .collect::<Result<_>>()?,
+        ),
         Value::Object(values) => {
             let mut out = Map::new();
             for (key, value) in values {
@@ -345,14 +446,14 @@ fn scrub(value: &Value, options: &NormalizeOptions, secrets: &[&str]) -> Value {
                 let value = if sensitive_key(key, options) {
                     json!(REDACTED)
                 } else {
-                    scrub(value, options, secrets)
+                    scrub(value, options, matcher)?
                 };
-                out.insert(scrub_string(key, secrets), value);
+                out.insert(scrub_string(key, matcher)?, value);
             }
             Value::Object(out)
         }
         _ => value.clone(),
-    }
+    })
 }
 
 fn ordered_unique_secrets(secrets: &[String]) -> Vec<&str> {
@@ -368,13 +469,27 @@ fn ordered_unique_secrets(secrets: &[String]) -> Vec<&str> {
     unique
 }
 
-fn privacy(value: &Value, options: &NormalizeOptions, explicit: &[&str]) -> Value {
+fn privacy(
+    value: &Value,
+    options: &NormalizeOptions,
+    explicit: &[&str],
+    remaining: &mut usize,
+) -> Result<Value> {
     let mut secrets = Vec::new();
     for secret in explicit {
         collect_secret_string(secret, &mut secrets);
     }
     collect_secrets(value, options, &mut secrets);
-    scrub(value, options, &ordered_unique_secrets(&secrets))
+    let mut matcher = SecretMatcher::new(
+        ordered_unique_secrets(&secrets),
+        RedactionLimits {
+            work: *remaining,
+            ..REDACTION_LIMITS
+        },
+    )?;
+    let result = scrub(value, options, &mut matcher);
+    *remaining = matcher.remaining;
+    result
 }
 
 fn canonical(value: &Value) -> Value {
@@ -693,12 +808,45 @@ fn jgrep_family(
 
 /// Normalize a bounded copy. This never mutates or reconstructs the forwarded bytes.
 pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
-    normalize_with_secrets(capture, options, &[])
+    match normalize_with_secrets(capture, options, &[]) {
+        Ok(record) => record,
+        Err(_) => redaction_limited_capture(capture),
+    }
+}
+
+fn redaction_limited_capture(capture: &Capture) -> Value {
+    // Retain transport facts without cloning the captured bodies or copying
+    // any original text into the fallback. A fresh identity cannot collapse
+    // unrelated limited captures, even when their original IDs contained a
+    // credential. Use the ordinary builder to keep its record schema intact.
+    let safe_capture = Capture {
+        id: format!("redacted_v1_{}", uuid::Uuid::new_v4().simple()),
+        timestamp: capture.timestamp,
+        source: REDACTED.into(),
+        status: capture.status,
+        duration_ms: capture.duration_ms,
+        capture_complete: false,
+        transport_error: capture.transport_error.as_ref().map(|_| REDACTED.into()),
+        ..Default::default()
+    };
+    let request = json!({"questions": {}});
+    let safe = json!({
+        "request": request, "response": {"answers": {}}, "id": safe_capture.id,
+        "source": safe_capture.source, "task_version": null,
+        "transport_error": safe_capture.transport_error
+    });
+    let options = NormalizeOptions {
+        provider: Some("unknown".into()),
+        ..Default::default()
+    };
+    let mut record = normalize_prepared(&safe_capture, &options, &request, &safe);
+    record["normalization_error"] = json!(REDACTION_LIMIT_MESSAGE);
+    record
 }
 
 fn clear_input_fields(value: &mut Value) {
     if let Some(map) = value.as_object_mut() {
-        for field in ["state", "images", "image", "audio", "video"] {
+        for field in INPUT_FIELDS {
             if let Some(input) = map.get_mut(field) {
                 *input = Value::Null;
             }
@@ -710,9 +858,10 @@ fn normalize_with_secrets(
     capture: &Capture,
     options: &NormalizeOptions,
     import_secrets: &[String],
-) -> Value {
-    let (raw_request, safe) = prepare_capture(capture, options, import_secrets);
-    normalize_prepared(capture, options, &raw_request, &safe)
+) -> Result<Value> {
+    let mut remaining = REDACTION_LIMITS.work;
+    let (raw_request, safe) = prepare_capture(capture, options, import_secrets, &mut remaining)?;
+    Ok(normalize_prepared(capture, options, &raw_request, &safe))
 }
 
 fn normalize_import(
@@ -727,8 +876,14 @@ fn normalize_import(
     // null because a raw-provider parser has a smaller recursion allowance.
     let raw_request = crate::normalized_json::from_slice(&capture.request)?;
     let response = crate::normalized_json::from_slice(&capture.response)?;
-    let (raw_request, safe) =
-        prepare_values(capture, options, import_secrets, raw_request, response);
+    let (raw_request, safe) = prepare_values(
+        capture,
+        options,
+        import_secrets,
+        raw_request,
+        response,
+        &mut budget.batch.redaction_remaining,
+    )?;
     if charge_input {
         budget.value(&safe)?;
     }
@@ -756,10 +911,18 @@ fn prepare_capture(
     capture: &Capture,
     options: &NormalizeOptions,
     import_secrets: &[String],
-) -> (Value, Value) {
+    remaining: &mut usize,
+) -> Result<(Value, Value)> {
     let raw_request: Value = serde_json::from_slice(&capture.request).unwrap_or(Value::Null);
     let response: Value = serde_json::from_slice(&capture.response).unwrap_or(Value::Null);
-    prepare_values(capture, options, import_secrets, raw_request, response)
+    prepare_values(
+        capture,
+        options,
+        import_secrets,
+        raw_request,
+        response,
+        remaining,
+    )
 }
 
 fn prepare_values(
@@ -768,7 +931,8 @@ fn prepare_values(
     import_secrets: &[String],
     raw_request: Value,
     response: Value,
-) -> (Value, Value) {
+    remaining: &mut usize,
+) -> Result<(Value, Value)> {
     let explicit_secrets: Vec<&str> = [
         capture.secret.as_deref(),
         capture.local_token.as_deref(),
@@ -785,7 +949,7 @@ fn prepare_values(
             "transport_error": capture.transport_error
         });
         envelope["response"] = response;
-        privacy(&envelope, options, &explicit_secrets)
+        privacy(&envelope, options, &explicit_secrets, remaining)?
     };
     // Only the actual input snapshot is opt-in. A structured question can
     // legitimately contain a field named `state`; that is part of its rule.
@@ -800,7 +964,7 @@ fn prepare_values(
             clear_input_fields(metadata);
         }
     }
-    (raw_request, safe)
+    Ok((raw_request, safe))
 }
 
 fn context_redacted(capture: &Capture, safe: &Value) -> bool {
@@ -1022,6 +1186,25 @@ fn imported_annotations(record: &Value, key: &str, source: &str, event_id: &str)
     Ok(json!(out))
 }
 
+fn remove_receipt_response_inputs(response: &mut Value) {
+    let Some(map) = response.as_object_mut() else {
+        return;
+    };
+    for field in INPUT_FIELDS {
+        map.remove(field);
+    }
+    // Older converters kept envelope inputs in this metadata wrapper. Only
+    // these known locations are inputs; answer semantics remain untouched.
+    if let Some(metadata) = map
+        .get_mut("original_metadata")
+        .and_then(Value::as_object_mut)
+    {
+        for field in INPUT_FIELDS {
+            metadata.remove(field);
+        }
+    }
+}
+
 fn remove_receipt_inputs(receipt: &mut Value) {
     let Some(map) = receipt.as_object_mut() else {
         return;
@@ -1039,13 +1222,13 @@ fn remove_receipt_inputs(receipt: &mut Value) {
     ] {
         map.remove(key);
     }
-    if let Some(raw) = map.get_mut("raw_jev").and_then(Value::as_object_mut) {
-        raw.remove("state");
+    if let Some(raw) = map.get_mut("raw_jev") {
+        remove_receipt_response_inputs(raw);
     }
     if let Some(stages) = map.get_mut("raw_jev_stages").and_then(Value::as_array_mut) {
         for stage in stages {
-            if let Some(response) = stage.get_mut("response").and_then(Value::as_object_mut) {
-                response.remove("state");
+            if let Some(response) = stage.get_mut("response") {
+                remove_receipt_response_inputs(response);
             }
         }
     }
@@ -1338,7 +1521,7 @@ fn import_observer(
             remove_receipt_inputs(action);
         }
     }
-    Ok(privacy(&out, options, &[]))
+    privacy(&out, options, &[], &mut budget.batch.redaction_remaining)
 }
 
 fn import_receipt(
@@ -1445,7 +1628,7 @@ fn import_receipt(
         remove_receipt_inputs(&mut out["actions"][0]);
     }
     out["receipt"] = receipt;
-    Ok(privacy(&out, options, &[]))
+    privacy(&out, options, &[], &mut budget.batch.redaction_remaining)
 }
 
 /// A raw, explicitly identified call, including mapped library decisions. The
@@ -1591,6 +1774,7 @@ fn import_records_with_limits(
         limits,
         work: 0,
         normalized: 0,
+        redaction_remaining: REDACTION_LIMITS.work,
     };
     values
         .iter()
@@ -1611,7 +1795,7 @@ fn import_records_with_limits(
             }
             // Scrub before normalization so all recomputed identities describe the
             // retained definition, and credential echoes cannot leak into metadata.
-            let mut safe = privacy(record, options, &[]);
+            let mut safe = privacy(record, options, &[], &mut budget.batch.redaction_remaining)?;
             // Before reconstruction/cloning, bound even privacy-expanded input.
             // Observer derived answer fields are not retained wholesale: its
             // reconstructed input and provenance are charged by import_observer.
@@ -1716,6 +1900,11 @@ pub fn sample_records() -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scrub_test_string(value: &str, secrets: &[&str]) -> String {
+        let mut matcher = SecretMatcher::new(secrets.to_vec(), REDACTION_LIMITS).unwrap();
+        scrub_string(value, &mut matcher).unwrap()
+    }
 
     #[test]
     fn provider_score_discrepancy_is_preserved_with_a_warning() {
@@ -2161,15 +2350,15 @@ mod tests {
         assert_eq!(unique.len(), 3);
         assert_eq!(unique, ["long-secret", "bcd", "abc"]);
         assert_eq!(
-            scrub_string("abcd long-secret", &unique),
+            scrub_test_string("abcd long-secret", &unique),
             format!("a{REDACTED} {REDACTED}")
         );
         let reverse_secrets = ["abc".into(), "bcd".into()];
         let reverse = ordered_unique_secrets(&reverse_secrets);
-        assert_eq!(scrub_string("abcd", &reverse), format!("{REDACTED}d"));
+        assert_eq!(scrub_test_string("abcd", &reverse), format!("{REDACTED}d"));
         let longest_secrets = ["abc".into(), "abcd".into()];
         let longest = ordered_unique_secrets(&longest_secrets);
-        assert_eq!(scrub_string("abcd", &longest), REDACTED);
+        assert_eq!(scrub_test_string("abcd", &longest), REDACTED);
     }
 
     #[test]
@@ -2181,7 +2370,7 @@ mod tests {
             ("", vec!["x"], String::new()),
             ("unchanged", vec!["missing", ""], "unchanged".into()),
         ] {
-            let output = scrub_string(value, &secrets);
+            let output = scrub_test_string(value, &secrets);
             assert_eq!(output.len(), expected.len());
             assert_eq!(output, expected);
             assert!(output.len() <= value.len() * REDACTED.len());
@@ -3050,6 +3239,14 @@ mod compatibility_tests;
 #[cfg(test)]
 #[path = "import_budget_tests.rs"]
 mod import_budget_tests;
+
+#[cfg(test)]
+#[path = "redaction_tests.rs"]
+mod redaction_tests;
+
+#[cfg(test)]
+#[path = "receipt_privacy_tests.rs"]
+mod receipt_privacy_tests;
 
 #[cfg(test)]
 #[path = "basic_credential_tests.rs"]

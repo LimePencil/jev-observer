@@ -1,5 +1,67 @@
 use super::*;
 
+#[tokio::test]
+async fn privacy_limited_captures_preserve_surrounding_batch_and_count_new_gaps_once() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(&directory.path().join("redaction-batch.sqlite"), 7, 100).unwrap();
+    let collector = Collector::start(
+        store.clone(),
+        NormalizeOptions::default(),
+        4 * 1024 * 1024,
+        4,
+        4,
+    );
+    let mut limited = capture("limited", false);
+    limited.request =
+        serde_json::to_vec(&json!({"questions":{}, "credentials":"s".repeat(2 * 1024 * 1024)}))
+            .unwrap();
+    let mut already_incomplete = capture("already-incomplete", false);
+    already_incomplete.request = limited.request.clone();
+    already_incomplete.capture_complete = false;
+    for capture in [
+        capture("before", false),
+        limited,
+        already_incomplete,
+        capture("after", false),
+    ] {
+        collector.record_forwarded();
+        collector.submit(capture, collector.reserve_capture().unwrap());
+    }
+    collector.shutdown().await;
+    let health = collector.health();
+    assert_eq!(health["persisted"], 4);
+    assert_eq!(health["truncated"], 2);
+    assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+    for field in ["dropped", "write_failures", "queue_depth", "queued_bytes"] {
+        assert_eq!(health[field], 0, "{field}");
+    }
+    for id in ["before", "after"] {
+        let record = store.request(id).unwrap().unwrap();
+        assert_eq!(record["capture_complete"], true);
+        assert_eq!(record["answers"][0]["valid"], true);
+    }
+    let connection = store.writer_connection().unwrap();
+    let mut statement = connection
+        .prepare("SELECT id FROM requests WHERE capture_complete=0 ORDER BY seq")
+        .unwrap();
+    let records = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .unwrap()
+        .map(|row| store.request(&row.unwrap()).unwrap().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(records.len(), 2);
+    assert_ne!(records[0]["id"], records[1]["id"]);
+    for record in records {
+        assert_eq!(record["answers"], json!([]));
+        assert!(
+            record["normalization_error"]
+                .as_str()
+                .unwrap()
+                .contains("redaction")
+        );
+    }
+}
+
 fn capture(id: &str, dense: bool) -> Capture {
     let questions = if dense {
         (0..2_000)

@@ -30,6 +30,8 @@ History pages, source/model/search filters and custom local date ranges are save
 
 Connection setup shows the configured provider and upstream, Python/JavaScript SDK examples with identity encoding, and collection status. A local upstream with `upstream_auth: "none"` uses the workspace access token to authenticate to Observer and offers no provider-key registration. Remote bearer mode uses the registered local client token. Examples read credentials from environment variables and never include entered secrets.
 
+Credential registration and removal continue when the connection panel closes. Reopening shows pending work and its result, and another credential change stays disabled until the operation finishes. The latest returned local client token remains in page memory across panel changes; reloading or closing the page clears it. Successful replacement or removal updates or clears that token, while a failed replacement preserves the previous token. Browser storage is never used for either secret.
+
 Version comparisons show separate observed samples: distributions, failures, request usage, latency, warnings and review coverage. They are not matched-input replay results. Provider-reported charges and configured estimates remain identified at request level; structurally valid Score answers retain any rubric warnings.
 
 To exercise the embedded UI and real authenticated backend, build both UI and Rust, then run:
