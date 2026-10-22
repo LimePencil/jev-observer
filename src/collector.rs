@@ -446,19 +446,28 @@ fn writer(
         };
         let (batch, next) = collect_batch(first, &receiver);
         deferred = next;
-        for (batch, records) in
-            normalized_batches(batch, |capture| {
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    normalize(capture, &options)
-                })) {
-                    Ok(record) => Some(record),
-                    Err(_) => {
-                        gap(&c, 1);
-                        None
+        for (batch, records) in normalized_batches(batch, |capture| {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                normalize(capture, &options)
+            })) {
+                Ok(record) => {
+                    // Normalization can intentionally retain only transport
+                    // facts when privacy work exceeds its bounded budget.
+                    // Count this new gap once; submit already counted raw
+                    // captures that arrived incomplete.
+                    if capture.capture_complete && record["capture_complete"] == false {
+                        c.truncated.fetch_add(1, Ordering::Relaxed);
+                        c.last_gap_at
+                            .store(chrono::Utc::now().timestamp_millis(), Ordering::Relaxed);
                     }
+                    Some(record)
                 }
-            })
-        {
+                Err(_) => {
+                    gap(&c, 1);
+                    None
+                }
+            }
+        }) {
             if connection.is_none() {
                 connection = open_writer(&store, &c);
             }
