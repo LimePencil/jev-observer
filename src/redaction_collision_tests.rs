@@ -189,7 +189,7 @@ fn removed_headers_and_wholly_private_subtrees_do_not_create_key_collisions() {
 }
 
 #[test]
-fn collision_inside_later_omitted_state_still_fails_closed() {
+fn collisions_in_input_apply_only_when_the_input_is_retained() {
     for capture_state in [false, true] {
         let options = NormalizeOptions {
             capture_state,
@@ -199,10 +199,24 @@ fn collision_inside_later_omitted_state_still_fails_closed() {
             json!({"questions":{}, "credentials":["X","Y"], "state":{"X":1,"Y":2}}),
             json!({"answers":{}}),
         );
-        incomplete(&item, &options);
-        collision(
-            import_records(&raw(&item).to_string(), "systemone-capture", &options).unwrap_err(),
-        );
+        if capture_state {
+            incomplete(&item, &options);
+            collision(
+                import_records(&raw(&item).to_string(), "systemone-capture", &options).unwrap_err(),
+            );
+        } else {
+            for record in [
+                normalize(&item, &options),
+                import_records(&raw(&item).to_string(), "systemone-capture", &options)
+                    .unwrap()
+                    .remove(0),
+            ] {
+                assert_eq!(record["capture_complete"], true);
+                assert!(record["normalization_error"].is_null());
+                assert!(record["state"].is_null());
+                assert_eq!(record["state_retained"], false);
+            }
+        }
     }
 }
 

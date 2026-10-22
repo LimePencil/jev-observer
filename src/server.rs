@@ -1677,6 +1677,59 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn input_opt_out_key_redaction_preserves_exact_forwarded_bytes() {
+        const REQUEST: &str = "{ \"state\":\"PRIVATE_REQUEST_QZX\", \"questions\":{}, \"extension\":{\"state\":\"ORDINARY_REQUEST_QZX\"} }\n";
+        const RESPONSE: &str = "{ \"state\":\"PRIVATE_RESPONSE_QZX\", \"original_metadata\":{\"state\":\"PRIVATE_LEGACY_QZX\"}, \"extension\":{\"state\":\"ORDINARY_RESPONSE_QZX\"} }\n";
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(|headers: HeaderMap, bytes: axum::body::Bytes| async move {
+                assert_eq!(headers[header::AUTHORIZATION], "Bearer state");
+                assert_eq!(bytes.as_ref(), REQUEST.as_bytes());
+                RESPONSE
+            }),
+        ))
+        .await;
+        for capture_state in [false, true] {
+            let fixture = fixture_with_config(&url, 8192, false, |config| {
+                config.capture_state = capture_state
+            });
+            let mut request = native(REQUEST);
+            request.headers_mut().insert(
+                header::AUTHORIZATION,
+                HeaderValue::from_static("Bearer state"),
+            );
+            let response = router(fixture.state.clone())
+                .oneshot(request)
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 8192).await.unwrap().as_ref(),
+                RESPONSE.as_bytes()
+            );
+            let record = saved(&fixture).await;
+            let text = record.to_string();
+            for marker in [
+                "PRIVATE_REQUEST_QZX",
+                "PRIVATE_RESPONSE_QZX",
+                "PRIVATE_LEGACY_QZX",
+            ] {
+                assert_eq!(
+                    text.contains(marker),
+                    capture_state,
+                    "input capture preference bypassed"
+                );
+            }
+            assert!(text.contains("ORDINARY_REQUEST_QZX"));
+            assert!(text.contains("ORDINARY_RESPONSE_QZX"));
+            assert_eq!(record["capture_complete"], true);
+            fixture.state.collector.shutdown().await;
+        }
+        task.abort();
+        let _ = task.await;
+    }
+
     #[test]
     fn transfer_coding_support_requires_absent_or_single_chunked() {
         for (values, supported) in [
