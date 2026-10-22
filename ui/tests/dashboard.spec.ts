@@ -1382,6 +1382,126 @@ test('a closed drawer file read cannot replace a newer import input or completio
   await expect(page.getByRole('dialog')).not.toContainText('old.jsonl');
 });
 
+for (const removed of [false, true]) {
+  for (const dismiss of ['Escape', 'close button'] as const) {
+    test(`request drawer focus survives ${removed ? 'deletion of' : 'return to'} its opener after ${dismiss}`, async ({ page }, testInfo) => {
+      const state = await harness(page);
+      let finishDelete!: () => void, writes = 0, missingReads = 0;
+      const deleting = new Promise<void>(resolve => { finishDelete = resolve; });
+      if (removed) {
+        state.deletePending = deleting;
+        await page.route('**/api/data', async route => {
+          if (route.request().method() === 'DELETE') writes += 1;
+          await route.fallback();
+        });
+        await page.route('**/api/requests/request-one', async route => {
+          if (!state.deleted) return route.fallback();
+          missingReads += 1;
+          await route.fulfill({ status: 404, json: { error: 'Record not found' } });
+        });
+      }
+      try {
+        if (removed) {
+          await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+          await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+          await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+          await page.getByRole('button', { name: 'Permanently delete history' }).click();
+          await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+          await expect.poll(() => writes).toBe(1);
+          await page.keyboard.press('Escape');
+        }
+        const opener = page.getByLabel('Inspect request request-one', { exact: true });
+        const originalOpener = await opener.elementHandle();
+        expect(originalOpener).not.toBeNull();
+        await opener.focus();
+        await page.keyboard.press('Enter');
+        const drawer = page.getByRole('dialog');
+        await expect(drawer.locator('.request-detail-id')).toContainText('request-one');
+        if (removed) {
+          finishDelete();
+          await expect(drawer.getByRole('alert')).toContainText('Record not found');
+          await expect.poll(() => originalOpener!.evaluate(element => element.isConnected)).toBe(false);
+          await expect(opener).toHaveCount(0);
+          expect(missingReads).toBe(1);
+          expect(writes).toBe(1);
+        }
+        const scrollBeforeClose = await page.evaluate(() => window.scrollY);
+        if (dismiss === 'Escape') await page.keyboard.press('Escape');
+        else await page.getByRole('button', { name: 'Close detail panel' }).click();
+        await expect(drawer).toHaveCount(0);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const focused = () => page.evaluate(() => {
+          const element = document.activeElement as HTMLElement | null;
+          return {
+            tag: element?.tagName ?? null,
+            role: element?.getAttribute('role') ?? null,
+            label: element?.getAttribute('aria-label') ?? null,
+            text: element?.textContent?.trim().slice(0, 120) ?? '',
+            usable: Boolean(element && element !== document.body && element !== document.documentElement
+              && element.isConnected && element.getClientRects().length && !element.closest('[aria-hidden="true"], [inert]')),
+          };
+        });
+        const afterClose = await focused();
+        if (!removed) await expect(opener).toBeFocused();
+        else {
+          await expect(page.getByRole('main')).toBeFocused();
+          expect(await page.evaluate(() => window.scrollY)).toBe(scrollBeforeClose);
+        }
+        await page.keyboard.press('Tab');
+        const observation = { removed, dismiss, writes, missingReads,
+          originalOpenerConnected: await originalOpener!.evaluate(element => element.isConnected),
+          afterClose, afterTab: await focused() };
+        await testInfo.attach('drawer-opener-focus.json', { body: JSON.stringify(observation, null, 2), contentType: 'application/json' });
+        expect(afterClose.usable, JSON.stringify(observation)).toBe(true);
+        if (removed) await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeFocused();
+      } finally { finishDelete(); }
+    });
+  }
+}
+
+for (const mobileOpener of [true, false]) {
+  test(`closing a drawer after its ${mobileOpener ? 'mobile' : 'desktop'} opener becomes hidden restores dashboard focus`, async ({ page }, testInfo) => {
+    await page.setViewportSize(mobileOpener ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    await harness(page);
+    const opener = page.getByRole('button', { name: mobileOpener ? 'Open navigation' : 'Open settings', exact: true, includeHidden: true });
+    await opener.click();
+    if (mobileOpener) await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+    await page.setViewportSize(mobileOpener ? { width: 1440, height: 1000 } : { width: 390, height: 844 });
+    await expect(opener).toBeHidden();
+    expect(await opener.evaluate(element => element.isConnected)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const observation = { mobileOpener,
+      active: await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id })),
+      opener: await opener.evaluate(element => ({ connected: element.isConnected, visible: Boolean(element.getClientRects().length) })),
+    };
+    await testInfo.attach('hidden-drawer-opener-focus.json', { body: JSON.stringify(observation, null, 2), contentType: 'application/json' });
+    await expect(page.getByRole('main')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeFocused();
+  });
+}
+
+test('reopening a panel before the close frame keeps focus inside the new panel', async ({ page }) => {
+  await harness(page);
+  const opener = page.getByLabel('Inspect request request-one', { exact: true });
+  await opener.click();
+  await expect(page.getByRole('dialog').locator('.request-detail-id')).toContainText('request-one');
+  // Two user-facing button events in one task leave the close frame pending
+  // until after the new panel has been requested.
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('[aria-label="Close detail panel"]')!.click();
+    document.querySelector<HTMLButtonElement>('[aria-label="Open settings"]')!.click();
+  });
+  await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect.poll(() => page.getByRole('dialog').evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await expect(opener).not.toBeFocused();
+  await expect(page.getByRole('main', { includeHidden: true })).not.toBeFocused();
+});
+
 test('a completed deletion discards an older in-flight detail response', async ({ page }) => {
   const state = await harness(page);
   let finishDelete!: () => void, finishDetail!: () => void, oldReads = 0, newReads = 0;

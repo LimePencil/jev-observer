@@ -35,7 +35,9 @@ export default function App() {
   const [activeNav, setActiveNav] = useState('overview');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
+  const restoreFocusFrame = useRef<number | null>(null);
   const exportRef = useRef<HTMLButtonElement>(null);
   const mobileMenuRef = useRef<HTMLButtonElement>(null);
   const { snapshot, error, errorRequestOrder, slow, invalidate, reset, scope } = useDashboard(filters);
@@ -105,6 +107,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', keydown);
   }, [panel]);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+  useEffect(() => () => { if (restoreFocusFrame.current !== null) cancelAnimationFrame(restoreFocusFrame.current); }, []);
   useEffect(() => {
     const mobile = matchMedia('(max-width: 560px)');
     const closeOnDesktop = () => { if (!mobile.matches) setSidebarOpen(false); };
@@ -114,10 +117,17 @@ export default function App() {
 
   function notify(message: string) { setToast(message); if (toastTimer.current) clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(''), 6000); }
   function setPanel(value: Panel, opener?: HTMLElement | null) {
+    if (restoreFocusFrame.current !== null) cancelAnimationFrame(restoreFocusFrame.current);
+    restoreFocusFrame.current = null;
     if (value && !panel) openerRef.current = opener ?? (sidebarOpen ? mobileMenuRef.current : document.activeElement instanceof HTMLElement ? document.activeElement : null);
     updatePanel(value);
     if (value) setSidebarOpen(false);
-    if (!value) requestAnimationFrame(() => { if (openerRef.current?.isConnected) openerRef.current.focus(); });
+    if (!value) restoreFocusFrame.current = requestAnimationFrame(() => {
+      restoreFocusFrame.current = null;
+      const opener = openerRef.current;
+      if (opener?.isConnected) opener.focus();
+      if (document.activeElement !== opener) mainRef.current?.focus({ preventScroll: true });
+    });
   }
   function setFilter(key: keyof Filters, value: string) {
     setPageNavigation(null); setPageFailure(null);
@@ -186,7 +196,7 @@ export default function App() {
 
     <div className="main-shell"><header className="topbar"><div className="breadcrumb"><Dialog.Trigger asChild><button ref={mobileMenuRef} className="icon-button mobile-menu" aria-label="Open navigation"><List size={22} /></button></Dialog.Trigger><Brand className="mobile-brand" onNavigate={() => navigate('overview')} /><span className="breadcrumb-location"><span>Workspace</span><span className="breadcrumb-slash">/</span><strong>Overview</strong></span>{includesSamples && <span className="sample-badge">{sample ? 'Sample data' : 'Includes samples'}</span>}</div><div className="topbar-actions"><span className="local-only"><Database size={14} />Local storage</span><button className="icon-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}>{theme === 'light' ? <Moon size={19} /> : <Sun size={19} />}</button><button className="icon-button" onClick={() => setPanel({ type: 'settings' })} aria-label="Open settings"><GearSix size={19} /></button></div></header>
 
-      <main id="main"><section id="overview" className="overview-header"><div><div className="eyebrow">YOUR DECISION WORKSPACE</div><h1>Workspace overview</h1><p>Follow your questions. Understand every request.</p></div><div className="overview-actions"><Dropdown.Root><Dropdown.Trigger ref={exportRef} className="button"><DownloadSimple size={16} />Export<CaretDown size={13} /></Dropdown.Trigger><Dropdown.Portal><Dropdown.Content className="dropdown-content" align="end" sideOffset={6}><Dropdown.Label className="dropdown-label">Export current filters</Dropdown.Label><Dropdown.Item onSelect={() => void exportData('jsonl')}><DownloadSimple size={15} />JSONL records<span>Full detail</span></Dropdown.Item><Dropdown.Item onSelect={() => void exportData('csv')}><DownloadSimple size={15} />CSV spreadsheet</Dropdown.Item><Dropdown.Separator /><Dropdown.Item onSelect={() => setPanel({ type: 'import' }, exportRef.current)}><UploadSimple size={15} />Import local records</Dropdown.Item></Dropdown.Content></Dropdown.Portal></Dropdown.Root><button className={`button ${paused ? 'paused-button' : 'live-button'}`} onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? <Play size={14} weight="fill" /> : <Pause size={14} weight="fill" />}{paused ? 'Resume live' : 'Live updates'}</button></div></section>
+      <main id="main" ref={mainRef} tabIndex={-1}><section id="overview" className="overview-header"><div><div className="eyebrow">YOUR DECISION WORKSPACE</div><h1>Workspace overview</h1><p>Follow your questions. Understand every request.</p></div><div className="overview-actions"><Dropdown.Root><Dropdown.Trigger ref={exportRef} className="button"><DownloadSimple size={16} />Export<CaretDown size={13} /></Dropdown.Trigger><Dropdown.Portal><Dropdown.Content className="dropdown-content" align="end" sideOffset={6}><Dropdown.Label className="dropdown-label">Export current filters</Dropdown.Label><Dropdown.Item onSelect={() => void exportData('jsonl')}><DownloadSimple size={15} />JSONL records<span>Full detail</span></Dropdown.Item><Dropdown.Item onSelect={() => void exportData('csv')}><DownloadSimple size={15} />CSV spreadsheet</Dropdown.Item><Dropdown.Separator /><Dropdown.Item onSelect={() => setPanel({ type: 'import' }, exportRef.current)}><UploadSimple size={15} />Import local records</Dropdown.Item></Dropdown.Content></Dropdown.Portal></Dropdown.Root><button className={`button ${paused ? 'paused-button' : 'live-button'}`} onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? <Play size={14} weight="fill" /> : <Pause size={14} weight="fill" />}{paused ? 'Resume live' : 'Live updates'}</button></div></section>
 
       {includesSamples && <div className="sample-notice"><span className="sample-mark"><Aperture size={16} weight="bold" /></span><span><strong>{sample ? 'A workspace to explore.' : 'Sample records included.'}</strong> {sample ? 'These are synthetic records; forwarding is disabled until you restart without --demo.' : 'This window includes synthetic observations. Their costs are not real charges.'}</span><button className="text-button" onClick={() => setPanel({ type: 'connect' })}>{sample ? 'See live setup' : 'Connect your app'}<ArrowRight size={14} /></button></div>}
       {(error || !data) && gap && <div className="warning-notice" role="status"><WarningCircle size={18} /><span>Collection history is incomplete: {number(health?.dropped)} dropped, {number(health?.truncated ?? 0)} incomplete captures, {number(health?.write_failures)} write failures. These counters are independent of history storage.</span></div>}
