@@ -59,6 +59,10 @@ pub struct Filter {
     pub group_search: Option<String>,
 }
 
+// Counts describe retained definitions, not the filtered answers. Keep this map
+// inside one read snapshot; family IDs and strict keys are separate namespaces.
+type VersionCounts = HashMap<(bool, String, String), i64>;
+
 fn text(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_default().to_owned()
 }
@@ -1382,7 +1386,11 @@ impl Store {
         }
     }
 
-    fn group_metadata(conn: &Connection, id: &str) -> Result<Option<Value>> {
+    fn group_metadata(
+        conn: &Connection,
+        id: &str,
+        version_counts: &mut VersionCounts,
+    ) -> Result<Option<Value>> {
         let meta = conn.query_row("SELECT id,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter FROM groups WHERE id=? OR family_id=? ORDER BY id LIMIT 1",params![id,id], |r| Ok(json!({"id":id,"key":r.get::<_,String>(1)?,"name":r.get::<_,String>(1)?,"kind":r.get::<_,String>(2)?,"source":r.get::<_,String>(3)?,"definition_id":r.get::<_,String>(4)?,"presentation_id":r.get::<_,String>(5)?,"definition":parse(r.get(6)?)?,"task_version":r.get::<_,Option<String>>(7)?,"family_id":r.get::<_,Option<String>>(8)?,"family_name":r.get::<_,Option<String>>(9)?,"adapter":r.get::<_,Option<String>>(10)?}))).optional()?;
         let Some(mut result) = meta else {
             return Ok(None);
@@ -1392,18 +1400,27 @@ impl Store {
             result["name"] = result["family_name"].clone();
         }
         result["is_family"] = json!(family);
-        let version_count: i64 = conn.query_row(
-            Self::version_count_query(family),
-            params![
-                text(&result, "source"),
-                if family {
-                    id
-                } else {
-                    result["key"].as_str().unwrap_or_default()
-                }
-            ],
-            |r| r.get(0),
-        )?;
+        let scope = (
+            family,
+            text(&result, "source"),
+            if family {
+                id.to_owned()
+            } else {
+                text(&result, "key")
+            },
+        );
+        let version_count = match version_counts.entry(scope) {
+            std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let (_, source, selector) = entry.key();
+                let count = conn.query_row(
+                    Self::version_count_query(family),
+                    params![source, selector],
+                    |r| r.get::<_, i64>(0),
+                )?;
+                *entry.insert(count)
+            }
+        };
         result["version_count"] = json!(version_count);
         Ok(Some(result))
     }
@@ -2000,8 +2017,9 @@ impl Store {
             None
         };
         let mut groups = Vec::new();
+        let mut version_counts = VersionCounts::new();
         for (id, stats) in &stats {
-            if let Some(mut group) = Self::group_metadata(&tx, id)? {
+            if let Some(mut group) = Self::group_metadata(&tx, id, &mut version_counts)? {
                 group
                     .as_object_mut()
                     .unwrap()
@@ -2182,7 +2200,8 @@ impl Store {
         id: &str,
         filter: &Filter,
     ) -> Result<Option<Value>> {
-        let Some(metadata) = Self::group_metadata(conn, id)? else {
+        let mut version_counts = VersionCounts::new();
+        let Some(metadata) = Self::group_metadata(conn, id, &mut version_counts)? else {
             return Ok(None);
         };
         let lookup_limit = Self::group_lookup_limit(conn, filter)?;
@@ -2239,7 +2258,7 @@ impl Store {
                 versions.push(group.clone());
                 continue;
             }
-            if let Some(metadata) = Self::group_metadata(conn, &id)? {
+            if let Some(metadata) = Self::group_metadata(conn, &id, &mut version_counts)? {
                 let (version, _) = Self::group_summary(conn, &id, filter, lookup_limit, metadata)?;
                 versions.push(version);
             }
@@ -3326,7 +3345,9 @@ mod tests {
         let connection = store.reader().unwrap();
         for group in groups {
             let id = text(group, "id");
-            let metadata = Store::group_metadata(&connection, &id).unwrap().unwrap();
+            let metadata = Store::group_metadata(&connection, &id, &mut VersionCounts::new())
+                .unwrap()
+                .unwrap();
             let (baseline, _) =
                 Store::group_summary(&connection, &id, &filter, 0, metadata).unwrap();
             assert_overview_matches_detail(group, &baseline);
@@ -3351,7 +3372,7 @@ mod tests {
                 "strict-129",
                 &narrowed,
                 0,
-                Store::group_metadata(&connection, "strict-129")
+                Store::group_metadata(&connection, "strict-129", &mut VersionCounts::new())
                     .unwrap()
                     .unwrap(),
             )
@@ -4132,3 +4153,7 @@ mod export_tests;
 #[cfg(test)]
 #[path = "retention_tests.rs"]
 mod retention_tests;
+
+#[cfg(test)]
+#[path = "version_count_tests.rs"]
+mod version_count_tests;
