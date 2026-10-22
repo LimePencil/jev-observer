@@ -977,7 +977,7 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
         CaptureGuard {
             shared: Arc::new(Mutex::new(Capturing {
                 capture: Capture {
-                    id: uuid::Uuid::now_v7().to_string(),
+                    id: model::CaptureId::new_live(),
                     timestamp: chrono::Utc::now().timestamp_millis(),
                     source: metadata(&headers, "x-observer-source")
                         .unwrap_or_else(|| "default".into()),
@@ -2392,6 +2392,136 @@ mod tests {
         assert!(!record.to_string().contains("test-secret"));
         fixture.state.collector.shutdown().await;
         task.abort();
+    }
+
+    #[tokio::test]
+    async fn generated_live_ids_keep_hex_secret_captures_distinct() {
+        let body = serde_json::to_vec(&json!({
+            "questions":{},
+            "credentials":"0123456789abcdef".chars().map(|value| value.to_string()).collect::<Vec<_>>()
+        })).unwrap();
+        let expected = body.clone();
+        let response_body = br#"{"answers":{},"fixture":"unchanged"}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| {
+                let expected = expected.clone();
+                async move {
+                    assert_eq!(
+                        request.headers()[header::AUTHORIZATION],
+                        "Bearer test-secret"
+                    );
+                    assert_eq!(
+                        to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                        expected
+                    );
+                    response_body.as_slice()
+                }
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        for _ in 0..2 {
+            let response = router(fixture.state.clone())
+                .oneshot(native(body.clone()))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+                response_body
+            );
+        }
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted"] {
+            assert_eq!(health[field], 2, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        let output = fixture
+            .state
+            .store
+            .export(
+                &Filter {
+                    window: Some("all".into()),
+                    ..Default::default()
+                },
+                "jsonl",
+            )
+            .unwrap();
+        let records: Vec<Value> = output
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0]["id"], records[1]["id"]);
+        for record in records {
+            let id = record["id"].as_str().unwrap();
+            assert_eq!(uuid::Uuid::parse_str(id).unwrap().get_version_num(), 7);
+            assert!(!id.contains("[REDACTED]"));
+            // Supplied body keys still follow ordinary privacy rules.
+            assert_eq!(
+                record["normalization_error"],
+                "Request questions is not an object"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn credential_matching_generated_envelope_key_preserves_forwarding_and_capture() {
+        let request_body =
+            br#"{"questions":{"q":{"type":"noul","instructions":"Eligible?"}},"echo":"id"}"#;
+        let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.8}},"echo":"id"}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(request.headers()[header::AUTHORIZATION], "Bearer id");
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        let mut request = native(request_body.as_slice());
+        request
+            .headers_mut()
+            .insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer id"));
+        request
+            .headers_mut()
+            .insert("x-observer-source", HeaderValue::from_static("source-id"));
+        let response = router(fixture.state.clone())
+            .oneshot(request)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+            response_body
+        );
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        assert_eq!(health["persisted"], 1);
+        assert_eq!(health["dropped"], 0);
+        assert_eq!(health["write_failures"], 0);
+        let record = saved(&fixture).await;
+        assert_eq!(record["source"], "source-[REDACTED]");
+        assert_eq!(record["request_extra"]["echo"], "[REDACTED]");
+        assert_eq!(record["response_extra"]["echo"], "[REDACTED]");
+        assert_eq!(record["answers"][0]["valid"], true);
+        assert_eq!(record["answers"][0]["definition_redacted"], true);
+        assert_eq!(record["capture_complete"], true);
     }
 
     #[tokio::test]

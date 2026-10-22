@@ -1,6 +1,56 @@
 use super::*;
 
 #[tokio::test]
+async fn ignored_live_rows_are_counted_as_gaps_after_a_successful_write() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(&directory.path().join("ignored-live.sqlite"), 7, 100).unwrap();
+    let collector = Collector::start(store.clone(), NormalizeOptions::default(), 4096, 4, 4);
+    let first = capture("same-identity", false);
+    for item in [first.clone(), first, capture("neighbor", false)] {
+        let permit = collector.reserve_capture().unwrap();
+        collector.record_forwarded();
+        collector.submit(item, permit);
+    }
+    collector.shutdown().await;
+    let health = collector.health();
+    assert_eq!(health["captured"], 3);
+    assert_eq!(health["persisted"], 2);
+    assert_eq!(health["dropped"], 1);
+    assert_eq!(health["truncated"], 0);
+    assert_eq!(health["write_failures"], 0);
+    assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+    assert_eq!(health["queue_depth"], 0);
+    assert_eq!(health["active_captures"], 0);
+    assert!(store.request("same-identity").unwrap().is_some());
+    assert!(store.request("neighbor").unwrap().is_some());
+}
+
+#[tokio::test]
+async fn ignored_existing_live_identity_does_not_advance_last_persisted_time() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(&directory.path().join("existing-live.sqlite"), 7, 100).unwrap();
+    let item = capture("already-saved", false);
+    store
+        .write_batch(
+            &mut store.writer_connection().unwrap(),
+            &[normalize(&item, &NormalizeOptions::default())],
+        )
+        .unwrap();
+    let collector = Collector::start(store.clone(), NormalizeOptions::default(), 4096, 2, 2);
+    let before = collector.health()["last_persisted_at"].clone();
+    assert!(before.is_null(), "This process has not persisted a capture");
+    collector.record_forwarded();
+    collector.submit(item, collector.reserve_capture().unwrap());
+    collector.shutdown().await;
+    let health = collector.health();
+    assert_eq!(health["persisted"], 0);
+    assert_eq!(health["dropped"], 1);
+    assert_eq!(health["last_persisted_at"], before);
+    assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+    assert_eq!(health["write_failures"], 0);
+}
+
+#[tokio::test]
 async fn privacy_limited_captures_preserve_surrounding_batch_and_count_new_gaps_once() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::open(&directory.path().join("redaction-batch.sqlite"), 7, 100).unwrap();
@@ -101,6 +151,62 @@ fn pending(capture: Capture, budget: &Arc<Semaphore>) -> Pending {
 }
 
 #[test]
+fn envelope_key_collision_does_not_drop_its_prequeued_neighbor_captures() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(&directory.path().join("envelope-batch.sqlite"), 7, 100).unwrap();
+    let mut middle = capture("entry-middle", false);
+    middle.secret = Some("i".into());
+    let captures = [capture("before", false), middle, capture("after", false)];
+    let budget = Arc::new(Semaphore::new(captures.len()));
+    let counters = Arc::new(Counters::default());
+    let (sender, receiver) = mpsc::sync_channel(captures.len());
+    for capture in captures {
+        let item = pending(capture, &budget);
+        counters.captured.fetch_add(1, Ordering::Relaxed);
+        counters.queue_depth.fetch_add(1, Ordering::Relaxed);
+        counters
+            .queued_bytes
+            .fetch_add(item.size, Ordering::Relaxed);
+        counters
+            .pending_times
+            .lock()
+            .unwrap()
+            .push_back(item.queued);
+        sender.send(item).unwrap();
+    }
+    // Prequeue all records so the collision deterministically shares one write.
+    writer(
+        store.clone(),
+        NormalizeOptions::default(),
+        receiver,
+        counters.clone(),
+        Arc::new(AtomicBool::new(true)),
+    );
+    drop(sender);
+    assert_eq!(counters.persisted.load(Ordering::Relaxed), 3);
+    assert_eq!(counters.dropped.load(Ordering::Relaxed), 0);
+    assert_eq!(counters.write_failures.load(Ordering::Relaxed), 0);
+    assert_eq!(counters.queue_depth.load(Ordering::Relaxed), 0);
+    assert_eq!(counters.queued_bytes.load(Ordering::Relaxed), 0);
+    assert!(counters.pending_times.lock().unwrap().is_empty());
+    assert_eq!(budget.available_permits(), 3);
+    for id in ["before", "after"] {
+        assert_eq!(
+            store.request(id).unwrap().unwrap()["answers"][0]["valid"],
+            true
+        );
+    }
+    let middle = store.request("entry-m[REDACTED]ddle").unwrap().unwrap();
+    assert_eq!(middle["answers"].as_array().unwrap().len(), 1);
+    assert_eq!(middle["answers"][0]["valid"], false);
+    assert!(middle["answers"][0]["definition"].is_null());
+    assert_eq!(
+        middle["normalization_error"],
+        "Request questions is not an object"
+    );
+}
+
+#[test]
 fn normalized_work_bounds_json_escaping_and_saturates() {
     for value in [
         Value::Null,
@@ -146,7 +252,7 @@ fn small_captures_keep_the_full_raw_batch_and_exact_content() {
                 .map(|item| pending(item, &budget))
                 .collect(),
             |item| {
-                calls.push(item.id.clone());
+                calls.push(item.id.as_str().to_owned());
                 Some(normalize(item, &options))
             },
         );
@@ -199,7 +305,7 @@ fn dense_mixed_batches_normalize_once_and_hold_deferred_permits() {
                 .map(|item| pending(item, &budget))
                 .collect(),
             |item| {
-                calls.push(item.id.clone());
+                calls.push(item.id.as_str().to_owned());
                 Some(normalize(item, &options))
             },
         );
@@ -233,7 +339,7 @@ fn exact_work_boundary_and_failed_normalization_keep_progress() {
         .collect();
     let mut calls = Vec::new();
     let sizes = normalized_batches(inputs, |item| {
-        calls.push(item.id.clone());
+        calls.push(item.id.as_str().to_owned());
         match item.id.as_str() {
             "0" | "3" => None,
             "1" => Some(exact.clone()),

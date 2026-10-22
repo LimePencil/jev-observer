@@ -10,6 +10,7 @@
 use crate::catalog::{self, Profile};
 use aho_corasick::{AhoCorasick, AhoCorasickKind, MatchKind};
 use anyhow::{Context, Result, bail, ensure};
+use serde::Serialize;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -189,9 +190,66 @@ fn answer_keys<'a>(request: &'a Value, response: &'a Value) -> impl Iterator<Ite
     )
 }
 
+/// Identity provenance travels with a capture when its buffers move into the
+/// collector. Only these constructors can mark locally generated identities;
+/// caller-supplied UUIDs or fingerprint-looking strings remain untrusted.
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(transparent)]
+pub struct CaptureId {
+    value: String,
+    #[serde(skip)]
+    generated: bool,
+}
+
+impl CaptureId {
+    pub fn new_live() -> Self {
+        Self {
+            value: uuid::Uuid::now_v7().to_string(),
+            generated: true,
+        }
+    }
+
+    fn raw_import(source: &str, provider: &str, event_id: &str) -> Self {
+        Self {
+            value: fingerprint(
+                "capture_v1",
+                &json!([source, provider.to_ascii_lowercase(), event_id]),
+            ),
+            generated: true,
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.value
+    }
+}
+
+impl From<String> for CaptureId {
+    fn from(value: String) -> Self {
+        Self {
+            value,
+            generated: false,
+        }
+    }
+}
+
+impl From<&str> for CaptureId {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
+impl std::ops::Deref for CaptureId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Capture {
-    pub id: String,
+    pub id: CaptureId,
     pub timestamp: i64,
     pub source: String,
     pub task_version: Option<String>,
@@ -470,11 +528,12 @@ fn ordered_unique_secrets(secrets: &[String]) -> Vec<&str> {
     unique
 }
 
-fn privacy(
+fn with_secret_matcher(
     value: &Value,
     options: &NormalizeOptions,
     explicit: &[&str],
     remaining: &mut usize,
+    redact: impl FnOnce(&mut SecretMatcher<'_>) -> Result<Value>,
 ) -> Result<Value> {
     let mut secrets = Vec::new();
     for secret in explicit {
@@ -488,9 +547,44 @@ fn privacy(
             ..REDACTION_LIMITS
         },
     )?;
-    let result = scrub(value, options, &mut matcher);
+    let result = redact(&mut matcher);
     *remaining = matcher.remaining;
     result
+}
+
+fn privacy(
+    value: &Value,
+    options: &NormalizeOptions,
+    explicit: &[&str],
+    remaining: &mut usize,
+) -> Result<Value> {
+    with_secret_matcher(value, options, explicit, remaining, |matcher| {
+        scrub(value, options, matcher)
+    })
+}
+
+fn privacy_capture_envelope(
+    envelope: &Value,
+    options: &NormalizeOptions,
+    explicit: &[&str],
+    remaining: &mut usize,
+) -> Result<Value> {
+    with_secret_matcher(envelope, options, explicit, remaining, |matcher| {
+        let mut out = Map::new();
+        // These root names are generated structure, not captured data. Scrubbing
+        // "id" into a different key would make an otherwise valid capture
+        // unsaveable. Original body keys and all metadata values still pass
+        // through the ordinary privacy rules with one shared secret matcher.
+        for (key, value) in envelope.as_object().expect("constructed capture envelope") {
+            let value = if sensitive_key(key, options) {
+                json!(REDACTED)
+            } else {
+                scrub(value, options, matcher)?
+            };
+            out.insert(key.clone(), value);
+        }
+        Ok(Value::Object(out))
+    })
 }
 
 fn canonical(value: &Value) -> Value {
@@ -821,7 +915,7 @@ fn redaction_limited_capture(capture: &Capture) -> Value {
     // unrelated limited captures, even when their original IDs contained a
     // credential. Use the ordinary builder to keep its record schema intact.
     let safe_capture = Capture {
-        id: format!("redacted_v1_{}", uuid::Uuid::new_v4().simple()),
+        id: format!("redacted_v1_{}", uuid::Uuid::new_v4().simple()).into(),
         timestamp: capture.timestamp,
         source: REDACTED.into(),
         status: capture.status,
@@ -950,7 +1044,22 @@ fn prepare_values(
             "transport_error": capture.transport_error
         });
         envelope["response"] = response;
-        privacy(&envelope, options, &explicit_secrets, remaining)?
+        if capture.id.generated {
+            // A local UUID or computed fingerprint is structure, not captured
+            // secret text. Exclude it from secret discovery too, so a custom
+            // private key named `id` still applies only to supplied data.
+            envelope
+                .as_object_mut()
+                .expect("capture envelope")
+                .remove("id");
+        }
+        let mut safe = privacy_capture_envelope(&envelope, options, &explicit_secrets, remaining)?;
+        if capture.id.generated {
+            // Restore before grouping: redacted definitions use this identity
+            // to keep unrelated observations in separate groups.
+            safe["id"] = json!(capture.id);
+        }
+        safe
     };
     // Only the actual input snapshot is opt-in. A structured question can
     // legitimately contain a field named `state`; that is part of its rule.
@@ -1408,7 +1517,7 @@ fn import_observer(
         .any(|a| a["adapter"] == "jgrep-v1")
         .then(|| "jgrep-v1".to_owned());
     let capture = Capture {
-        id: id.to_owned(),
+        id: id.into(),
         timestamp: record["timestamp"].as_i64().unwrap_or(0),
         source: source.to_owned(),
         task_version: task,
@@ -1579,7 +1688,7 @@ fn import_receipt(
         })
         .unwrap_or(json!({}));
     let capture = Capture {
-        id: fingerprint("receipt", &json!([source, decision_id])),
+        id: fingerprint("receipt", &json!([source, decision_id])).into(),
         source: source.into(),
         request: serde_json::to_vec(&json!({"questions": {}}))?,
         response: serde_json::to_vec(&response)?,
@@ -1668,10 +1777,7 @@ fn import_capture(
         );
     }
     nullable_number(record, "duration_ms")?;
-    let id = fingerprint(
-        "capture_v1",
-        &json!([source, provider.to_ascii_lowercase(), event_id]),
-    );
+    let id = CaptureId::raw_import(source, provider, event_id);
     let capture = Capture {
         id,
         timestamp,
@@ -1690,8 +1796,8 @@ fn import_capture(
     let mut import_secrets = Vec::new();
     collect_secrets(record, options, &mut import_secrets);
     let mut out = normalize_import(&capture, &imported_options, &import_secrets, budget, true)?;
-    // Use the sanitized ID for deduplication, without retaining unsanitized
-    // caller metadata. Export/reimport preserves this identity.
+    // The generated fingerprint retains no caller text. Preserve it through
+    // privacy filtering so distinct calls cannot become false duplicates.
     out["source_event_id"] = out["id"].clone();
     out["import_format"] = json!("systemone-capture");
     ensure!(
@@ -1877,7 +1983,7 @@ pub fn sample_records() -> Vec<Value> {
             json!({"model":if i % 6 == 0 { "jev-synthetic-b" } else { "jev-synthetic-a" },"answers":answers,"usage":{"input_tokens":240 + i % 1700,"output_tokens":24 + i % 40}})
         };
         let capture = Capture {
-            id: format!("synthetic-{i:04}"), timestamp: now - (720 - i) as i64 * 110_000,
+            id: format!("synthetic-{i:04}").into(), timestamp: now - (720 - i) as i64 * 110_000,
             source: source.into(), adapter: indexed.then(|| "jgrep-v1".into()),
             status: if failed { 529 } else { 200 },
             duration_ms: (45 + i * 37 % 380 + if i % 43 == 0 { 430 } else { 0 }) as f64,
@@ -3283,6 +3389,14 @@ mod import_budget_tests;
 #[cfg(test)]
 #[path = "redaction_tests.rs"]
 mod redaction_tests;
+
+#[cfg(test)]
+#[path = "envelope_privacy_tests.rs"]
+mod envelope_privacy_tests;
+
+#[cfg(test)]
+#[path = "generated_identity_tests.rs"]
+mod generated_identity_tests;
 
 #[cfg(test)]
 #[path = "receipt_privacy_tests.rs"]
