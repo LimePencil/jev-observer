@@ -35,6 +35,17 @@ const dashboardAgent = new http.Agent({keepAlive:true,maxSockets:2});
 let proxy, peakRssKiB = 0, peakLagMs = 0, peakQueueDepth = 0, healthPollErrors = 0, running = true, mockCount = 0, stderr = '';
 let dashboardAuthorization = '';
 let observerAccess = '';
+let observerTokenFile = '';
+// Each benchmark owns a fresh workspace. Prefer the current layout; a present
+// but unreadable token must not silently select an older credential instead.
+async function readBenchmarkToken() {
+  for (const name of ['bench.sqlite.token', 'bench.access-token']) {
+    const file = path.join(directory, name);
+    try { return { token: await fs.readFile(file, 'utf8'), file }; }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+  throw new Error('Observer access token is not ready');
+}
 const percentile = (values,p) => values.length ? [...values].sort((a,b)=>a-b)[Math.max(0,Math.ceil(values.length*p)-1)] : null;
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 let previousHostCpu = null;
@@ -168,11 +179,11 @@ try{
   proxy=spawn(binary,['--port',String(proxyPort),'--db',path.join(directory,'bench.sqlite'),'--upstream',`http://127.0.0.1:${mockPort}/v1/systemone`,'--max-records','2000000'],{stdio:['ignore','ignore','pipe'],env:environment});
   proxy.stderr.on('data',chunk=>{stderr+=chunk.toString();if(stderr.length>16000)stderr=stderr.slice(-16000)});
   proxy.on('error',error=>{stderr+=error.message});
-  for(let n=0;n<100;n++){try{const token=await fs.readFile(path.join(directory,'bench.sqlite')+'.token','utf8');observerAccess=token;dashboardAuthorization=`Basic ${Buffer.from(`observer:${token}`).toString('base64')}`;}catch{}if(dashboardAuthorization&&(await exchange(proxyPort,'/api/health',null,dashboardAgent)).status===200)break;if(proxy.exitCode!==null)throw new Error(stderr);await sleep(100);if(n===99)throw new Error('Observer did not start: '+stderr);}
+  for(let n=0;n<100;n++){try{const {token,file}=await readBenchmarkToken();observerTokenFile=file;observerAccess=token;dashboardAuthorization=`Basic ${Buffer.from(`observer:${token}`).toString('base64')}`;}catch{}if(dashboardAuthorization&&(await exchange(proxyPort,'/api/health',null,dashboardAgent)).status===200)break;if(proxy.exitCode!==null)throw new Error(stderr);await sleep(100);if(n===99)throw new Error('Observer did not start: '+stderr);}
   const memoryPoll=(async()=>{while(running){try{const status=await fs.readFile(`/proc/${proxy.pid}/status`,'utf8');peakRssKiB=Math.max(peakRssKiB,Number(status.match(/^VmRSS:\s+(\d+)/m)?.[1]??0));}catch{}
       try { const result = await exchange(proxyPort,'/api/health',null,dashboardAgent); const health = JSON.parse(result.body); if(result.status!==200)healthPollErrors++; peakLagMs=Math.max(peakLagMs,health.lag_ms??0); peakQueueDepth=Math.max(peakQueueDepth,health.queue_depth??0); } catch {healthPollErrors++;}
       await sleep(1000)}})();
-  console.log(JSON.stringify({observer_origin:`http://127.0.0.1:${proxyPort}`,database_directory:directory,access_token_file:path.join(directory,'bench.access-token'),binary_sha256:binarySha256}));
+  console.log(JSON.stringify({observer_origin:`http://127.0.0.1:${proxyPort}`,database_directory:directory,access_token_file:observerTokenFile,binary_sha256:binarySha256}));
   const settings=JSON.parse((await exchange(proxyPort,'/api/settings',null,dashboardAgent)).body);
   const baseline=await load('direct mock baseline',mockPort,baselineSeconds,rate,false);
   const sustained=await load('proxy with capture and dashboard',proxyPort,seconds,rate,true);
