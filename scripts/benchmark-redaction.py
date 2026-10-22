@@ -72,7 +72,16 @@ def main():
                         time.sleep(.05)
                     if port is None:
                         raise RuntimeError('Synthetic Observer startup deadline exceeded')
-                    token = (directory / 'probe.demo.access-token').read_text().strip()
+                    # This benchmark compares old and new executables, each in
+                    # its own fresh workspace. Prefer the complete-filename path
+                    # and use the old layout only when the new file is absent.
+                    token_path = directory / 'probe.demo.sqlite.token'
+                    try:
+                        token = token_path.read_text().strip()
+                    except FileNotFoundError:
+                        token_path = directory / 'probe.demo.access-token'
+                        token = token_path.read_text().strip()
+                    report['token_layout'] = 'current' if token_path.name.endswith('.token') else 'legacy'
                     authorization = 'Basic ' + base64.b64encode(('observer:' + token).encode()).decode()
 
                     def call(method, route, body=None):
