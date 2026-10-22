@@ -583,6 +583,7 @@ enum PrivacyContext<'a> {
     Answers(&'a Profile),
     Definition(&'a Profile, Option<&'a str>),
     Answer(&'a Profile, Option<&'a str>),
+    NoulCriteria(&'a Profile),
     SemanticMap,
     Observer(&'a Profile),
     ObserverAnswers(&'a Profile),
@@ -626,11 +627,10 @@ impl<'a> PrivacyContext<'a> {
             {
                 Self::SemanticMap
             }
-            (Self::Definition(_, _), "criteria")
-                if matches!(object["type"].as_str(), Some("noul" | "choice")) =>
-            {
-                Self::SemanticMap
+            (Self::Definition(profile, _), "criteria") if object["type"] == "noul" => {
+                Self::NoulCriteria(profile)
             }
+            (Self::Definition(_, _), "criteria") if object["type"] == "choice" => Self::SemanticMap,
             (Self::Answer(_, _), "probabilities")
                 if matches!(object["type"].as_str(), Some("choice" | "score")) =>
             {
@@ -642,7 +642,8 @@ impl<'a> PrivacyContext<'a> {
     }
 
     fn semantic_keys(self) -> bool {
-        self.identifier_keys().is_some() || matches!(self, Self::SemanticMap)
+        self.identifier_keys().is_some()
+            || matches!(self, Self::NoulCriteria(_) | Self::SemanticMap)
     }
 
     fn item(self, item: &'a Value) -> Self {
@@ -679,6 +680,18 @@ impl<'a> PrivacyContext<'a> {
             }
             _ => false,
         }
+    }
+
+    fn repairs_text_shape(self, key: &str, original: &Value, retained: &Value) -> bool {
+        let (profile, optional_null) = match self {
+            Self::Definition(profile, _) if key == "instructions" => {
+                (profile, profile.optional_instructions)
+            }
+            Self::NoulCriteria(profile) if matches!(key, "true" | "false") => (profile, false),
+            _ => return false,
+        };
+        !accepts_text(original, profile, optional_null)
+            && accepts_text(retained, profile, optional_null)
     }
 }
 
@@ -748,6 +761,12 @@ fn scrub_with_context<'a>(
                 // cannot become "not reported" after their names are scrubbed.
                 ensure!(
                     retained_key == *key || !context.validates_optional_field(value, key),
+                    RedactionValidationError
+                );
+                // A replacement marker is text, but must not repair a value
+                // that the selected profile rejected before redaction.
+                ensure!(
+                    !context.repairs_text_shape(key, original, &retained),
                     RedactionValidationError
                 );
                 if let Some(namespace) = context.identifier_keys() {
@@ -955,6 +974,10 @@ fn text_shape(value: &Value) -> bool {
     value.is_string() || value.is_object() || value.is_array()
 }
 
+fn accepts_text(value: &Value, profile: &Profile, optional_null: bool) -> bool {
+    text_shape(value) || profile.json_text || (optional_null && value.is_null())
+}
+
 fn extras(value: &Value, excluded: &[&str]) -> Value {
     value.as_object().map_or(Value::Null, |map| {
         Value::Object(
@@ -1032,10 +1055,11 @@ fn validate_answer(
         ) {
             errors.push("Question type must be noul, choice, or score".into());
         }
-        if !(text_shape(&definition["instructions"])
-            || profile.json_text
-            || (profile.optional_instructions && definition["instructions"].is_null()))
-        {
+        if !accepts_text(
+            &definition["instructions"],
+            profile,
+            profile.optional_instructions,
+        ) {
             errors.push("Question instructions must be a string, object, or array".into());
         }
     }
@@ -1055,7 +1079,7 @@ fn validate_answer(
                 let valid = criteria.as_object().is_some_and(|map| {
                     map.iter().all(|(key, value)| {
                         matches!(key.as_str(), "true" | "false")
-                            && (text_shape(value) || profile.json_text)
+                            && accepts_text(value, profile, false)
                     })
                 });
                 if !valid {
