@@ -3054,6 +3054,119 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn text_shape_redaction_keeps_wire_bytes_and_records_a_minimal_live_gap() {
+        for (field, request_body) in [
+            ("instructions", br#"{"questions":{"q":{"type":"noul","instructions":12}}}"#.as_slice()),
+            ("true", br#"{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"true":12}}}}"#.as_slice()),
+        ] {
+            let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.2}}}"#;
+            let (url, task) = mock(Router::new().route(
+                "/v1/systemone",
+                post(move |request: Request| async move {
+                    assert_eq!(request.headers()[header::AUTHORIZATION], "Bearer test-secret");
+                    assert_eq!(to_bytes(request.into_body(), 4096).await.unwrap().as_ref(), request_body);
+                    response_body.as_slice()
+                }),
+            )).await;
+            let fixture = fixture_with_config(&url, 4096, false, |config| {
+                config.provider = Some("typesafe".into());
+                config.redact_keys.push(field.into());
+            });
+            let response = router(fixture.state.clone()).oneshot(native(request_body)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(to_bytes(response.into_body(), 4096).await.unwrap().as_ref(), response_body);
+            fixture.state.collector.shutdown().await;
+            task.abort();
+            let record = saved(&fixture).await;
+            assert_eq!(record["capture_complete"], false);
+            assert_eq!(record["answers"], json!([]));
+            assert_eq!(record["normalization_error"], "Credential redaction changed answer validation information; request and response content were not retained");
+            assert_eq!(record["request_extra"], json!({}));
+            assert_eq!(record["response_extra"], json!({}));
+            let health = fixture.state.collector.health();
+            for field in ["forwarded", "captured", "persisted", "truncated"] {
+                assert_eq!(health[field], 1, "{field}");
+            }
+            for field in ["dropped", "write_failures", "queue_depth", "active_captures"] {
+                assert_eq!(health[field], 0, "{field}");
+            }
+            assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn text_shape_redaction_imports_are_atomic_and_recoverable() {
+        let raw = json!({"id":"good-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"true":"Allowed"}}}},
+            "response":{"answers":{"q":{"type":"noul","noul":0.2}}}});
+        let observer =
+            model::import_records(&raw.to_string(), "systemone-capture", &Default::default())
+                .unwrap()
+                .remove(0);
+        for field in ["instructions", "true"] {
+            for (format, good) in [("systemone-capture", &raw), ("observer-jsonl", &observer)] {
+                let fixture =
+                    fixture_with_config("http://127.0.0.1:1/v1/systemone", 4096, true, |config| {
+                        config.redact_keys.push(field.into());
+                    });
+                let mut bad = good.clone();
+                let definition = if format == "systemone-capture" {
+                    &mut bad["request"]["questions"]["q"]
+                } else {
+                    &mut bad["answers"][0]["definition"]
+                };
+                if field == "instructions" {
+                    definition[field] = json!(12);
+                } else {
+                    definition["criteria"][field] = json!(12);
+                }
+                for (text, expected) in [
+                    (format!("{good}\n{bad}"), None),
+                    (good.to_string(), Some(json!({"imported":1,"duplicates":0}))),
+                    (good.to_string(), Some(json!({"imported":0,"duplicates":1}))),
+                ] {
+                    let request = Request::builder()
+                        .method("POST")
+                        .uri("/api/import")
+                        .header("host", "127.0.0.1:8765")
+                        .header("x-observer-request", "1")
+                        .header("content-type", "application/json")
+                        .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                        .unwrap();
+                    let response = router(fixture.state.clone())
+                        .oneshot(request)
+                        .await
+                        .unwrap();
+                    assert_eq!(
+                        response.status(),
+                        if expected.is_some() {
+                            StatusCode::OK
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        }
+                    );
+                    let body: Value = serde_json::from_slice(
+                        &to_bytes(response.into_body(), 1024).await.unwrap(),
+                    )
+                    .unwrap();
+                    if let Some(expected) = expected {
+                        assert_eq!(body, expected);
+                    } else {
+                        assert_eq!(
+                            body,
+                            json!({"error":model::IMPORT_REDACTION_VALIDATION_MESSAGE})
+                        );
+                        assert!(fixture.state.store.is_empty().unwrap());
+                    }
+                    assert_eq!(fixture.state.import_slots.available_permits(), 1);
+                }
+                fixture.state.collector.shutdown().await;
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn semantic_redaction_keeps_wire_bytes_but_records_an_incomplete_capture() {
         let request_body = br#"{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"invalid":"Wrong"}}},"credentials":["criteria"]}"#;
         let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.2}}}"#;
