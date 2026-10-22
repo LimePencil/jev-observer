@@ -1,5 +1,5 @@
 {
-  "status": "awaiting_successful_verified_artifact",
+  "status": "verified_ready",
   "run_id": 39801204831,
   "verification_commit": "d41e394829df070a500666ce2b36943adaf2dfac",
   "source_commit": "1a8a4f6c143c8eee779259df9401ab39ec78192d",
@@ -7,8 +7,8 @@
   "artifact_name": "cohort12-main-verified-d41e394829df070a500666ce2b36943adaf2dfac",
   "binary_name": "observer-integration-cohort12-main",
   "probe_name": "upgrade-probe-cohort12-main",
-  "provenance_sha256": null,
-  "binary_sha256": null,
-  "scope": "Prepared for final actual-main verification run only. Source/run/name bindings are known, but status is pending and provenance/binary SHA256 remain unset until root accepts the exact successful artifact. No download, native execution or dispatch is authorized by this preparation. Earlier frozen integration artifacts are excluded.",
+  "provenance_sha256": "297c35355941dcc4b3a171e8f2f27e4a8d01e376679815a8e00cd8e4498789d4",
+  "binary_sha256": "e3fd5b780b02456f626a3d10914148ba4ecb2dfdd9e317725e72f04d75baa2ed",
+  "scope": "Exact final merged-main artifact independently accepted after successful run39801204831 attempt1. Root standing authorization permits the reviewed90minute retention and88minute mixed synthetic workloads. Prior interrupted local runs remain incomplete; only allowlisted bounded remote reports are uploaded.",
   "verification_plan_sha256": "1d6f5e381c6deba162fbbc60349d5a228a8662b3b6b6b2b9d696b6ac4bbe8682"
 }
