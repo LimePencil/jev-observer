@@ -1,12 +1,9 @@
 use super::Store;
 use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, params};
-use std::{
-    io::Read,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+#[cfg(unix)]
+use std::path::PathBuf;
+use std::{io::Read, path::Path, sync::Arc, time::Duration};
 
 const DASHBOARD_INDEX: &str = "CREATE INDEX request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id,json_extract(data,'$.transport_error'))";
 
