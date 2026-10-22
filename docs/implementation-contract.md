@@ -7,7 +7,8 @@ Implementation contract for the 0.2.0 source, updated October 2, 2026. User-conf
 - `src/model.rs`: captured wire data, normalization, deterministic grouping, privacy, sample fixtures, import conversion.
 - `src/store.rs`: SQLite migrations, batched writes, dashboard/detail queries, export, labels and deletion.
 - `src/collector.rs`: bounded capture reservations and a single background normalization/database writer, independent health counters.
-- `src/server.rs`, `src/config.rs`, `src/main.rs`: HTTP proxy, local API, bundled UI, CLI and shutdown.
+- `src/server.rs`: HTTP route composition and shared error responses. `src/server/` separates state construction, local access guards, shutdown, proxy/capture ownership, local API handlers and bundled UI assets. Proxy capture and response deadlines stay together; blocking database tasks retain their admission permits through cancellation.
+- `src/config.rs`, `src/main.rs`: CLI validation and application startup.
 - `ui/`: React + Vite browser app with local assets and Taste Skill visual guidance. No remote UI resources.
 
 The module boundary uses `serde_json::Value` for normalized records and API responses. JSON object insertion order must be preserved for presentation fingerprints.
