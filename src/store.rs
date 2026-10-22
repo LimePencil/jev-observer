@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-const RETENTION_DELETE_BATCH: i64 = 256;
+const DELETE_BATCH_SIZE: i64 = 256;
 
 #[derive(Clone)]
 pub struct Store {
@@ -842,29 +842,36 @@ impl Store {
         let mut statement = tx.prepare_cached(query)?;
         let mut removed = 0;
         loop {
-            let changed = statement.execute([cutoff, RETENTION_DELETE_BATCH])?;
+            let changed = statement.execute([cutoff, DELETE_BATCH_SIZE])?;
             removed += changed;
-            if changed < RETENTION_DELETE_BATCH as usize {
+            if changed < DELETE_BATCH_SIZE as usize {
                 return Ok(removed);
             }
         }
     }
 
-    fn prune_orphaned_groups(tx: &Connection) -> Result<()> {
+    fn delete_group_batches(tx: &Connection, orphaned_only: bool) -> Result<()> {
         // Cursor by rowid, including negative values and legacy NULL group IDs.
         // Advancing past each batch avoids rescanning a surviving group prefix.
         // Only integer boundaries are selected; definitions remain in the DB.
-        let mut first = tx.prepare_cached("SELECT min(seq),max(seq) FROM (SELECT rowid AS seq FROM groups WHERE NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id) ORDER BY rowid LIMIT ?)")?;
-        let mut next = tx.prepare_cached("SELECT min(seq),max(seq) FROM (SELECT rowid AS seq FROM groups WHERE rowid>? AND NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id) ORDER BY rowid LIMIT ?)")?;
-        let mut delete = tx.prepare_cached("DELETE FROM groups WHERE rowid BETWEEN ? AND ? AND NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id)")?;
+        let predicate = if orphaned_only {
+            "NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id)"
+        } else {
+            "1"
+        };
+        let mut first = tx.prepare_cached(&format!("SELECT min(seq),max(seq) FROM (SELECT rowid AS seq FROM groups WHERE {predicate} ORDER BY rowid LIMIT ?)"))?;
+        let mut next = tx.prepare_cached(&format!("SELECT min(seq),max(seq) FROM (SELECT rowid AS seq FROM groups WHERE rowid>? AND {predicate} ORDER BY rowid LIMIT ?)"))?;
+        let mut delete = tx.prepare_cached(&format!(
+            "DELETE FROM groups WHERE rowid BETWEEN ? AND ? AND {predicate}"
+        ))?;
         let bounds = |row: &rusqlite::Row<'_>| {
             Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
         };
         let mut after = None;
         loop {
             let range = match after {
-                Some(after) => next.query_row([after, RETENTION_DELETE_BATCH], bounds)?,
-                None => first.query_row([RETENTION_DELETE_BATCH], bounds)?,
+                Some(after) => next.query_row([after, DELETE_BATCH_SIZE], bounds)?,
+                None => first.query_row([DELETE_BATCH_SIZE], bounds)?,
             };
             let (Some(low), Some(high)) = range else {
                 return Ok(());
@@ -962,7 +969,7 @@ impl Store {
             // A periodic pass that removed no parents cannot orphan a group.
             // Forced startup maintenance still repairs pre-existing orphans.
             if force || expired > 0 || excess > 0 {
-                Self::prune_orphaned_groups(tx)?;
+                Self::delete_group_batches(tx, true)?;
             }
             tx.execute(
                 "INSERT OR REPLACE INTO maintenance(key,value) VALUES('pruned_at',?)",
@@ -2453,9 +2460,19 @@ impl Store {
 
     pub fn delete_all(&self) -> Result<()> {
         let mut conn = self.writer_connection()?;
+        Self::delete_all_from_connection(&mut conn)
+    }
+
+    fn delete_all_from_connection(conn: &mut Connection) -> Result<()> {
         let tx = conn.transaction()?;
-        tx.execute("DELETE FROM requests", [])?;
-        tx.execute("DELETE FROM groups", [])?;
+        Self::delete_request_batches(
+            &tx,
+            "DELETE FROM requests WHERE seq IN (SELECT seq FROM requests WHERE seq <= ? ORDER BY seq LIMIT ?)",
+            i64::MAX,
+        )?;
+        // Delete every group, retaining the original error behavior if corrupt
+        // legacy history contains an answer whose missing parent cannot cascade.
+        Self::delete_group_batches(&tx, false)?;
         tx.commit()?;
         conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
         Ok(())
