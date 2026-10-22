@@ -299,7 +299,7 @@ mod tests {
                     .as_array()
                     .unwrap()
                     .len(),
-                38
+                54
             );
         }
     }
