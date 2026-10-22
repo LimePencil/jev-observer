@@ -1,7 +1,8 @@
 //! Capture identities, wire snapshots, and normalization preferences.
 
 use super::identity::fingerprint;
-use serde::Serialize;
+use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 /// Identity provenance travels with a capture when its buffers move into the
@@ -84,10 +85,45 @@ pub struct Capture {
 #[derive(Clone, Debug, Default)]
 pub struct NormalizeOptions {
     pub provider: Option<String>,
+    pub model_profile: Option<String>,
+    pub protocol: Protocol,
     pub capture_state: bool,
     pub redact_keys: Vec<String>,
     pub input_price_per_million: Option<f64>,
     pub output_price_per_million: Option<f64>,
+}
+
+impl NormalizeOptions {
+    pub fn validation_profile(&self) -> crate::catalog::Profile {
+        let mut profile = crate::catalog::profile(self.profile_name());
+        profile.decisions = self.protocol == Protocol::OpenaiDecisions;
+        profile
+    }
+    pub fn profile_name(&self) -> &str {
+        self.model_profile
+            .as_deref()
+            .or(self.provider.as_deref())
+            .unwrap_or("typesafe")
+    }
+}
+
+/// Wire format and model validation are independent of credential attribution.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum Protocol {
+    #[default]
+    Systemone,
+    OpenaiDecisions,
+    CloudflareSystemone,
+}
+
+impl Protocol {
+    pub fn local_path(self) -> &'static str {
+        match self {
+            Self::OpenaiDecisions => "/v1/decisions",
+            Self::Systemone | Self::CloudflareSystemone => "/v1/systemone",
+        }
+    }
 }
 
 pub(super) fn answer_keys<'a>(

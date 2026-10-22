@@ -5,7 +5,10 @@ use clap::{Parser, ValueEnum};
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::{credentials::validate_key, model::NormalizeOptions};
+use crate::{
+    credentials::validate_key,
+    model::{NormalizeOptions, Protocol},
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
@@ -41,6 +44,12 @@ pub struct Config {
     /// Provider name saved with observations (for example laya).
     #[arg(long)]
     pub provider: Option<String>,
+    /// Source-reviewed model validator, independent of the credential provider.
+    #[arg(long)]
+    pub model_profile: Option<String>,
+    /// Wire protocol accepted on the local forwarding route.
+    #[arg(long, value_enum, default_value_t = Protocol::Systemone)]
+    pub protocol: Protocol,
     /// Optional fallback credential. Read from the environment so it cannot
     /// appear in process arguments.
     #[arg(skip)]
@@ -72,6 +81,11 @@ pub struct Config {
 
 impl Config {
     pub fn validate(&mut self) -> Result<()> {
+        if self.protocol != Protocol::Systemone
+            && self.upstream == "https://api.typesafe.ai/v1/systemone"
+        {
+            bail!("Set --upstream to the full endpoint for the selected protocol");
+        }
         let mut url = reqwest::Url::parse(&self.upstream).context("Invalid upstream URL")?;
         if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
             bail!("Upstream must be an absolute HTTP or HTTPS URL");
@@ -102,6 +116,12 @@ impl Config {
         if let Some(provider) = &mut self.provider {
             provider.make_ascii_lowercase();
         }
+        if let Some(profile) = &mut self.model_profile {
+            profile.make_ascii_lowercase();
+            if !crate::catalog::known_profile(profile) {
+                bail!("--model-profile must name a known entry in the model catalog");
+            }
+        }
         if !url.username().is_empty()
             || url.password().is_some()
             || url.query().is_some()
@@ -112,7 +132,10 @@ impl Config {
             );
         }
         if url.path() == "/" {
-            url.set_path("/v1/systemone");
+            if self.protocol == Protocol::CloudflareSystemone {
+                bail!("Cloudflare requires the full account and model endpoint in --upstream");
+            }
+            url.set_path(self.protocol.local_path());
         }
         self.upstream = url.to_string();
         if self.demo || self.upstream_auth == UpstreamAuth::None {
@@ -170,6 +193,8 @@ impl Config {
     pub fn normalize_options(&self) -> NormalizeOptions {
         NormalizeOptions {
             provider: Some(self.provider_name().to_owned()),
+            model_profile: self.model_profile.clone(),
+            protocol: self.protocol,
             capture_state: self.capture_state,
             redact_keys: self.redact_keys.clone(),
             input_price_per_million: self.input_price_per_million,
@@ -185,6 +210,9 @@ impl Config {
                 .as_deref()
             {
                 Some("api.typesafe.ai") => "typesafe",
+                Some("api.openai.com") => "openai",
+                Some("api.cloudflare.com") => "cloudflare",
+                Some("api.liquid.ai") => "liquid",
                 Some("openrouter.ai") => "openrouter",
                 Some("api.milliseconds.ai") => "milliseconds",
                 Some("api.codiv.ai") => "codiv",
@@ -202,6 +230,8 @@ impl Config {
             "queue_capacity": self.queue_capacity, "upstream": self.upstream,
             "upstream_timeout_secs": self.upstream_timeout_secs,
             "upstream_auth": self.upstream_auth, "provider": self.provider_name(),
+            "model_profile": self.model_profile.as_deref().unwrap_or(self.provider_name()),
+            "protocol": self.protocol,
             "version": env!("CARGO_PKG_VERSION"),
             "model_catalog": *crate::catalog::CATALOG,
             "input_price_per_million": self.input_price_per_million,
@@ -213,6 +243,34 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protocols_and_model_profiles_are_explicit_and_separate_from_provider() {
+        let mut config = Config::try_parse_from([
+            "observer",
+            "--upstream",
+            "https://api.openai.com",
+            "--provider",
+            "openai",
+            "--model-profile",
+            "openai-decisions",
+            "--protocol",
+            "openai-decisions",
+        ])
+        .unwrap();
+        config.validate().unwrap();
+        assert_eq!(config.upstream, "https://api.openai.com/v1/decisions");
+        assert_eq!(config.public_settings()["provider"], "openai");
+        assert_eq!(config.public_settings()["protocol"], "openai-decisions");
+        assert_eq!(
+            config.normalize_options().profile_name(),
+            "openai-decisions"
+        );
+        let mut unknown =
+            Config::try_parse_from(["observer", "--model-profile", "unreviewed-model"]).unwrap();
+        assert!(unknown.validate().is_err());
+        assert!(Config::try_parse_from(["observer", "--protocol", "unreviewed-wire"]).is_err());
+    }
 
     #[test]
     fn upstream_deadline_is_bounded_and_exposed_in_settings() {
@@ -299,7 +357,7 @@ mod tests {
                     .as_array()
                     .unwrap()
                     .len(),
-                38
+                54
             );
         }
     }

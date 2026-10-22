@@ -37,6 +37,7 @@ pub(super) fn kind(definition: &Value, raw: &Value) -> &'static str {
         Some("choice") => "choice",
         Some("score") => "score",
         Some("noul") => "noul",
+        Some("box") => "box",
         _ => "unknown",
     }
 }
@@ -90,9 +91,9 @@ pub(super) fn validate_answer(
     } else {
         if !matches!(
             definition["type"].as_str(),
-            Some("noul" | "choice" | "score")
+            Some("noul" | "choice" | "score" | "box")
         ) {
-            errors.push("Question type must be noul, choice, or score".into());
+            errors.push("Question type must be noul, choice, score, or box".into());
         }
         if !accepts_text(
             &definition["instructions"],
@@ -109,18 +110,33 @@ pub(super) fn validate_answer(
     if raw["type"].as_str() != Some(kind) || kind == "unknown" {
         errors.push("Answer type is unknown or differs from the question".into());
     }
+    if profile.reported_abstention {
+        if raw["valid"] == false {
+            errors.push("The provider reported this answer as invalid or abstaining".into());
+        } else if raw.get("valid").is_some_and(|value| !value.is_boolean()) {
+            errors.push("Reported answer validity must be a boolean".into());
+        }
+        if let Some(abstain) = raw.get("abstain") {
+            match probability(abstain) {
+                Some(value) if value > 0.0 => errors.push("The reported distribution includes abstention mass; it is not a complete option distribution".into()),
+                None => errors.push("Reported abstention must be a finite probability".into()),
+                _ => {}
+            }
+        }
+    }
     match kind {
         "noul" => {
             if probability(&raw["noul"]).is_none() {
                 errors.push("Noul must be a finite probability between zero and one".into());
             }
             if let Some(criteria) = definition.get("criteria") {
-                let valid = criteria.as_object().is_some_and(|map| {
-                    map.iter().all(|(key, value)| {
-                        matches!(key.as_str(), "true" | "false")
-                            && accepts_text(value, profile, false)
-                    })
-                });
+                let valid = (profile.nullable_noul_criteria && criteria.is_null())
+                    || criteria.as_object().is_some_and(|map| {
+                        map.iter().all(|(key, value)| {
+                            matches!(key.as_str(), "true" | "false")
+                                && accepts_text(value, profile, profile.nullable_noul_criteria)
+                        })
+                    });
                 if !valid {
                     errors.push("Invalid Noul criteria".into());
                 }
@@ -142,15 +158,15 @@ pub(super) fn validate_answer(
                 .as_object()
                 .or(list_criteria.as_ref());
             if !criteria.is_some_and(|map| {
-                !map.is_empty()
+                map.len() >= profile.choice_min
                     && map.len() <= profile.choice_max
                     && map
                         .values()
                         .all(|v| v.is_null() || text_shape(v) || profile.json_text)
             }) {
                 errors.push(format!(
-                    "Choice requires one to {} described or null options",
-                    profile.choice_max
+                    "Choice requires {} to {} described or null options",
+                    profile.choice_min, profile.choice_max
                 ));
             }
             let expected: Vec<String> = criteria
@@ -179,7 +195,11 @@ pub(super) fn validate_answer(
             let range = profile.score_min..=profile.score_max;
             if !levels.is_some_and(|v| {
                 range.contains(&v.len())
-                    && v.iter().all(|value| text_shape(value) || profile.json_text)
+                    && v.iter().all(|value| {
+                        text_shape(value)
+                            || profile.json_text
+                            || (profile.nullable_score_levels && value.is_null())
+                    })
             }) {
                 errors.push(format!(
                     "Score requires {} to {} ordered levels",
@@ -213,7 +233,7 @@ pub(super) fn validate_answer(
                             "Modal Score must be a highest-probability integer level index".into(),
                         );
                     }
-                    warnings.push("Score is the reported most likely level; the provider's expected value is retained in raw_answer.expected".into());
+                    warnings.push(if raw.get("expected").is_some() { "Score is the reported most likely level; the provider's expected value is retained in raw_answer.expected" } else { "Score is the reported most likely level, rather than a probability-weighted average" }.into());
                 } else if (weighted - score).abs() > 0.001 {
                     warnings.push("Reported Score differs from the weighted displayed probabilities; original values are preserved".into());
                 }
@@ -224,7 +244,9 @@ pub(super) fn validate_answer(
                 map.len() == n
                     && expected.iter().all(|key| {
                         map.get(key).is_some_and(|value| {
-                            value.is_string() || (profile.structured_legend && text_shape(value))
+                            value.is_string()
+                                || profile.json_legend
+                                || (profile.structured_legend && text_shape(value))
                         })
                     })
             }) {
@@ -234,6 +256,39 @@ pub(super) fn validate_answer(
                 warnings.push("Confidence was not reported; it remains unknown".into());
             } else if probability(&raw["confidence"]).is_none() {
                 errors.push("Score confidence is missing or outside zero to one".into());
+            }
+        }
+        "box" => {
+            if !profile.box_answers {
+                errors.push("Box answers are not supported by the selected model profile".into());
+            }
+            if definition.get("criteria").is_some() {
+                errors.push("Box questions do not accept criteria".into());
+            }
+            let edges = ["top", "bottom", "left", "right"].map(|key| probability(&raw["box"][key]));
+            if !matches!(edges, [Some(top), Some(bottom), Some(left), Some(right)]
+                if top < bottom && left < right)
+            {
+                errors.push(
+                    "Box edges must be finite, ordered coordinates between zero and one".into(),
+                );
+            }
+            if probability(&raw["confidence"]).is_none() {
+                errors.push("Box confidence is missing or outside zero to one".into());
+            }
+            if profile.box_presence {
+                if raw.get("found").is_some_and(|value| !value.is_boolean()) {
+                    errors.push("Box found must be a boolean when reported".into());
+                }
+                if raw
+                    .get("present")
+                    .is_some_and(|value| probability(value).is_none())
+                {
+                    errors.push("Box presence must be a finite probability when reported".into());
+                }
+                if raw["found"] == false {
+                    warnings.push("No box was localized, as reported by the model; this does not establish that the target is absent".into());
+                }
             }
         }
         _ => {}

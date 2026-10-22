@@ -1,6 +1,6 @@
 use super::{
     Filter, Store,
-    groups::{VersionCounts, distribution_label},
+    groups::{VersionCounts, distribution_bin},
     metrics::{Mean, TimelineBucket, TokenSum},
     value::text,
 };
@@ -69,7 +69,7 @@ impl<'a> GroupAnswers<'a> {
             } else {
                 self.choice_bins.insert(choice.to_owned(), 1);
             }
-        } else {
+        } else if matches!(kind, "noul" | "score") {
             let number = answer.number.context("Valid numeric value is missing")?;
             let bin = if kind == "noul" {
                 ((number * 10.0) as i64).min(9)
@@ -550,9 +550,18 @@ impl Store {
                     .as_object_mut()
                     .unwrap()
                     .extend(stats.as_object().unwrap().clone());
-                let distribution: Vec<_> = group["distribution"].as_array().unwrap().iter().map(|bin| {
-                    json!({"label":distribution_label(&group, bin["label"].as_str().unwrap()),"count":bin["count"]})
-                }).collect();
+                let distribution: Vec<_> = group["distribution"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|bin| {
+                        distribution_bin(
+                            &group,
+                            bin["label"].as_str().unwrap(),
+                            bin["count"].clone(),
+                        )
+                    })
+                    .collect();
                 group["distribution"] = json!(distribution);
                 // Comparison-only metrics belong to the detail endpoint. They
                 // read saved answer JSON and must not run for every group on
@@ -566,7 +575,7 @@ impl Store {
             let mut distribution_args = args.clone();
             distribution_args.extend(families.iter().map(|g| SqlValue::from(text(g, "id"))));
             let bin = "CASE a.kind WHEN 'choice' THEN a.value_text WHEN 'noul' THEN CAST(min(9,CAST(a.value_num*10 AS INTEGER)) AS TEXT) ELSE CAST(CAST(a.value_num AS INTEGER) AS TEXT) END";
-            let mut stmt = tx.prepare(&format!("SELECT display_id,bin,bin_count FROM (SELECT g.family_id AS display_id,{bin} AS bin,count(*) AS bin_count,a.kind AS kind {from} AND a.valid=1 AND g.family_id IN ({placeholders}) GROUP BY g.family_id,bin) ORDER BY display_id,CASE WHEN kind='choice' THEN bin END,CASE WHEN kind<>'choice' THEN CAST(bin AS INTEGER) END"))?;
+            let mut stmt = tx.prepare(&format!("SELECT display_id,bin,bin_count FROM (SELECT g.family_id AS display_id,{bin} AS bin,count(*) AS bin_count,a.kind AS kind {from} AND a.valid=1 AND a.kind!='box' AND g.family_id IN ({placeholders}) GROUP BY g.family_id,bin) ORDER BY display_id,CASE WHEN kind='choice' THEN bin END,CASE WHEN kind<>'choice' THEN CAST(bin AS INTEGER) END"))?;
             let bins = stmt.query_map(params_from_iter(&distribution_args), |r| {
                 Ok((
                     r.get::<_, String>(0)?,
@@ -583,11 +592,8 @@ impl Store {
                 let (id, raw, count) = bin?;
                 if let Some(index) = positions.get(&id) {
                     let group = &mut groups[*index];
-                    let label = distribution_label(group, &raw);
-                    group["distribution"]
-                        .as_array_mut()
-                        .unwrap()
-                        .push(json!({"label":label,"count":count}));
+                    let bin = distribution_bin(group, &raw, json!(count));
+                    group["distribution"].as_array_mut().unwrap().push(bin);
                 }
             }
         }

@@ -13,6 +13,7 @@
 // Provider shapes are validated before any derived observation is accepted.
 
 mod budget;
+pub(crate) mod decisions;
 mod identity;
 mod imports;
 mod normalize;
@@ -20,6 +21,10 @@ mod privacy;
 mod samples;
 mod types;
 mod validation;
+
+#[cfg(test)]
+#[path = "model/tests/omni.rs"]
+mod omni_tests;
 
 pub use budget::ImportLimitError;
 pub use imports::{
@@ -31,7 +36,7 @@ pub use privacy::{
     RedactionCollisionError, RedactionValidationError,
 };
 pub use samples::sample_records;
-pub use types::{Capture, CaptureId, NormalizeOptions};
+pub use types::{Capture, CaptureId, NormalizeOptions, Protocol};
 
 #[cfg(test)]
 use privacy::{
