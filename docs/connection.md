@@ -14,7 +14,9 @@ Start normal collection:
 jev-observer
 ```
 
-Open the local dashboard with username `observer` and the token in `.jev-observer/observer.access-token`, whose path Observer prints at startup. This owner-only token protects local history and key settings from other accounts on the same computer. Keep it private. SDK requests using a registered local client token need no additional header; SDK requests using their provider key directly must also send this access token in `x-observer-access`.
+Open the local dashboard with username `observer` and the token in `.jev-observer/observer.sqlite.token`, whose path Observer prints at startup. This owner-only token protects local history and key settings from other accounts on the same computer. Keep it private. SDK requests using a registered local client token need no additional header; SDK requests using their provider key directly must also send this access token in `x-observer-access`.
+
+The token path appends `.token` to the complete database filename, including its extension: `team.db` and `team.sqlite` use `team.db.token` and `team.sqlite.token`. Existing new-format tokens are reused on restart. If only a legacy `*.access-token` file exists, Observer creates a fresh token and prints an upgrade notice. Update the browser's Basic-auth password and any workspace token used in `X-Observer-Access` or with `--upstream-auth none`. This also affects configured provider-key fallback calls authenticated with Basic auth or `X-Observer-Access`. Registered `jo_local_` client tokens and their provider credentials are not rotated by this change; their existing session/system persistence rules still apply. See [upgrade and rollback guidance](installation.md#history-backups-and-downgrades).
 
 Run it from your application's directory to keep history in that project's `.jev-observer/` folder, or choose a stable location with `--db /path/to/observer.sqlite`. For a source build, use `./target/release/jev-observer` instead.
 

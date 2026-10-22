@@ -70,7 +70,7 @@ test('live workspace connects, captures, reviews and exports, then preserves his
       if (spawnError) throw spawnError;
       if (processHandle?.exitCode !== null) throw new Error('Live Observer exited during startup');
       try {
-        token = (await readFile(path.join(directory, 'history.access-token'), 'utf8')).trim();
+        token = (await readFile(path.join(directory, 'history.sqlite') + '.token', 'utf8')).trim();
         return (await fetch(origin + '/api/health', { headers: { Authorization: `Basic ${Buffer.from(`observer:${token}`).toString('base64')}` } })).status;
       } catch { return 0; }
     }, { timeout: 30_000 }).toBe(200);

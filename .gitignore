@@ -20,6 +20,7 @@ __pycache__/
 !.env.sample
 !.env.template
 *.access-token
+*.token
 *.pem
 *.key
 *.p12

@@ -26,9 +26,11 @@ jev-observer --demo
 
 Inspect the downloaded script before running it if desired. If your Windows execution policy blocks scripts, follow your organization's policy or download and extract the matching release ZIP manually; run its `jev-observer.exe` directly.
 
-Open <http://127.0.0.1:8765> and sign in with username `observer` and the token in `.jev-observer/observer.demo.access-token`. Observer prints the exact token-file path at startup. Demo mode uses 720 synthetic requests, makes no provider calls and needs no database key. Press Ctrl-C to stop it.
+Open <http://127.0.0.1:8765> and sign in with username `observer` and the token in `.jev-observer/observer.demo.sqlite.token`. Observer prints the exact token-file path at startup. Demo mode uses 720 synthetic requests, makes no provider calls and needs no database key. Press Ctrl-C to stop it.
 
-For live requests, [generate and save a database key](../README.md#connect-an-application), supply it on each startup, then run without `--demo` and connect your application's SDK. The live dashboard token is in `.jev-observer/observer.access-token`.
+For live requests, [generate and save a database key](../README.md#connect-an-application), supply it on each startup, then run without `--demo` and connect your application's SDK. The live dashboard token is in `.jev-observer/observer.sqlite.token`.
+
+The commands in this guide select published 0.3.1. That release uses `.jev-observer/observer.demo.access-token` for demo mode and `.jev-observer/observer.access-token` for live mode; the `.sqlite.token` examples describe current builds. The exact path printed at startup is authoritative for the executable you run.
 
 **Prelaunch builds:** discard development binaries from the earlier private release history and install the current public release before collecting live traffic. Release numbers from that discarded history do not identify the current build.
 
@@ -78,6 +80,12 @@ Check the executable with `command -v jev-observer` on Unix or `Get-Command jev-
 
 Before upgrading to 0.3.1, stop Observer cleanly and keep a copy of the database and any remaining SQLite sidecars, the workspace dashboard-token file, and access to the saved `JEV_OBSERVER_DB_KEY`. Preserve the earlier executable if you need to test a rollback. Starting the new executable upgrades supported query indexes; a rejected unsupported database is not encrypted or otherwise rewritten. Copy files back only while every Observer process using that workspace is stopped.
 
+The token-path change described here applies to builds after the published 0.3.1 release. Those builds use the complete database filename followed by `.token`, such as `observer.sqlite.token` or `observer.demo.sqlite.token`; published 0.3.1 uses the legacy `*.access-token` path. This keeps custom databases such as `team.db` and `team.sqlite` from sharing the old `team.access-token` path. An existing new-format token is reused with the usual private-file checks. When only a legacy `*.access-token` file exists, the first startup creates a fresh random token and prints a notice; it never copies the legacy secret. Later startups reuse the new token.
+
+After that one-time rotation, sign in again as `observer` with the new token and update clients that use the workspace token in Basic auth, `X-Observer-Access`, or `--upstream-auth none` requests. This includes direct provider-key and configured-key fallback clients that supply workspace authentication. Database keys, history, saved provider credentials and registered `jo_local_` client tokens are unchanged by the token-path upgrade; session-only credentials still expire on restart as usual.
+
+Legacy token files remain untouched for rollback. An older executable will use its legacy token again and retain the old same-stem sharing behavior; the new token does not protect a downgraded installation. Keep both files private, and use separate database directories if you must run an older executable with same-stem custom database names. Do not copy a shared legacy token into the new token files.
+
 Version 0.2.0 reads provider credentials saved by 0.1.0. After saving or rotating a persisted provider key in 0.2.0, the new credential entry layout is not readable by 0.1.0. If you downgrade, re-register the provider key and update the application's local client token. Restoring only an older SQLite backup cannot restore an operating-system credential entry removed by a later rotation. Session-only credentials always require registration after restart. The database key and provider key are separate secrets.
 
 The automated upgrade checks exercise encrypted history, labels, import identities, approval digests, backups and rollback using disposable fixtures. They do not establish native operating-system keychain compatibility. Reconnect the application and verify collection health before resuming normal traffic after a rollback.
@@ -102,6 +110,8 @@ Linux packages include the C runtime and SQLite, removing a dependency on the di
 History is relative to the directory where Observer starts, by default `.jev-observer/observer.sqlite`. Demo history uses `.jev-observer/observer.demo.sqlite`. The installation directory does not determine where history is saved.
 
 Use `--db /path/to/observer.sqlite` to choose a stable location. On Windows, the default `.jev-observer` directory receives a private current-user ACL. A custom database directory must already restrict access to the current user, SYSTEM and administrators; shared directories are rejected. Access-token files have a protected current-user ACL, and reparse points are rejected.
+
+The dashboard token for that custom path is `/path/to/observer.sqlite.token`. The full database filename is preserved when adding the suffix, including names without an extension or with multiple dots.
 
 To uninstall, stop Observer and remove the executable:
 

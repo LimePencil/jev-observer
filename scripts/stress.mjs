@@ -213,7 +213,7 @@ async function runCase(spec, directory, lockHelper) {
     proxy.stderr.on('data', data => { proxyLog = (proxyLog + data).slice(-8000); });
     proxy.on('error', error => { proxyLog += error.message; });
     for (let attempt = 0; ; attempt++) {
-      try { const token = await fs.readFile(database.replace(/\.sqlite$/, '.access-token'), 'utf8'); observerAccess = token; dashboardAuthorization = `Basic ${Buffer.from(`observer:${token}`).toString('base64')}`; } catch { /* Startup has not created the token yet. */ }
+      try { const token = await fs.readFile(database + '.token', 'utf8'); observerAccess = token; dashboardAuthorization = `Basic ${Buffer.from(`observer:${token}`).toString('base64')}`; } catch { /* Startup has not created the token yet. */ }
       const response = dashboardAuthorization ? await exchange(context.port, '/api/health', context.readAgent) : { status: 0 };
       if (response.status === 200) break;
       assert(attempt < 100 && proxy.exitCode === null, `Proxy startup failed: ${proxyLog}`);
