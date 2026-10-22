@@ -101,6 +101,62 @@ fn pending(capture: Capture, budget: &Arc<Semaphore>) -> Pending {
 }
 
 #[test]
+fn envelope_key_collision_does_not_drop_its_prequeued_neighbor_captures() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(&directory.path().join("envelope-batch.sqlite"), 7, 100).unwrap();
+    let mut middle = capture("entry-middle", false);
+    middle.secret = Some("i".into());
+    let captures = [capture("before", false), middle, capture("after", false)];
+    let budget = Arc::new(Semaphore::new(captures.len()));
+    let counters = Arc::new(Counters::default());
+    let (sender, receiver) = mpsc::sync_channel(captures.len());
+    for capture in captures {
+        let item = pending(capture, &budget);
+        counters.captured.fetch_add(1, Ordering::Relaxed);
+        counters.queue_depth.fetch_add(1, Ordering::Relaxed);
+        counters
+            .queued_bytes
+            .fetch_add(item.size, Ordering::Relaxed);
+        counters
+            .pending_times
+            .lock()
+            .unwrap()
+            .push_back(item.queued);
+        sender.send(item).unwrap();
+    }
+    // Prequeue all records so the collision deterministically shares one write.
+    writer(
+        store.clone(),
+        NormalizeOptions::default(),
+        receiver,
+        counters.clone(),
+        Arc::new(AtomicBool::new(true)),
+    );
+    drop(sender);
+    assert_eq!(counters.persisted.load(Ordering::Relaxed), 3);
+    assert_eq!(counters.dropped.load(Ordering::Relaxed), 0);
+    assert_eq!(counters.write_failures.load(Ordering::Relaxed), 0);
+    assert_eq!(counters.queue_depth.load(Ordering::Relaxed), 0);
+    assert_eq!(counters.queued_bytes.load(Ordering::Relaxed), 0);
+    assert!(counters.pending_times.lock().unwrap().is_empty());
+    assert_eq!(budget.available_permits(), 3);
+    for id in ["before", "after"] {
+        assert_eq!(
+            store.request(id).unwrap().unwrap()["answers"][0]["valid"],
+            true
+        );
+    }
+    let middle = store.request("entry-m[REDACTED]ddle").unwrap().unwrap();
+    assert_eq!(middle["answers"].as_array().unwrap().len(), 1);
+    assert_eq!(middle["answers"][0]["valid"], false);
+    assert!(middle["answers"][0]["definition"].is_null());
+    assert_eq!(
+        middle["normalization_error"],
+        "Request questions is not an object"
+    );
+}
+
+#[test]
 fn normalized_work_bounds_json_escaping_and_saturates() {
     for value in [
         Value::Null,
