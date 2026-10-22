@@ -71,6 +71,8 @@ jobs:
         run: python3 scripts/test-retention-soak.py
       - name: Verify stress helper discovery without building or loading a server
         run: node --test scripts/test-stress-cargo.mjs
+      - name: Verify isolated keyring fixture failure diagnostics
+        run: python3 scripts/test-linux-keyring-harness.py
       - name: Verify shell installation and failed-upgrade handling
         run: python3 scripts/test-install.py
       - name: Check Rust formatting, lints and tests
