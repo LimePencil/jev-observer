@@ -95,6 +95,8 @@ jobs:
         env:
           OBSERVER_BINARY: ${{ github.workspace }}/target/release/jev-observer
         run: npm run test:integration --prefix ui
+      - name: Verify authenticated dashboard monitor
+        run: node scripts/test-watch-dashboard.mjs
       - name: Install pinned SDK fixtures
         run: |
           python -m venv "$RUNNER_TEMP/observer-sdk-python"

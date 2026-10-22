@@ -172,7 +172,7 @@ try{
   const memoryPoll=(async()=>{while(running){try{const status=await fs.readFile(`/proc/${proxy.pid}/status`,'utf8');peakRssKiB=Math.max(peakRssKiB,Number(status.match(/^VmRSS:\s+(\d+)/m)?.[1]??0));}catch{}
       try { const result = await exchange(proxyPort,'/api/health',null,dashboardAgent); const health = JSON.parse(result.body); if(result.status!==200)healthPollErrors++; peakLagMs=Math.max(peakLagMs,health.lag_ms??0); peakQueueDepth=Math.max(peakQueueDepth,health.queue_depth??0); } catch {healthPollErrors++;}
       await sleep(1000)}})();
-  console.log(JSON.stringify({observer_origin:`http://127.0.0.1:${proxyPort}`,database_directory:directory,binary_sha256:binarySha256}));
+  console.log(JSON.stringify({observer_origin:`http://127.0.0.1:${proxyPort}`,database_directory:directory,access_token_file:path.join(directory,'bench.access-token'),binary_sha256:binarySha256}));
   const settings=JSON.parse((await exchange(proxyPort,'/api/settings',null,dashboardAgent)).body);
   const baseline=await load('direct mock baseline',mockPort,baselineSeconds,rate,false);
   const sustained=await load('proxy with capture and dashboard',proxyPort,seconds,rate,true);
