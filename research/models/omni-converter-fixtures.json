@@ -1,0 +1,346 @@
+{
+  "scope": "Synthetic offline converter output; native values retained. Import with the selected profiles to check valid/invalid status and roundtrip identity.",
+  "cases": [
+    {
+      "name": "complete",
+      "valid": true,
+      "capture": {
+        "id": "complete",
+        "timestamp": 1790985600000,
+        "source": "synthetic-omni",
+        "provider": "local-provider",
+        "status": 200,
+        "duration_ms": null,
+        "capture_complete": true,
+        "sample": true,
+        "request": {
+          "model": "synthetic-checkpoint",
+          "state": "synthetic-input",
+          "questions": {
+            "q": {
+              "type": "choice",
+              "instructions": "Choose",
+              "criteria": {
+                "a": "A",
+                "b": "B"
+              }
+            }
+          }
+        },
+        "response": {
+          "answers": {
+            "q": {
+              "type": "choice",
+              "original_result": {
+                "choice": "a",
+                "probabilities": {
+                  "a": 0.8,
+                  "b": 0.2
+                },
+                "confidence": 0.6,
+                "abstain": 0,
+                "valid": true
+              },
+              "abstain": 0,
+              "valid": true,
+              "probabilities": {
+                "a": 0.8,
+                "b": 0.2
+              },
+              "confidence": 0.6,
+              "choice": "a"
+            }
+          },
+          "original_metadata": {}
+        },
+        "model_profile": "omnijev",
+        "protocol": "systemone"
+      }
+    },
+    {
+      "name": "abstaining",
+      "valid": false,
+      "capture": {
+        "id": "abstaining",
+        "timestamp": 1790985600000,
+        "source": "synthetic-omni",
+        "provider": "local-provider",
+        "status": 200,
+        "duration_ms": null,
+        "capture_complete": true,
+        "sample": true,
+        "request": {
+          "model": "synthetic-checkpoint",
+          "state": "synthetic-input",
+          "questions": {
+            "q": {
+              "type": "choice",
+              "instructions": "Choose",
+              "criteria": {
+                "a": "A",
+                "b": "B"
+              }
+            }
+          }
+        },
+        "response": {
+          "answers": {
+            "q": {
+              "type": "choice",
+              "original_result": {
+                "choice": "a",
+                "probabilities": {
+                  "a": 0.6000000000000001,
+                  "b": 0.2
+                },
+                "confidence": 0.6,
+                "abstain": 0.2,
+                "valid": true
+              },
+              "abstain": 0.2,
+              "valid": true,
+              "probabilities": {
+                "a": 0.6000000000000001,
+                "b": 0.2
+              },
+              "confidence": 0.6,
+              "choice": "a"
+            }
+          },
+          "original_metadata": {}
+        },
+        "model_profile": "omnijev",
+        "protocol": "systemone"
+      }
+    },
+    {
+      "name": "tiny-abstaining",
+      "valid": false,
+      "capture": {
+        "id": "tiny-abstaining",
+        "timestamp": 1790985600000,
+        "source": "synthetic-omni",
+        "provider": "local-provider",
+        "status": 200,
+        "duration_ms": null,
+        "capture_complete": true,
+        "sample": true,
+        "request": {
+          "model": "synthetic-checkpoint",
+          "state": "synthetic-input",
+          "questions": {
+            "q": {
+              "type": "choice",
+              "instructions": "Choose",
+              "criteria": {
+                "a": "A",
+                "b": "B"
+              }
+            }
+          }
+        },
+        "response": {
+          "answers": {
+            "q": {
+              "type": "choice",
+              "original_result": {
+                "choice": "a",
+                "probabilities": {
+                  "a": 0.7999900000000001,
+                  "b": 0.2
+                },
+                "confidence": 0.6,
+                "abstain": 1e-05,
+                "valid": true
+              },
+              "abstain": 1e-05,
+              "valid": true,
+              "probabilities": {
+                "a": 0.7999900000000001,
+                "b": 0.2
+              },
+              "confidence": 0.6,
+              "choice": "a"
+            }
+          },
+          "original_metadata": {}
+        },
+        "model_profile": "omnijev",
+        "protocol": "systemone"
+      }
+    },
+    {
+      "name": "reported-invalid",
+      "valid": false,
+      "capture": {
+        "id": "reported-invalid",
+        "timestamp": 1790985600000,
+        "source": "synthetic-omni",
+        "provider": "local-provider",
+        "status": 200,
+        "duration_ms": null,
+        "capture_complete": true,
+        "sample": true,
+        "request": {
+          "model": "synthetic-checkpoint",
+          "state": "synthetic-input",
+          "questions": {
+            "q": {
+              "type": "choice",
+              "instructions": "Choose",
+              "criteria": {
+                "a": "A",
+                "b": "B"
+              }
+            }
+          }
+        },
+        "response": {
+          "answers": {
+            "q": {
+              "type": "choice",
+              "original_result": {
+                "choice": "a",
+                "probabilities": {
+                  "a": 0.8,
+                  "b": 0.2
+                },
+                "confidence": 0.6,
+                "abstain": 0,
+                "valid": false
+              },
+              "abstain": 0,
+              "valid": false,
+              "probabilities": {
+                "a": 0.8,
+                "b": 0.2
+              },
+              "confidence": 0.6,
+              "choice": "a"
+            }
+          },
+          "original_metadata": {}
+        },
+        "model_profile": "omnijev",
+        "protocol": "systemone"
+      }
+    },
+    {
+      "name": "modal",
+      "valid": true,
+      "capture": {
+        "id": "modal",
+        "timestamp": 1790985600000,
+        "source": "synthetic-omni",
+        "provider": "local-provider",
+        "status": 200,
+        "duration_ms": null,
+        "capture_complete": true,
+        "sample": true,
+        "request": {
+          "model": "synthetic-checkpoint",
+          "state": "synthetic-input",
+          "questions": {
+            "q": {
+              "type": "score",
+              "instructions": "Rate",
+              "criteria": [
+                "high",
+                "low",
+                "middle"
+              ]
+            }
+          }
+        },
+        "response": {
+          "answers": {
+            "q": {
+              "type": "score",
+              "original_result": {
+                "score": "middle",
+                "probabilities": {
+                  "middle": 0.7,
+                  "high": 0.2,
+                  "low": 0.1
+                },
+                "confidence": 0.55
+              },
+              "probabilities": {
+                "0": 0.2,
+                "1": 0.1,
+                "2": 0.7
+              },
+              "confidence": 0.55,
+              "score": 2,
+              "mapping_note": "Reported modal level mapped to its original ordinal index; no expected score computed"
+            }
+          },
+          "original_metadata": {}
+        },
+        "model_profile": "omnijev",
+        "protocol": "systemone"
+      }
+    },
+    {
+      "name": "classifier",
+      "valid": true,
+      "capture": {
+        "id": "classifier",
+        "timestamp": 1790985600000,
+        "source": "synthetic-omni",
+        "provider": "local-provider",
+        "status": 200,
+        "duration_ms": null,
+        "capture_complete": true,
+        "sample": true,
+        "request": {
+          "model": "synthetic-checkpoint",
+          "state": "synthetic-input",
+          "questions": {
+            "q": {
+              "type": "choice",
+              "instructions": "Choose",
+              "criteria": {
+                "a": "A",
+                "b": "B"
+              }
+            }
+          }
+        },
+        "response": {
+          "answers": {
+            "q": {
+              "type": "choice",
+              "choice": "a",
+              "probabilities": {
+                "a": 0.8,
+                "b": 0.2
+              },
+              "original_result": {
+                "prediction": "a",
+                "prediction_index": 0,
+                "confidence": 0.8,
+                "probabilities": {
+                  "a": 0.8,
+                  "b": 0.2
+                }
+              },
+              "confidence": 0.8
+            }
+          },
+          "original_metadata": {
+            "prediction": "a",
+            "prediction_index": 0,
+            "confidence": 0.8,
+            "probabilities": {
+              "a": 0.8,
+              "b": 0.2
+            }
+          }
+        },
+        "model_profile": "jev-omni",
+        "protocol": "systemone"
+      }
+    }
+  ]
+}
