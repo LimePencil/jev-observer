@@ -51,6 +51,214 @@ fn incomplete(item: &Capture, options: &NormalizeOptions) -> Value {
     record
 }
 
+fn text_shape_failure(provider: &str, definition: Value, field: &str) {
+    let (item, mut options) = capture(provider, definition, json!({"type":"noul","noul":0.2}));
+    let original = normalize(&item, &options);
+    assert_eq!(original["answers"][0]["valid"], false, "{provider}/{field}");
+    assert_eq!(original["capture_complete"], true);
+    options.redact_keys.push(field.into());
+    for capture_state in [false, true] {
+        options.capture_state = capture_state;
+        let fallback = incomplete(&item, &options);
+        assert_ne!(fallback["id"], incomplete(&item, &options)["id"]);
+        rejected(
+            import_records(
+                &raw(&item, &options).to_string(),
+                "systemone-capture",
+                &options,
+            )
+            .unwrap_err(),
+        );
+        rejected(import_records(&original.to_string(), "observer-jsonl", &options).unwrap_err());
+        let restored = import_records(&fallback.to_string(), "observer-jsonl", &options).unwrap();
+        for key in ["id", "answers", "capture_complete", "normalization_error"] {
+            assert_eq!(restored[0][key], fallback[key]);
+        }
+    }
+}
+
+#[test]
+fn text_shape_redaction_cannot_repair_invalid_instructions_or_noul_descriptions() {
+    for value in [json!(12), json!(false), Value::Null] {
+        text_shape_failure(
+            "typesafe",
+            json!({"type":"noul","instructions":value}),
+            "instructions",
+        );
+        if !value.is_null() {
+            text_shape_failure(
+                "decider",
+                json!({"type":"noul","instructions":value}),
+                "instructions",
+            );
+        }
+        for criterion in ["true", "false"] {
+            text_shape_failure(
+                "typesafe",
+                json!({"type":"noul","instructions":"Rule","criteria":{criterion:value}}),
+                criterion,
+            );
+        }
+    }
+}
+
+#[test]
+fn text_shape_instruction_guard_applies_to_choice_and_score_definitions() {
+    for (definition, answer) in [
+        (
+            json!({"type":"choice","instructions":12,"criteria":{"a":null,"b":null}}),
+            json!({"type":"choice","choice":"a","probabilities":{"a":0.8,"b":0.2},"confidence":0.7}),
+        ),
+        (
+            json!({"type":"score","instructions":12,"criteria":["Low","High"]}),
+            json!({"type":"score","score":0.5,"probabilities":{"0":0.5,"1":0.5},"confidence":0.7,"legend":{"0":"Low","1":"High"}}),
+        ),
+    ] {
+        let (item, mut options) = capture("typesafe", definition, answer);
+        let original = normalize(&item, &options);
+        assert_eq!(
+            original["answers"][0]["error"],
+            "Question instructions must be a string, object, or array"
+        );
+        options.redact_keys.push("instructions".into());
+        incomplete(&item, &options);
+        rejected(import_records(&original.to_string(), "observer-jsonl", &options).unwrap_err());
+    }
+}
+
+#[test]
+fn text_shape_redaction_preserves_valid_text_optional_null_and_json_text_profiles() {
+    let mut cases = Vec::new();
+    for value in [json!("Rule"), json!({"rule":"Rule"}), json!(["Rule"])] {
+        cases.push((
+            "typesafe",
+            json!({"type":"noul","instructions":value}),
+            "instructions",
+        ));
+        cases.push((
+            "typesafe",
+            json!({"type":"noul","instructions":"Rule","criteria":{"true":value}}),
+            "true",
+        ));
+    }
+    cases.push((
+        "decider",
+        json!({"type":"noul","instructions":null}),
+        "instructions",
+    ));
+    for value in [json!(12), json!(false), Value::Null] {
+        cases.push((
+            "kev",
+            json!({"type":"noul","instructions":value}),
+            "instructions",
+        ));
+        cases.push((
+            "kev",
+            json!({"type":"noul","instructions":"Rule","criteria":{"true":value}}),
+            "true",
+        ));
+    }
+    for (provider, definition, field) in cases {
+        let (item, mut options) = capture(provider, definition, json!({"type":"noul","noul":0.2}));
+        let original = normalize(&item, &options);
+        assert_eq!(original["answers"][0]["valid"], true, "{provider}/{field}");
+        options.redact_keys.push(field.into());
+        for record in [
+            normalize(&item, &options),
+            import_records(
+                &raw(&item, &options).to_string(),
+                "systemone-capture",
+                &options,
+            )
+            .unwrap()
+            .remove(0),
+            import_records(&original.to_string(), "observer-jsonl", &options)
+                .unwrap()
+                .remove(0),
+        ] {
+            assert_eq!(record["capture_complete"], true, "{provider}/{field}");
+            assert_eq!(record["answers"][0]["valid"], true, "{provider}/{field}");
+            assert!(record["normalization_error"].is_null());
+            let definition = &record["answers"][0]["definition"];
+            assert_eq!(
+                if field == "instructions" {
+                    &definition[field]
+                } else {
+                    &definition["criteria"][field]
+                },
+                REDACTED
+            );
+        }
+    }
+}
+
+#[test]
+fn text_shape_guard_leaves_absent_fields_and_nonsemantic_metadata_unchanged() {
+    for (provider, valid) in [("typesafe", false), ("decider", true)] {
+        let (item, mut options) = capture(
+            provider,
+            json!({"type":"noul"}),
+            json!({"type":"noul","noul":0.2}),
+        );
+        options.redact_keys = vec!["instructions".into(), "true".into()];
+        let record = normalize(&item, &options);
+        assert_eq!(record["capture_complete"], true);
+        assert_eq!(record["answers"][0]["valid"], valid);
+        assert!(
+            record["answers"][0]["definition"]
+                .get("instructions")
+                .is_none()
+        );
+        assert!(record["answers"][0]["definition"].get("criteria").is_none());
+    }
+    let definition = json!({"type":"noul","instructions":"Rule", "criteria":{"true":{"instructions":12}}, "extension":{"instructions":12,"true":false}});
+    let (mut item, mut options) =
+        capture("typesafe", definition, json!({"type":"noul","noul":0.2}));
+    let mut request: Value = serde_json::from_slice(&item.request).unwrap();
+    request["extension"] =
+        json!({"questions":{"q":{"type":"noul","instructions":12,"criteria":{"true":false}}}});
+    request["state"] = request["extension"].clone();
+    item.request = serde_json::to_vec(&request).unwrap();
+    options.redact_keys = vec!["instructions".into(), "true".into()];
+    for capture_state in [false, true] {
+        options.capture_state = capture_state;
+        let record = normalize(&item, &options);
+        assert_eq!(record["capture_complete"], true);
+        assert_eq!(record["answers"][0]["valid"], true);
+        assert_eq!(
+            record["request_extra"]["extension"]["questions"]["q"]["instructions"],
+            REDACTED
+        );
+        assert_eq!(
+            record["answers"][0]["definition"]["extension"]["true"],
+            REDACTED
+        );
+    }
+    let mut receipt: Value =
+        serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+    receipt["extension"] = request["extension"].clone();
+    let records = import_records(&receipt.to_string(), "jevrouter-receipt", &options).unwrap();
+    assert!(!records.is_empty());
+
+    // A configured Choice option also redacts its required probability. It
+    // remains invalid without extending this guard to every semantic value.
+    let (item, mut options) = capture(
+        "typesafe",
+        json!({"type":"choice","instructions":"Rule","criteria":{"a":12,"b":null}}),
+        json!({"type":"choice","choice":"a","probabilities":{"a":0.8,"b":0.2},"confidence":0.7}),
+    );
+    options.redact_keys.push("a".into());
+    let record = normalize(&item, &options);
+    assert_eq!(record["capture_complete"], true);
+    assert_eq!(record["answers"][0]["valid"], false);
+    assert!(
+        record["answers"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("Probabilities must be finite numbers between zero and one")
+    );
+}
+
 type ValidationCase = (&'static str, &'static str, bool, Value, Value, Value);
 
 fn cases() -> Vec<ValidationCase> {
