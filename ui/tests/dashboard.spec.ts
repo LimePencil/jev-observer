@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import type { CredentialStatus, Dashboard, Group, RequestRecord, Settings } from '../src/types';
@@ -1748,6 +1749,129 @@ test('reopened review completion preserves a detail timeout and Retry reads the 
   finishRead();
   expect(writes).toBe(1);
 });
+
+test('a committed old review response cannot mark a deleted and reimported raw identity Saved', async ({ page }, testInfo) => {
+  const state = await harness(page);
+  const raw = { id: 'synthetic-review-event', source: 'Test inbox', provider: 'typesafe', timestamp: now, status: 200, capture_complete: true,
+    request: { questions: { department: group.definition, untouched: group.definition } },
+    response: { answers: { department: { type: 'choice', choice: 'technical', probabilities: { technical: .8, billing: .2 } }, untouched: { type: 'choice', choice: 'technical', probabilities: { technical: .8, billing: .2 } } } } };
+  // This is CaptureId::raw_import's canonical original tuple, not a fresh ID
+  // invented on reimport. The API fixture models committed storage separately
+  // from response delivery, as a slow network may delay an already saved POST.
+  const id = 'capture_v1_' + createHash('sha256').update(JSON.stringify([raw.source, raw.provider, raw.id])).digest('hex');
+  const imported = { ...structuredClone(record), id, source_event_id: id, import_format: 'systemone-capture',
+    answers: [structuredClone(record.answers[0]), { ...structuredClone(record.answers[0]), key: 'untouched' }] };
+  const dashboard = structuredClone(state.dashboard);
+  let imports = 0, writes = 0, committed = false, detailReads = 0, release!: () => void;
+  const delivery = new Promise<void>(resolve => { release = resolve; });
+  state.dashboard.requests = [];
+  state.dashboard.summary.request_count = 0;
+  state.deleted = true;
+  await page.route('**/api/import', async route => {
+    const payload = route.request().postDataJSON();
+    expect(payload.format).toBe('systemone-capture');
+    expect(JSON.parse(payload.text)).toEqual(raw);
+    imports += 1;
+    state.record = structuredClone(imported);
+    state.deleted = false;
+    state.dashboard = { ...structuredClone(dashboard), requests: [state.record], summary: { ...dashboard.summary, request_count: 1, answer_count: 2 } };
+    await route.fulfill({ json: { imported: 1, duplicates: 0 } });
+  });
+  await page.route(`**/api/requests/${id}`, async route => {
+    detailReads += 1;
+    await route.fulfill(state.deleted ? { status: 404, json: { error: 'Record not found' } } : { json: state.record });
+  });
+  await page.route(`**/api/requests/${id}/label`, async route => {
+    writes += 1;
+    const payload = route.request().postDataJSON();
+    state.record.labels = [{ key: payload.key, label: payload.label }];
+    committed = true;
+    await delivery;
+    // Do not write again when delivering this old success response.
+    await route.fulfill({ json: { ok: true } });
+  });
+  async function importOriginal() {
+    await page.getByRole('complementary', { name: 'Workspace navigation' }).getByRole('button', { name: 'Import records', exact: true }).click();
+    await page.getByLabel('Source format').selectOption('systemone-capture');
+    await page.getByLabel('Or paste records').fill(JSON.stringify(raw));
+    await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText('1 records imported.');
+    await page.keyboard.press('Escape');
+  }
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await importOriginal();
+  await page.getByLabel(`Inspect request ${id}`, { exact: true }).click();
+  await page.getByLabel('Review department', { exact: true }).selectOption('correct');
+  await expect.poll(() => committed).toBe(true);
+  expect(state.record.labels).toEqual([{ key: 'department', label: 'correct' }]);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+  await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+  await page.getByRole('button', { name: 'Permanently delete history' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(state.deleted).toBe(true);
+  await importOriginal();
+  expect(state.record.labels).toEqual([]);
+  await page.getByLabel(`Inspect request ${id}`, { exact: true }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer.getByLabel('Review department', { exact: true })).toHaveAttribute('aria-disabled', 'true');
+  const untouched = drawer.locator('.answer-card').filter({ has: page.getByRole('heading', { name: 'untouched', exact: true }) });
+  await expect(untouched.getByLabel('Review untouched', { exact: true })).toHaveValue('');
+  await expect(untouched.getByRole('status')).toBeEmpty();
+  const priorReads = detailReads;
+  const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname.endsWith('/label'));
+  release(); await finished;
+  await expect.poll(() => detailReads).toBeGreaterThan(priorReads);
+  await expect(drawer.getByLabel('Review department', { exact: true })).toHaveValue('');
+  await expect(drawer.getByLabel('Review department', { exact: true })).toHaveAttribute('aria-disabled', 'false');
+  expect(imports).toBe(2); expect(writes).toBe(1); expect(state.record.labels).toEqual([]);
+  const observed = { imports, writes, detailReads, storedLabels: state.record.labels,
+    selectValue: await drawer.getByLabel('Review department', { exact: true }).inputValue(),
+    statusText: await drawer.locator('.answer-card').first().getByRole('status').textContent() };
+  await testInfo.attach('same-identity-review-observation', { body: JSON.stringify(observed, null, 2), contentType: 'application/json' });
+  await testInfo.attach('same-identity-review', { body: await page.screenshot(), contentType: 'image/png' });
+  await expect(drawer.locator('.answer-card').first().getByRole('status')).toBeEmpty();
+});
+
+for (const refreshedLabel of ['correct', 'incorrect'] as const) {
+  test(`completed review feedback follows an authoritative ${refreshedLabel} label after refresh`, async ({ page }) => {
+    const state = await harness(page);
+    let finishImport!: () => void, imported = false, refreshed = 0, writes = 0;
+    const importing = new Promise<void>(resolve => { finishImport = resolve; });
+    await page.route('**/api/import', async route => {
+      await importing; imported = true;
+      await route.fulfill({ json: { imported: 1, duplicates: 0 } });
+    });
+    await page.route('**/api/requests/request-one', async route => {
+      if (imported) refreshed += 1;
+      await route.fulfill({ json: state.record });
+    });
+    await page.route('**/api/requests/request-one/label', async route => {
+      writes += 1;
+      const { key, label } = route.request().postDataJSON();
+      state.record.labels = [{ key, label }];
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.getByRole('button', { name: 'Import records', exact: true }).click();
+    await page.getByLabel('Or paste records').fill('{"synthetic":true}');
+    await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    const drawer = page.getByRole('dialog'), review = drawer.getByLabel('Review department', { exact: true });
+    await review.selectOption('correct');
+    await expect(drawer.getByText('Saved', { exact: true })).toBeVisible();
+    // An independent reviewer may replace the label before an unrelated
+    // import completes and refreshes this still-open detail snapshot.
+    state.record.labels = [{ key: 'department', label: refreshedLabel }];
+    finishImport();
+    await expect.poll(() => refreshed).toBe(1);
+    await expect(review).toHaveValue(refreshedLabel);
+    await expect(drawer.locator('.review-status')).toHaveText(refreshedLabel === 'correct' ? 'Saved' : '');
+    expect(writes).toBe(1);
+  });
+}
 
 test('imported actions and unknown transport facts stay distinct', async ({ page }) => {
   const state = await harness(page);

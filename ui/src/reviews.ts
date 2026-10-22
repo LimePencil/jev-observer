@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import type { Label } from './types';
 
-export type ReviewState = { pending: Label | null; error: string; saved: boolean };
+export type ReviewState = { pending: Label | null; error: string; savedLabel: Label | null };
 type SavedHandler = (key: string, label: Label, startedRevision: number) => void;
 
 // Writes belong to the workspace, not to a drawer that can close while saving.
@@ -44,14 +44,14 @@ export function useReviews(activeRequest: string | null, historyRevision: number
         return next;
       });
     }
-    status({ pending: label, error: '', saved: false });
+    status({ pending: label, error: '', savedLabel: null });
     try {
       await api(`/api/requests/${encodeURIComponent(id)}/label`, { method: 'POST', body: JSON.stringify({ key, label }) });
       if (current.current.activeRequest === id && handler.current?.id === id) handler.current.saved(key, label, startedRevision);
       current.current.changed();
-      status({ pending: null, error: '', saved: true });
+      status({ pending: null, error: '', savedLabel: label });
     } catch (error) {
-      status({ pending: null, error: error instanceof Error ? error.message : 'Could not save label', saved: false });
+      status({ pending: null, error: error instanceof Error ? error.message : 'Could not save label', savedLabel: null });
     } finally {
       pending.delete(key);
       if (!pending.size) inFlight.current.delete(id);

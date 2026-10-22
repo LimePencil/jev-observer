@@ -15,7 +15,7 @@ import { Definition, Distribution, Empty, ErrorNotice, KindBadge, LazyDetails, L
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
 const DECISIONS_PER_PAGE = 50;
-const emptyReview: ReviewState = { pending: null, error: '', saved: false };
+const emptyReview: ReviewState = { pending: null, error: '', savedLabel: null };
 type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; credentials: CredentialController; imports: ImportController; deletion: HistoryDeletionController; historyRevision: number; filterGroup: (id: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
@@ -70,8 +70,10 @@ function RequestDetails({ id, setPanel, controller, historyRevision }: { id: str
   </>;
 }
 
-function AnswerDetail({ answer, record, onGroup, review: { pending, error, saved }, onReview }: { answer: Answer; record: RequestRecord; onGroup: () => void; review: ReviewState; onReview: (label: Label) => void }) {
+function AnswerDetail({ answer, record, onGroup, review: { pending, error, savedLabel }, onReview }: { answer: Answer; record: RequestRecord; onGroup: () => void; review: ReviewState; onReview: (label: Label) => void }) {
   const currentLabel = [...(record.labels ?? [])].reverse().find(item => (item.key ?? item.answer_key) === answer.key)?.label;
+  // A successful response may belong to a row deleted before it arrived.
+  const saved = savedLabel !== null && savedLabel === currentLabel;
   const probabilities = Object.entries(answer.probabilities ?? {}).map(([key, value]) => ({
     key, value: typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null,
   })).sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
