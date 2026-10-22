@@ -154,8 +154,10 @@ fn input_opt_out_precedes_live_and_raw_capture_key_redaction() {
 }
 
 fn receipt() -> Value {
-    let mut receipt: Value =
-        serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+    let mut receipt: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/model/jevrouter-receipt.json"
+    ))
+    .unwrap();
     for key in [
         "routing_input",
         "request",

@@ -17,7 +17,10 @@ fn observer() -> Value {
 }
 
 fn receipt() -> Value {
-    serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap()
+    serde_json::from_str(include_str!(
+        "../../../fixtures/model/jevrouter-receipt.json"
+    ))
+    .unwrap()
 }
 
 fn rejected(text: &str, format: &str, options: &NormalizeOptions) {
