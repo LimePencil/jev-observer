@@ -1270,6 +1270,21 @@ struct ImportBody {
     format: String,
 }
 
+fn import_failure(status: StatusCode) -> LocalError {
+    LocalError(
+        status,
+        match status {
+            StatusCode::BAD_REQUEST => {
+                "Import could not be parsed; check the format and record structure"
+            }
+            StatusCode::PAYLOAD_TOO_LARGE => {
+                "Import exceeds a size or normalization limit. Use smaller records or batches."
+            }
+            _ => "The local import could not be saved",
+        },
+    )
+}
+
 async fn import(State(state): State<AppState>, request: Request) -> Response {
     let Ok(permit) = state.import_slots.clone().try_acquire_owned() else {
         return error(
@@ -1310,40 +1325,55 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
     let options = state.config.normalize_options();
     // Hold the permit inside the blocking task, even if its HTTP caller cancels.
     let result =
-        tokio::task::spawn_blocking(move || -> std::result::Result<(usize, usize), StatusCode> {
+        tokio::task::spawn_blocking(move || -> std::result::Result<(usize, usize), LocalError> {
             let _permit = permit;
-            let body: ImportBody =
-                serde_json::from_slice(&bytes).map_err(|_| StatusCode::BAD_REQUEST)?;
+            let body: ImportBody = serde_json::from_slice(&bytes)
+                .map_err(|_| import_failure(StatusCode::BAD_REQUEST))?;
             drop(bytes);
             if body.text.len() > MAX_IMPORT_BYTES {
-                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                return Err(import_failure(StatusCode::PAYLOAD_TOO_LARGE));
             }
             if !matches!(
                 body.format.as_str(),
                 "observer-jsonl" | "jevrouter-receipt" | "systemone-capture"
             ) {
-                return Err(StatusCode::BAD_REQUEST);
+                return Err(import_failure(StatusCode::BAD_REQUEST));
             }
             let records =
                 model::import_records(&body.text, &body.format, &options).map_err(|error| {
                     if error.is::<model::ImportLimitError>() {
-                        StatusCode::PAYLOAD_TOO_LARGE
+                        import_failure(StatusCode::PAYLOAD_TOO_LARGE)
+                    } else if error.is::<model::RedactionCollisionError>() {
+                        LocalError(
+                            StatusCode::BAD_REQUEST,
+                            model::IMPORT_REDACTION_COLLISION_MESSAGE,
+                        )
+                    } else if error.is::<model::ImportIdentityError>() {
+                        LocalError(
+                            StatusCode::BAD_REQUEST,
+                            model::IMPORT_IDENTITY_ERROR_MESSAGE,
+                        )
+                    } else if error.is::<model::RedactionValidationError>() {
+                        LocalError(
+                            StatusCode::BAD_REQUEST,
+                            model::IMPORT_REDACTION_VALIDATION_MESSAGE,
+                        )
                     } else {
-                        StatusCode::BAD_REQUEST
+                        import_failure(StatusCode::BAD_REQUEST)
                     }
                 })?;
             if records.len() > 10_000 {
-                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                return Err(import_failure(StatusCode::PAYLOAD_TOO_LARGE));
             }
             let total = records.len();
             let mut connection = state
                 .store
                 .writer_connection()
-                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+                .map_err(|_| import_failure(StatusCode::SERVICE_UNAVAILABLE))?;
             let imported = state
                 .store
                 .write_batch(&mut connection, &records)
-                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+                .map_err(|_| import_failure(StatusCode::SERVICE_UNAVAILABLE))?;
             Ok((imported, total.saturating_sub(imported)))
         })
         .await;
@@ -1351,18 +1381,8 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
         Ok(Ok((imported, duplicates))) => {
             Json(json!({"imported": imported, "duplicates": duplicates})).into_response()
         }
-        Ok(Err(StatusCode::BAD_REQUEST)) => error(
-            StatusCode::BAD_REQUEST,
-            "Import could not be parsed; check the format and record structure",
-        ),
-        Ok(Err(StatusCode::PAYLOAD_TOO_LARGE)) => error(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "Import exceeds a size or normalization limit. Use smaller records or batches.",
-        ),
-        _ => error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "The local import could not be saved",
-        ),
+        Ok(Err(failure)) => failure.into_response(),
+        Err(_) => import_failure(StatusCode::SERVICE_UNAVAILABLE).into_response(),
     }
 }
 
@@ -1840,6 +1860,59 @@ mod tests {
             "capture not persisted: {}",
             fixture.state.collector.health()
         );
+    }
+
+    #[tokio::test]
+    async fn input_opt_out_key_redaction_preserves_exact_forwarded_bytes() {
+        const REQUEST: &str = "{ \"state\":\"PRIVATE_REQUEST_QZX\", \"questions\":{}, \"extension\":{\"state\":\"ORDINARY_REQUEST_QZX\"} }\n";
+        const RESPONSE: &str = "{ \"state\":\"PRIVATE_RESPONSE_QZX\", \"original_metadata\":{\"state\":\"PRIVATE_LEGACY_QZX\"}, \"extension\":{\"state\":\"ORDINARY_RESPONSE_QZX\"} }\n";
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(|headers: HeaderMap, bytes: axum::body::Bytes| async move {
+                assert_eq!(headers[header::AUTHORIZATION], "Bearer state");
+                assert_eq!(bytes.as_ref(), REQUEST.as_bytes());
+                RESPONSE
+            }),
+        ))
+        .await;
+        for capture_state in [false, true] {
+            let fixture = fixture_with_config(&url, 8192, false, |config| {
+                config.capture_state = capture_state
+            });
+            let mut request = native(REQUEST);
+            request.headers_mut().insert(
+                header::AUTHORIZATION,
+                HeaderValue::from_static("Bearer state"),
+            );
+            let response = router(fixture.state.clone())
+                .oneshot(request)
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 8192).await.unwrap().as_ref(),
+                RESPONSE.as_bytes()
+            );
+            let record = saved(&fixture).await;
+            let text = record.to_string();
+            for marker in [
+                "PRIVATE_REQUEST_QZX",
+                "PRIVATE_RESPONSE_QZX",
+                "PRIVATE_LEGACY_QZX",
+            ] {
+                assert_eq!(
+                    text.contains(marker),
+                    capture_state,
+                    "input capture preference bypassed"
+                );
+            }
+            assert!(text.contains("ORDINARY_REQUEST_QZX"));
+            assert!(text.contains("ORDINARY_RESPONSE_QZX"));
+            assert_eq!(record["capture_complete"], true);
+            fixture.state.collector.shutdown().await;
+        }
+        task.abort();
+        let _ = task.await;
     }
 
     #[test]
@@ -3036,6 +3109,573 @@ mod tests {
             }
         }
         fixture.state.collector.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn text_shape_redaction_keeps_wire_bytes_and_records_a_minimal_live_gap() {
+        for (field, request_body) in [
+            ("instructions", br#"{"questions":{"q":{"type":"noul","instructions":12}}}"#.as_slice()),
+            ("true", br#"{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"true":12}}}}"#.as_slice()),
+        ] {
+            let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.2}}}"#;
+            let (url, task) = mock(Router::new().route(
+                "/v1/systemone",
+                post(move |request: Request| async move {
+                    assert_eq!(request.headers()[header::AUTHORIZATION], "Bearer test-secret");
+                    assert_eq!(to_bytes(request.into_body(), 4096).await.unwrap().as_ref(), request_body);
+                    response_body.as_slice()
+                }),
+            )).await;
+            let fixture = fixture_with_config(&url, 4096, false, |config| {
+                config.provider = Some("typesafe".into());
+                config.redact_keys.push(field.into());
+            });
+            let response = router(fixture.state.clone()).oneshot(native(request_body)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(to_bytes(response.into_body(), 4096).await.unwrap().as_ref(), response_body);
+            fixture.state.collector.shutdown().await;
+            task.abort();
+            let record = saved(&fixture).await;
+            assert_eq!(record["capture_complete"], false);
+            assert_eq!(record["answers"], json!([]));
+            assert_eq!(record["normalization_error"], "Credential redaction changed answer validation information; request and response content were not retained");
+            assert_eq!(record["request_extra"], json!({}));
+            assert_eq!(record["response_extra"], json!({}));
+            let health = fixture.state.collector.health();
+            for field in ["forwarded", "captured", "persisted", "truncated"] {
+                assert_eq!(health[field], 1, "{field}");
+            }
+            for field in ["dropped", "write_failures", "queue_depth", "active_captures"] {
+                assert_eq!(health[field], 0, "{field}");
+            }
+            assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn text_shape_redaction_imports_are_atomic_and_recoverable() {
+        let raw = json!({"id":"good-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"true":"Allowed"}}}},
+            "response":{"answers":{"q":{"type":"noul","noul":0.2}}}});
+        let observer =
+            model::import_records(&raw.to_string(), "systemone-capture", &Default::default())
+                .unwrap()
+                .remove(0);
+        for field in ["instructions", "true"] {
+            for (format, good) in [("systemone-capture", &raw), ("observer-jsonl", &observer)] {
+                let fixture =
+                    fixture_with_config("http://127.0.0.1:1/v1/systemone", 4096, true, |config| {
+                        config.redact_keys.push(field.into());
+                    });
+                let mut bad = good.clone();
+                let definition = if format == "systemone-capture" {
+                    &mut bad["request"]["questions"]["q"]
+                } else {
+                    &mut bad["answers"][0]["definition"]
+                };
+                if field == "instructions" {
+                    definition[field] = json!(12);
+                } else {
+                    definition["criteria"][field] = json!(12);
+                }
+                for (text, expected) in [
+                    (format!("{good}\n{bad}"), None),
+                    (good.to_string(), Some(json!({"imported":1,"duplicates":0}))),
+                    (good.to_string(), Some(json!({"imported":0,"duplicates":1}))),
+                ] {
+                    let request = Request::builder()
+                        .method("POST")
+                        .uri("/api/import")
+                        .header("host", "127.0.0.1:8765")
+                        .header("x-observer-request", "1")
+                        .header("content-type", "application/json")
+                        .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                        .unwrap();
+                    let response = router(fixture.state.clone())
+                        .oneshot(request)
+                        .await
+                        .unwrap();
+                    assert_eq!(
+                        response.status(),
+                        if expected.is_some() {
+                            StatusCode::OK
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        }
+                    );
+                    let body: Value = serde_json::from_slice(
+                        &to_bytes(response.into_body(), 1024).await.unwrap(),
+                    )
+                    .unwrap();
+                    if let Some(expected) = expected {
+                        assert_eq!(body, expected);
+                    } else {
+                        assert_eq!(
+                            body,
+                            json!({"error":model::IMPORT_REDACTION_VALIDATION_MESSAGE})
+                        );
+                        assert!(fixture.state.store.is_empty().unwrap());
+                    }
+                    assert_eq!(fixture.state.import_slots.available_permits(), 1);
+                }
+                fixture.state.collector.shutdown().await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn semantic_redaction_keeps_wire_bytes_but_records_an_incomplete_capture() {
+        let request_body = br#"{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"invalid":"Wrong"}}},"credentials":["criteria"]}"#;
+        let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.2}}}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        let response = router(fixture.state.clone())
+            .oneshot(native(request_body.as_slice()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+            response_body
+        );
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let record = saved(&fixture).await;
+        assert_eq!(record["capture_complete"], false);
+        assert_eq!(record["answers"], json!([]));
+        assert_eq!(
+            record["normalization_error"],
+            "Credential redaction changed answer validation information; request and response content were not retained"
+        );
+        assert!(!record.to_string().contains("Wrong"));
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted", "truncated"] {
+            assert_eq!(health[field], 1, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn semantic_redaction_import_rejection_is_specific_atomic_and_recoverable() {
+        let good = json!({"id":"fixture-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"invalid":"Wrong"}}}},
+            "response":{"answers":{"q":{"type":"noul","noul":0.2}}}});
+        let observer =
+            model::import_records(&good.to_string(), "systemone-capture", &Default::default())
+                .unwrap()
+                .remove(0);
+        for (format, good) in [("systemone-capture", good), ("observer-jsonl", observer)] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 4096, true);
+            let mut bad = good.clone();
+            bad[if format == "systemone-capture" {
+                "request"
+            } else {
+                "request_extra"
+            }]["credentials"] = json!(["criteria"]);
+            for (text, success) in [(format!("{good}\n{bad}"), false), (good.to_string(), true)] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    if success {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::BAD_REQUEST
+                    }
+                );
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if success {
+                    assert_eq!(body, json!({"imported":1,"duplicates":0}));
+                } else {
+                    assert_eq!(
+                        body,
+                        json!({"error":model::IMPORT_REDACTION_VALIDATION_MESSAGE})
+                    );
+                    assert!(fixture.state.store.is_empty().unwrap());
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn redacted_key_collisions_preserve_wire_bytes_and_report_live_gaps() {
+        let request_body = br#"{"questions":{"audit-X":{"type":"noul","instructions":"First"},"audit-Y":{"type":"noul","instructions":"Second"}},"credentials":["X","Y"]}"#;
+        let response_body = br#"{"answers":{"audit-Y":{"type":"noul","noul":0.8},"audit-X":{"type":"noul","noul":0.2}}}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(
+                    request.headers()[header::AUTHORIZATION],
+                    "Bearer test-secret"
+                );
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        for _ in 0..2 {
+            let response = router(fixture.state.clone())
+                .oneshot(native(request_body.as_slice()))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+                response_body
+            );
+        }
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted", "truncated"] {
+            assert_eq!(health[field], 2, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+        let output = fixture
+            .state
+            .store
+            .export(
+                &Filter {
+                    window: Some("all".into()),
+                    ..Default::default()
+                },
+                "jsonl",
+            )
+            .unwrap();
+        let records = output
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0]["id"], records[1]["id"]);
+        for record in records {
+            assert_eq!(record["capture_complete"], false);
+            assert_eq!(record["answers"], json!([]));
+            assert_eq!(
+                record["normalization_error"],
+                "Credential redaction caused an identifier or object key collision; request and response content were not retained"
+            );
+            assert!(!record.to_string().contains("audit-"));
+        }
+    }
+
+    #[tokio::test]
+    async fn semantic_identifier_collisions_preserve_wire_bytes_and_report_live_gaps() {
+        let request_body = br#"{"questions":{"q":{"type":"choice","instructions":"Choose","criteria":{"option-X":null}}},"credentials":["X","Y"]}"#;
+        let response_body = br#"{"answers":{"q":{"type":"choice","choice":"option-Y","probabilities":{"option-Y":1},"confidence":0.7}}}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(
+                    request.headers()[header::AUTHORIZATION],
+                    "Bearer test-secret"
+                );
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        for _ in 0..2 {
+            let response = router(fixture.state.clone())
+                .oneshot(native(request_body.as_slice()))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+                response_body
+            );
+        }
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted", "truncated"] {
+            assert_eq!(health[field], 2, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+        let output = fixture
+            .state
+            .store
+            .export(
+                &Filter {
+                    window: Some("all".into()),
+                    ..Default::default()
+                },
+                "jsonl",
+            )
+            .unwrap();
+        let records = output
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0]["id"], records[1]["id"]);
+        for record in records {
+            assert_eq!(record["capture_complete"], false);
+            assert_eq!(record["answers"], json!([]));
+            assert_eq!(
+                record["normalization_error"],
+                "Credential redaction caused an identifier or object key collision; request and response content were not retained"
+            );
+            assert!(!record.to_string().contains("option-"));
+        }
+    }
+
+    #[tokio::test]
+    async fn redacted_key_collision_imports_are_atomic_and_release_the_slot() {
+        let raw = json!({"id":"good-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{}}, "response":{"answers":{}}});
+        let observer = model::import_records(
+            &raw.to_string(),
+            "systemone-capture",
+            &model::NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        let receipt: Value =
+            serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+        for (format, good) in [
+            ("systemone-capture", raw),
+            ("observer-jsonl", observer),
+            ("jevrouter-receipt", receipt),
+        ] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 4096, true);
+            let mut bad = good.clone();
+            let extra = match format {
+                "systemone-capture" => &mut bad["request"],
+                "observer-jsonl" => {
+                    bad["request_extra"] = json!({});
+                    &mut bad["request_extra"]
+                }
+                _ => &mut bad["raw_jev"],
+            };
+            extra["credentials"] = json!(["X", "Y"]);
+            extra["extension"] = json!({"audit-X":1,"audit-Y":2});
+            let valid_text = good.to_string();
+            let text = format!("{good}\n{bad}\n{good}");
+            for (text, expected, counts) in [
+                (text, StatusCode::BAD_REQUEST, None),
+                (valid_text.clone(), StatusCode::OK, Some((1, 0))),
+                (valid_text, StatusCode::OK, Some((0, 1))),
+            ] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), expected, "{format}");
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if let Some((imported, duplicates)) = counts {
+                    assert_eq!(body, json!({"imported":imported,"duplicates":duplicates}));
+                } else {
+                    assert!(fixture.state.store.is_empty().unwrap());
+                    assert_eq!(
+                        body,
+                        json!({"error":"Import rejected because credential redaction makes distinct identifiers or object keys identical."})
+                    );
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn semantic_identifier_imports_are_atomic_and_release_the_slot() {
+        let raw = json!({"id":"good-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{"q":{"type":"choice","instructions":"Choose","criteria":{"option-X":null}}}},
+            "response":{"answers":{"q":{"type":"choice","choice":"option-Y","probabilities":{"option-Y":1},"confidence":0.7}}}});
+        let observer = model::import_records(
+            &raw.to_string(),
+            "systemone-capture",
+            &model::NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        assert_eq!(observer["answers"][0]["valid"], false);
+        for (format, good) in [("systemone-capture", raw), ("observer-jsonl", observer)] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 4096, true);
+            let mut bad = good.clone();
+            let extra = if format == "systemone-capture" {
+                &mut bad["request"]
+            } else {
+                &mut bad["request_extra"]
+            };
+            extra["credentials"] = json!(["X", "Y"]);
+            let valid_text = good.to_string();
+            for (text, expected, counts) in [
+                (
+                    format!("{good}\n{bad}\n{good}"),
+                    StatusCode::BAD_REQUEST,
+                    None,
+                ),
+                (valid_text.clone(), StatusCode::OK, Some((1, 0))),
+                (valid_text, StatusCode::OK, Some((0, 1))),
+            ] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), expected, "{format}");
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if let Some((imported, duplicates)) = counts {
+                    assert_eq!(body, json!({"imported":imported,"duplicates":duplicates}));
+                } else {
+                    assert!(fixture.state.store.is_empty().unwrap());
+                    assert_eq!(
+                        body,
+                        json!({"error":"Import rejected because credential redaction makes distinct identifiers or object keys identical."})
+                    );
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn import_identity_redaction_is_atomic_and_releases_the_import_slot() {
+        for format in ["observer-jsonl", "jevrouter-receipt"] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+            let first = if format == "observer-jsonl" {
+                model::sample_records().remove(0)
+            } else {
+                serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json"))
+                    .unwrap()
+            };
+            let mut affected = first.clone();
+            let key = if format == "observer-jsonl" {
+                "id"
+            } else {
+                "decision_id"
+            };
+            affected[key] = json!("private-identity-X");
+            affected["credentials"] = json!("X");
+            let batch = format!("{}\n{}", first, affected);
+            for (text, counts) in [
+                (batch.clone(), None),
+                (batch, None),
+                (first.to_string(), Some((1, 0))),
+                (first.to_string(), Some((0, 1))),
+            ] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"format": format, "text": text}).to_string(),
+                    ))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                let expected_status = if counts.is_some() {
+                    StatusCode::OK
+                } else {
+                    StatusCode::BAD_REQUEST
+                };
+                assert_eq!(response.status(), expected_status, "{format}");
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if let Some((imported, duplicates)) = counts {
+                    assert_eq!(
+                        body,
+                        json!({"imported": imported, "duplicates": duplicates})
+                    );
+                } else {
+                    assert_eq!(
+                        body,
+                        json!({"error": "Import rejected because privacy filtering changes an event identity. Use stable, non-sensitive IDs and source names."})
+                    );
+                    assert!(fixture.state.store.is_empty().unwrap());
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
     }
 
     #[tokio::test]
