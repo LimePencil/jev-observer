@@ -48,7 +48,21 @@ export default function App() {
   }, [snapshot, frozen, displayed?.scope]);
   useEffect(() => {
     if (!pageNavigation) return;
-    if (pageNavigation.scope !== scope) { setPageNavigation(null); return; }
+    if (pageNavigation.scope !== scope) {
+      const previous = readFilters(pageNavigation.returnScope);
+      const target = pageNavigation.filters;
+      const requestNavigation = (target.request_cursor ?? '') !== (previous.request_cursor ?? '');
+      if (requestNavigation && parentScope(pageNavigation.scope) === parentScope(scope)
+        && (target.request_cursor ?? '') === (filters.request_cursor ?? '')
+        && (target.group_search ?? '') !== (filters.group_search ?? '') && !filters.group_cursor) {
+        // Group search changes only the group page. Carry the pending request
+        // push/pop and its retry/rollback into that new scope together.
+        setPageNavigation({ ...pageNavigation, scope, filters, groupPages: [],
+          returnScope: query({ ...filters, request_cursor: previous.request_cursor ?? '', group_cursor: '' }),
+        });
+      } else setPageNavigation(null);
+      return;
+    }
     if (snapshot?.scope === scope) {
       setRequestPages(pageNavigation.requestPages); setGroupPages(pageNavigation.groupPages);
       setPageNavigation(null);
@@ -60,7 +74,7 @@ export default function App() {
       const previous = readFilters(pageNavigation.returnScope);
       setFilters(value => ({ ...value, request_cursor: previous.request_cursor ?? '', group_cursor: previous.group_cursor ?? '' }));
     }
-  }, [pageNavigation, scope, snapshot, error, errorRequestOrder]);
+  }, [pageNavigation, scope, snapshot, error, errorRequestOrder, filters]);
   useEffect(() => {
     if (pageFailure && pageFailure.navigation.returnScope !== scope) setPageFailure(null);
   }, [scope, pageFailure]);
