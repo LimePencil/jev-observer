@@ -28,6 +28,7 @@ class DiagnosticsTests(unittest.TestCase):
             def start(self, binary, extra):
                 self.origin = 'http://127.0.0.1:1'
                 self.token = CANARY
+                self.token_path = Path(str(self.database) + '.token')
                 self.process = SimpleNamespace(pid=os.getpid())
 
             def stop(self):
