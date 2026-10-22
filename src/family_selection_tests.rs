@@ -234,14 +234,24 @@ fn family_selection_bounds_actual_queries_for_shared_and_unrelated_groups() {
 
 #[test]
 fn family_selection_preserves_distinct_parents_order_bins_filters_and_pages() {
+    let mut selections = family_semantics(false);
+    selections.extend(family_semantics(true));
+    // Collect all complete-response evidence before checking path selection,
+    // so the deliberately disabled fast path remains a semantic oracle.
+    for (name, selected, expected) in selections {
+        assert_eq!(selected, expected, "{name}");
+    }
+}
+
+fn family_semantics(shared_groups: bool) -> Vec<(String, bool, bool)> {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(&dir.path().join("family-semantics.sqlite"), 7, 1000).unwrap();
     let mut records = Vec::new();
     for parent in 0..3 {
         let mut answers = Vec::new();
-        for family in 0..140 {
+        for family in 0..if shared_groups { 110 } else { 140 } {
             let mut a = answer(
-                &format!("g-{family:03}-{parent}"),
+                &format!("g-{family:03}-{}", if shared_groups { 0 } else { parent }),
                 &format!("q-{family:03}"),
                 Some(&format!("family-{family:03}")),
             );
@@ -388,7 +398,8 @@ fn family_selection_preserves_distinct_parents_order_bins_filters_and_pages() {
     let mut selections = Vec::new();
     for (name, scope) in cases {
         let (result, work, _) = measured(&store, &scope);
-        evidence(name, &result, &work);
+        let prefix = if shared_groups { "shared-" } else { "" };
+        evidence(&format!("{prefix}{name}"), &result, &work);
         if name == "all" {
             assert_eq!(result["summary"]["request_count"], 3);
             assert_eq!(result["groups"].as_array().unwrap().len(), 100);
@@ -397,14 +408,22 @@ fn family_selection_preserves_distinct_parents_order_bins_filters_and_pages() {
                 ..scope.clone()
             };
             let (next, next_work, _) = measured(&store, &next);
-            evidence("next-page", &next, &next_work);
+            evidence(&format!("{prefix}next-page"), &next, &next_work);
             let first: std::collections::HashSet<_> = result["groups"]
                 .as_array()
                 .unwrap()
                 .iter()
                 .map(|g| text(g, "id"))
                 .collect();
-            assert_eq!(next["groups"].as_array().unwrap().len(), 42);
+            assert_eq!(
+                next["groups"].as_array().unwrap().len(),
+                if shared_groups { 12 } else { 42 }
+            );
+            selections.push((
+                format!("{prefix}next-page"),
+                next_work.selected,
+                shared_groups,
+            ));
             assert!(next["group_next_cursor"].is_null());
             assert!(
                 next["groups"]
@@ -428,13 +447,11 @@ fn family_selection_preserves_distinct_parents_order_bins_filters_and_pages() {
             assert_eq!(result["summary"]["request_count"], 0);
             assert_eq!(result["groups"], json!([]));
         }
-        selections.push((name, work.selected));
+        let expected =
+            name != "empty" && (shared_groups || matches!(name, "only-strict" | "legacy-text"));
+        selections.push((format!("{prefix}{name}"), work.selected, expected));
     }
-    for (name, selected) in selections {
-        if name != "empty" {
-            assert!(selected, "{name}");
-        }
-    }
+    selections
 }
 
 fn selected_parents(ids: impl IntoIterator<Item = String>) -> HashMap<String, i64> {
@@ -496,6 +513,29 @@ fn family_selection_keeps_dense_oversized_and_legacy_fallbacks() {
         .write_batch(&mut dense.writer_connection().unwrap(), &records[..4])
         .unwrap();
     assert_eq!(selection(&dense, &selected_parents(["r-0".into()])), "");
+    for count in [128, 129] {
+        let id = format!("groups-{count}");
+        let answers = (0..count)
+            .map(|index| {
+                answer(
+                    &format!("bounded-group-{index}"),
+                    &format!("q-{index}"),
+                    Some(&format!("bounded-family-{index}")),
+                )
+            })
+            .collect();
+        store
+            .write_batch(&mut writer, &[record(&id, &id, answers)])
+            .unwrap();
+        assert_eq!(
+            selection(&store, &selected_parents([id])),
+            if count == 128 {
+                FAMILY_PAIR_SELECTION
+            } else {
+                ""
+            }
+        );
+    }
     let boundary: Vec<_> = (0..4096)
         .map(|index| answer("shared", &format!("k-{index}"), Some("family")))
         .collect();

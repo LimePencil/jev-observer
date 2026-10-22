@@ -1633,7 +1633,7 @@ impl Store {
             return Ok("");
         }
         let mut statement = conn.prepare(FAMILY_PAIR_QUERY)?;
-        let mut pairs = Vec::new();
+        let mut pairs: HashMap<String, Vec<&String>> = HashMap::new();
         let mut visited = 0;
         let mut copied_bytes = 0;
         for request in parents.keys() {
@@ -1650,13 +1650,22 @@ impl Store {
                     Ok(None) => continue,
                     Err(_) => return Ok(""),
                 };
+                // Sparse parents can still span many unrelated definitions.
+                // Fall back before owning the next group or building TEMP data.
+                if pairs.len() == 128 && !pairs.contains_key(group) {
+                    return Ok("");
+                }
                 for bytes in [group.len(), request.len()] {
                     if bytes > 1024 * 1024 - copied_bytes {
                         return Ok("");
                     }
                     copied_bytes += bytes;
                 }
-                pairs.push((group.to_owned(), request));
+                if let Some(requests) = pairs.get_mut(group) {
+                    requests.push(request);
+                } else {
+                    pairs.insert(group.to_owned(), vec![request]);
+                }
             }
         }
         // Readers keep temp_store=MEMORY. Build the bounded selection only
@@ -1665,8 +1674,10 @@ impl Store {
         let mut insert = conn.prepare(
             "INSERT OR IGNORE INTO temp.dashboard_family_pairs(group_id,request_id) VALUES(?,?)",
         )?;
-        for (group, request) in pairs {
-            insert.execute(params![group, request])?;
+        for (group, requests) in pairs {
+            for request in requests {
+                insert.execute(params![group, request])?;
+            }
         }
         Ok(FAMILY_PAIR_SELECTION)
     }
