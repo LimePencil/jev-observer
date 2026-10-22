@@ -57,6 +57,8 @@ Native forwarding covers `POST /v1/systemone`; the default destination is `https
 
 Observer allows **300 seconds for the entire upstream exchange**, including request upload, inference and response-body transfer. Change this with `--upstream-timeout-secs SECONDS` (1–86,400); connection establishment is still limited to 15 seconds. There is no shorter read timeout while waiting for inference. A deadline reached before response headers returns HTTP 504; a deadline reached during the response body ends the stream and records an incomplete transfer. The SDK's own timeout also applies.
 
+The deadline continues while a slow client stops reading. Observer drops unfinished upstream work and releases its capture reservation at the deadline, preserving a visible incomplete observation. Reads remain demand-driven without a separate response buffer. A response whose declared body has already been fully observed is not changed into a timeout while waiting for the client; a blocked downstream socket can remain open until the client reads or disconnects.
+
 ## Jev through OpenRouter
 
 After setting your saved `JEV_OBSERVER_DB_KEY`, start Observer with OpenRouter's fixed System One endpoint:
