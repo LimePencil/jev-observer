@@ -1,5 +1,30 @@
 # Local performance measurements
 
+## Bounded credential redaction
+
+Measured October 22, 2026 using sequential authenticated loopback imports on a shared Linux x64 host with four logical CPUs. The [baseline](../reports/benchmarks/credential-redaction-baseline.json) is the saved release executable from commit `5501c265f53c06462f7785a6ef1f277d094427d1`; the [candidate](../reports/benchmarks/credential-redaction-bounded.json) adds bounded secret matching. Each report identifies the executable and harness by SHA-256. All input was synthetic, and no provider requests were made.
+
+Each successful fixture contains the same number of distinct credentials and unrelated retained strings. The previous matcher examined every secret for every string. The existence-only prefilter now skips exact replacement when a string contains no secret.
+
+| Secrets / retained strings | Input bytes | Baseline import | Bounded import |
+|---|---:|---:|---:|
+| 1,000 / 1,000 | 54,291 | 87.91 ms | 8.47 ms |
+| 3,000 / 3,000 | 162,291 | 860.96 ms | 13.82 ms |
+| 8,000 / 8,000 | 432,291 | 5,770.42 ms | 32.71 ms |
+
+Both executables stored all three ordinary fixtures with credentials redacted and every public string preserved exactly. A 424,334-byte fixture containing many positive matches exhausted the candidate's shared work allowance: it returned HTTP 413 in 456.99 ms and stored nothing; the baseline accepted it in 723.81 ms. A 2,097,454-byte fixture containing a credential above the pattern-byte limit likewise returned HTTP 413 with no stored record in 28.43 ms; the baseline accepted it in 194.94 ms. These rejection cases exercise deliberate resource limits, rather than malformed JSON.
+
+These are single diagnostic samples on a shared host, not throughput or percentile guarantees. Deterministic tests separately check work accounting, overlap and Unicode equivalence against the previous matcher, atomic import failure, and schema-valid incomplete live records. See [storage limits](storage.md) for the user-visible failure behavior.
+
+Reproduce with separate output files and the corresponding release executables:
+
+```bash
+python3 scripts/benchmark-redaction.py --binary target/release/jev-observer \
+  --output reports/benchmarks/credential-redaction-local.json
+```
+
+The script uses a temporary demo database, bounds each HTTP request, terminates and waits for its own process, and removes its temporary files. It records observations without enforcing a timing threshold.
+
 ## Encrypted 0.2.0 measurements
 
 Measured October 2, 2026 on a shared Linux ARM64 host with two Neoverse-N1 logical CPUs and 11.6 GiB RAM. The proxy, loopback mock and load generator shared the host with unrelated processes. Live history used SQLCipher with a temporary key; the harness checked that the database had no plaintext SQLite header. No provider inference or real credential was used.
