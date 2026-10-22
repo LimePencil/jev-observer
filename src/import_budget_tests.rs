@@ -53,6 +53,7 @@ fn final_output_depth_rejection_does_not_charge_the_batch() {
         limits: IMPORT_LIMITS,
         work: 0,
         normalized: 0,
+        redaction_remaining: REDACTION_LIMITS.work,
     };
     let mut budget = ImportRecordBudget {
         batch: &mut batch,
@@ -218,6 +219,7 @@ fn cumulative_work_and_actual_json_have_independent_limits() {
         limits: IMPORT_LIMITS,
         work: 0,
         normalized: 0,
+        redaction_remaining: REDACTION_LIMITS.work,
     };
     let mut budget = ImportRecordBudget {
         batch: &mut batch,
@@ -246,6 +248,7 @@ fn budget_arithmetic_never_wraps_or_partially_charges() {
         limits: IMPORT_LIMITS,
         work: 0,
         normalized: 0,
+        redaction_remaining: REDACTION_LIMITS.work,
     };
     let mut record = ImportRecordBudget {
         batch: &mut batch,

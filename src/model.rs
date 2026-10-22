@@ -8,14 +8,60 @@
 //! contain the original complete question definitions or necessarily timings.
 
 use crate::catalog::{self, Profile};
+use aho_corasick::{AhoCorasick, AhoCorasickKind, MatchKind};
 use anyhow::{Context, Result, bail, ensure};
+use serde::Serialize;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 const REDACTED: &str = "[REDACTED]";
+const INPUT_FIELDS: [&str; 5] = ["state", "images", "image", "audio", "video"];
 const MAX_IMPORT_RECORDS: usize = 10_000;
 const PROBABILITY_TOLERANCE: f64 = 0.0001;
+
+#[derive(Clone, Copy)]
+struct RedactionLimits {
+    patterns: usize,
+    pattern_bytes: usize,
+    work: usize,
+}
+
+const REDACTION_LIMITS: RedactionLimits = RedactionLimits {
+    patterns: 32_768,
+    pattern_bytes: 1024 * 1024,
+    work: 64 * 1024 * 1024,
+};
+
+const REDACTION_LIMIT_MESSAGE: &str =
+    "Credential redaction exceeded its work limit; request and response content were not retained";
+const REDACTION_COLLISION_MESSAGE: &str = "Credential redaction caused an identifier or object key collision; request and response content were not retained";
+pub const IMPORT_REDACTION_COLLISION_MESSAGE: &str = "Import rejected because credential redaction makes distinct identifiers or object keys identical.";
+
+#[derive(Debug)]
+pub struct RedactionCollisionError;
+
+impl std::fmt::Display for RedactionCollisionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(IMPORT_REDACTION_COLLISION_MESSAGE)
+    }
+}
+
+impl std::error::Error for RedactionCollisionError {}
+
+const REDACTION_VALIDATION_MESSAGE: &str = "Credential redaction changed answer validation information; request and response content were not retained";
+pub const IMPORT_REDACTION_VALIDATION_MESSAGE: &str = "Import rejected because credential redaction changes answer validation fields or the provider profile.";
+
+#[derive(Debug)]
+pub struct RedactionValidationError;
+
+impl std::fmt::Display for RedactionValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(IMPORT_REDACTION_VALIDATION_MESSAGE)
+    }
+}
+
+impl std::error::Error for RedactionValidationError {}
 
 #[derive(Debug)]
 pub struct ImportLimitError(&'static str);
@@ -96,6 +142,7 @@ struct ImportBudget {
     limits: ImportLimits,
     work: usize,
     normalized: usize,
+    redaction_remaining: usize,
 }
 
 struct ImportRecordBudget<'a> {
@@ -178,9 +225,66 @@ fn answer_keys<'a>(request: &'a Value, response: &'a Value) -> impl Iterator<Ite
     )
 }
 
+/// Identity provenance travels with a capture when its buffers move into the
+/// collector. Only these constructors can mark locally generated identities;
+/// caller-supplied UUIDs or fingerprint-looking strings remain untrusted.
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(transparent)]
+pub struct CaptureId {
+    value: String,
+    #[serde(skip)]
+    generated: bool,
+}
+
+impl CaptureId {
+    pub fn new_live() -> Self {
+        Self {
+            value: uuid::Uuid::now_v7().to_string(),
+            generated: true,
+        }
+    }
+
+    fn raw_import(source: &str, provider: &str, event_id: &str) -> Self {
+        Self {
+            value: fingerprint(
+                "capture_v1",
+                &json!([source, provider.to_ascii_lowercase(), event_id]),
+            ),
+            generated: true,
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.value
+    }
+}
+
+impl From<String> for CaptureId {
+    fn from(value: String) -> Self {
+        Self {
+            value,
+            generated: false,
+        }
+    }
+}
+
+impl From<&str> for CaptureId {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
+impl std::ops::Deref for CaptureId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Capture {
-    pub id: String,
+    pub id: CaptureId,
     pub timestamp: i64,
     pub source: String,
     pub task_version: Option<String>,
@@ -297,25 +401,99 @@ fn collect_secrets(value: &Value, options: &NormalizeOptions, found: &mut Vec<St
     }
 }
 
-fn scrub_string(value: &str, secrets: &[&str]) -> String {
-    if secrets.is_empty() {
-        return value.to_owned();
+struct SecretMatcher<'a> {
+    secrets: Vec<&'a str>,
+    prefilter: Option<AhoCorasick>,
+    remaining: usize,
+}
+
+impl<'a> SecretMatcher<'a> {
+    fn new(secrets: Vec<&'a str>, limits: RedactionLimits) -> Result<Self> {
+        ensure!(
+            secrets.len() <= limits.patterns,
+            ImportLimitError("redaction work")
+        );
+        let mut pattern_bytes = 0;
+        for secret in &secrets {
+            pattern_bytes = limited_add(
+                pattern_bytes,
+                secret.len(),
+                limits.pattern_bytes,
+                "redaction work",
+            )?;
+        }
+        let remaining = limits
+            .work
+            .checked_sub(pattern_bytes)
+            .ok_or(ImportLimitError("redaction work"))?;
+        // Only ask whether an original string contains any secret. Leftmost
+        // semantics avoid the standard automaton's inherited suffix-output
+        // lists; its replacement order must never replace our priority rules.
+        // Force an NFA so automatic DFA selection cannot multiply state space.
+        let prefilter = if secrets.len() > 4 {
+            Some(
+                AhoCorasick::builder()
+                    .kind(Some(AhoCorasickKind::NoncontiguousNFA))
+                    .match_kind(MatchKind::LeftmostFirst)
+                    .dense_depth(0)
+                    .build(&secrets)
+                    .map_err(|_| ImportLimitError("redaction work"))?,
+            )
+        } else {
+            None
+        };
+        Ok(Self {
+            secrets,
+            prefilter,
+            remaining,
+        })
+    }
+
+    fn charge(&mut self, work: usize) -> Result<()> {
+        self.remaining = self
+            .remaining
+            .checked_sub(work)
+            .ok_or(ImportLimitError("redaction work"))?;
+        Ok(())
+    }
+}
+
+fn scrub_string(value: &str, matcher: &mut SecretMatcher<'_>) -> Result<String> {
+    if matcher.secrets.is_empty() {
+        return Ok(value.to_owned());
+    }
+    matcher.charge(value.len())?;
+    if matcher
+        .prefilter
+        .as_ref()
+        .is_some_and(|prefilter| !prefilter.is_match(value))
+    {
+        return Ok(value.to_owned());
     }
     // Only original text participates in later matches. Replacing into a
     // String repeatedly can match the marker itself and amplify tiny inputs.
     let mut fragments = vec![Some(value)];
-    for &secret in secrets {
-        if secret.is_empty() {
+    for pattern in 0..matcher.secrets.len() {
+        matcher.charge(1)?;
+        let secret = matcher.secrets[pattern];
+        if secret.is_empty() || secret.len() > value.len() {
             continue;
         }
+        // Charge all fragment visits, including markers with no text, before
+        // reserving the next vector. A split string must not make later absent
+        // secrets perform unbounded marker-only scans.
+        matcher.charge(fragments.len())?;
         let mut next = Vec::with_capacity(fragments.len());
         for fragment in fragments {
             let Some(text) = fragment else {
                 next.push(None);
                 continue;
             };
+            matcher.charge(text.len())?;
+            matcher.charge(secret.len())?;
             let mut start = 0;
             for (index, _) in text.match_indices(secret) {
+                matcher.charge(REDACTED.len() + 2)?;
                 if start < index {
                     next.push(Some(&text[start..index]));
                 }
@@ -323,45 +501,279 @@ fn scrub_string(value: &str, secrets: &[&str]) -> String {
                 start = index + secret.len();
             }
             if start < text.len() {
+                matcher.charge(1)?;
                 next.push(Some(&text[start..]));
             }
         }
         fragments = next;
     }
-    fragments
+    Ok(fragments
         .into_iter()
         .map(|fragment| fragment.unwrap_or(REDACTED))
-        .collect()
+        .collect())
 }
 
-fn scrub(value: &Value, options: &NormalizeOptions, secrets: &[&str]) -> Value {
-    match value {
-        Value::String(s) => json!(scrub_string(s, secrets)),
-        Value::Array(values) => {
-            Value::Array(values.iter().map(|v| scrub(v, options, secrets)).collect())
+#[derive(Clone, Copy)]
+enum IdentifierNamespace<'a> {
+    Question,
+    Choice(&'a str),
+}
+
+#[derive(Default)]
+struct SemanticIdentifiers<'a> {
+    questions: BTreeMap<String, &'a str>,
+    choices: BTreeMap<&'a str, BTreeMap<String, &'a str>>,
+    count: usize,
+}
+
+impl<'a> SemanticIdentifiers<'a> {
+    fn observe(
+        &mut self,
+        namespace: IdentifierNamespace<'a>,
+        original: &'a str,
+        retained: &str,
+        matcher: &mut SecretMatcher<'_>,
+    ) -> Result<()> {
+        let question_bytes = match namespace {
+            IdentifierNamespace::Question => 0,
+            IdentifierNamespace::Choice(question) => question.len(),
+        };
+        // Bound both B-tree lookups/comparisons and retained-key storage before
+        // any owned allocation. Original identifiers borrow the input JSON;
+        // they never enter retained output or an error message.
+        let comparisons = (self.count.saturating_add(1).ilog2() as usize + 1) * 12;
+        let work = question_bytes
+            .saturating_add(retained.len())
+            .saturating_add(1)
+            .saturating_mul(comparisons)
+            .saturating_add(original.len())
+            .saturating_add(retained.len())
+            .saturating_add(128);
+        matcher.charge(work)?;
+        let identifiers = match namespace {
+            IdentifierNamespace::Question => &mut self.questions,
+            IdentifierNamespace::Choice(question) => self.choices.entry(question).or_default(),
+        };
+        if let Some(previous) = identifiers.get(retained) {
+            ensure!(*previous == original, RedactionCollisionError);
+        } else {
+            identifiers.insert(retained.to_owned(), original);
+            self.count += 1;
         }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+enum PrivacyContext<'a> {
+    #[default]
+    Other,
+    Request(&'a Profile),
+    Response(&'a Profile),
+    Questions(&'a Profile),
+    Answers(&'a Profile),
+    Definition(&'a Profile, Option<&'a str>),
+    Answer(&'a Profile, Option<&'a str>),
+    NoulCriteria(&'a Profile),
+    SemanticMap,
+    Observer(&'a Profile),
+    ObserverAnswers(&'a Profile),
+    ObserverAnswer(&'a Profile, Option<&'a str>),
+    ChoiceCriteria(&'a Profile, &'a str),
+    ChoiceProbabilities(&'a str),
+    Identifier(IdentifierNamespace<'a>),
+}
+
+impl<'a> PrivacyContext<'a> {
+    fn field(self, object: &Value, key: &'a str) -> Self {
+        match (self, key) {
+            (Self::Request(profile), "questions") => Self::Questions(profile),
+            (Self::Response(profile), "answers") => Self::Answers(profile),
+            (Self::Questions(profile), _) => Self::Definition(profile, Some(key)),
+            (Self::Answers(profile), _) => Self::Answer(profile, Some(key)),
+            (Self::Observer(profile), "answers") => Self::ObserverAnswers(profile),
+            (Self::ObserverAnswer(profile, question), "definition") => {
+                Self::Definition(profile, question)
+            }
+            (Self::ObserverAnswer(profile, question), "raw_answer") => {
+                Self::Answer(profile, question)
+            }
+            (Self::ObserverAnswer(_, _), "key") => Self::Identifier(IdentifierNamespace::Question),
+            (Self::Definition(profile, Some(question)), "criteria")
+                if object["type"] == "choice" =>
+            {
+                Self::ChoiceCriteria(profile, question)
+            }
+            (Self::Answer(_, Some(question)), "choice") if object["type"] == "choice" => {
+                Self::Identifier(IdentifierNamespace::Choice(question))
+            }
+            (Self::Answer(_, Some(question)), "probabilities") if object["type"] == "choice" => {
+                Self::ChoiceProbabilities(question)
+            }
+            (Self::ObserverAnswer(_, _), "probabilities")
+                if matches!(
+                    object["raw_answer"]["type"].as_str(),
+                    Some("choice" | "score")
+                ) =>
+            {
+                Self::SemanticMap
+            }
+            (Self::Definition(profile, _), "criteria") if object["type"] == "noul" => {
+                Self::NoulCriteria(profile)
+            }
+            (Self::Definition(_, _), "criteria") if object["type"] == "choice" => Self::SemanticMap,
+            (Self::Answer(_, _), "probabilities")
+                if matches!(object["type"].as_str(), Some("choice" | "score")) =>
+            {
+                Self::SemanticMap
+            }
+            (Self::Answer(_, _), "legend") if object["type"] == "score" => Self::SemanticMap,
+            _ => Self::Other,
+        }
+    }
+
+    fn semantic_keys(self) -> bool {
+        self.identifier_keys().is_some()
+            || matches!(self, Self::NoulCriteria(_) | Self::SemanticMap)
+    }
+
+    fn item(self, item: &'a Value) -> Self {
+        match self {
+            Self::ObserverAnswers(profile) => Self::ObserverAnswer(profile, item["key"].as_str()),
+            Self::ChoiceCriteria(profile, question) if profile.list_choice => {
+                Self::Identifier(IdentifierNamespace::Choice(question))
+            }
+            _ => Self::Other,
+        }
+    }
+
+    fn identifier_keys(self) -> Option<IdentifierNamespace<'a>> {
+        match self {
+            Self::Questions(_) | Self::Answers(_) => Some(IdentifierNamespace::Question),
+            Self::ChoiceCriteria(_, question) | Self::ChoiceProbabilities(question) => {
+                Some(IdentifierNamespace::Choice(question))
+            }
+            _ => None,
+        }
+    }
+
+    fn validates_optional_field(self, object: &Value, key: &str) -> bool {
+        match self {
+            Self::Definition(profile, _) => {
+                (key == "criteria" && object["type"] == "noul")
+                    || (key == "instructions" && profile.optional_instructions)
+            }
+            Self::Answer(profile, _) => {
+                (key == "confidence"
+                    && profile.optional_confidence
+                    && matches!(object["type"].as_str(), Some("choice" | "score")))
+                    || (key == "legend" && profile.optional_legend && object["type"] == "score")
+            }
+            _ => false,
+        }
+    }
+
+    fn repairs_text_shape(self, key: &str, original: &Value, retained: &Value) -> bool {
+        let (profile, optional_null) = match self {
+            Self::Definition(profile, _) if key == "instructions" => {
+                (profile, profile.optional_instructions)
+            }
+            Self::NoulCriteria(profile) if matches!(key, "true" | "false") => (profile, false),
+            _ => return false,
+        };
+        !accepts_text(original, profile, optional_null)
+            && accepts_text(retained, profile, optional_null)
+    }
+}
+
+fn scrub(
+    value: &Value,
+    options: &NormalizeOptions,
+    matcher: &mut SecretMatcher<'_>,
+) -> Result<Value> {
+    scrub_with_context(
+        value,
+        options,
+        matcher,
+        PrivacyContext::Other,
+        &mut SemanticIdentifiers::default(),
+    )
+}
+
+fn scrub_with_context<'a>(
+    value: &'a Value,
+    options: &NormalizeOptions,
+    matcher: &mut SecretMatcher<'_>,
+    context: PrivacyContext<'a>,
+    identifiers: &mut SemanticIdentifiers<'a>,
+) -> Result<Value> {
+    Ok(match value {
+        Value::String(original) => {
+            let retained = scrub_string(original, matcher)?;
+            if let PrivacyContext::Identifier(namespace) = context {
+                identifiers.observe(namespace, original, &retained, matcher)?;
+            }
+            json!(retained)
+        }
+        Value::Array(values) => Value::Array(
+            values
+                .iter()
+                .map(|v| scrub_with_context(v, options, matcher, context.item(v), identifiers))
+                .collect::<Result<_>>()?,
+        ),
         Value::Object(values) => {
             let mut out = Map::new();
-            for (key, value) in values {
-                // Headers are not part of the retained event format, even if
-                // embedded in provider extensions or imported records.
-                if matches!(
-                    key_name(key).as_str(),
-                    "headers" | "requestheaders" | "responseheaders"
-                ) {
+            for (key, original) in values {
+                // Direct semantic-map keys identify questions, options or
+                // levels. A label named "headers" is not a header container.
+                // Nested extensions still use the ordinary omission rule.
+                if !context.semantic_keys()
+                    && matches!(
+                        key_name(key).as_str(),
+                        "headers" | "requestheaders" | "responseheaders"
+                    )
+                {
                     continue;
                 }
-                let value = if sensitive_key(key, options) {
+                let child = context.field(value, key);
+                let retained = if sensitive_key(key, options) {
+                    if let PrivacyContext::Identifier(namespace) = child {
+                        // Replacing an invalid non-string must not invent a
+                        // valid identifier equal to a literal marker elsewhere.
+                        let original = original.as_str().ok_or(RedactionValidationError)?;
+                        identifiers.observe(namespace, original, REDACTED, matcher)?;
+                    }
                     json!(REDACTED)
                 } else {
-                    scrub(value, options, secrets)
+                    scrub_with_context(original, options, matcher, child, identifiers)?
                 };
-                out.insert(scrub_string(key, secrets), value);
+                let retained_key = scrub_string(key, matcher)?;
+                // Follow only exact original protocol paths. Optional fields
+                // cannot become "not reported" after their names are scrubbed.
+                ensure!(
+                    retained_key == *key || !context.validates_optional_field(value, key),
+                    RedactionValidationError
+                );
+                // A replacement marker is text, but must not repair a value
+                // that the selected profile rejected before redaction.
+                ensure!(
+                    !context.repairs_text_shape(key, original, &retained),
+                    RedactionValidationError
+                );
+                if let Some(namespace) = context.identifier_keys() {
+                    identifiers.observe(namespace, key, &retained_key, matcher)?;
+                }
+                // Distinct original keys must not silently replace one another,
+                // even when one already contains a literal redaction marker.
+                ensure!(
+                    out.insert(retained_key, retained).is_none(),
+                    RedactionCollisionError
+                );
             }
             Value::Object(out)
         }
         _ => value.clone(),
-    }
+    })
 }
 
 fn ordered_unique_secrets(secrets: &[String]) -> Vec<&str> {
@@ -377,13 +789,97 @@ fn ordered_unique_secrets(secrets: &[String]) -> Vec<&str> {
     unique
 }
 
-fn privacy(value: &Value, options: &NormalizeOptions, explicit: &[&str]) -> Value {
+fn with_secret_matcher(
+    value: &Value,
+    options: &NormalizeOptions,
+    explicit: &[&str],
+    remaining: &mut usize,
+    redact: impl FnOnce(&mut SecretMatcher<'_>) -> Result<Value>,
+) -> Result<Value> {
     let mut secrets = Vec::new();
     for secret in explicit {
         collect_secret_string(secret, &mut secrets);
     }
     collect_secrets(value, options, &mut secrets);
-    scrub(value, options, &ordered_unique_secrets(&secrets))
+    let mut matcher = SecretMatcher::new(
+        ordered_unique_secrets(&secrets),
+        RedactionLimits {
+            work: *remaining,
+            ..REDACTION_LIMITS
+        },
+    )?;
+    let result = redact(&mut matcher);
+    *remaining = matcher.remaining;
+    result
+}
+
+fn privacy(
+    value: &Value,
+    options: &NormalizeOptions,
+    explicit: &[&str],
+    remaining: &mut usize,
+) -> Result<Value> {
+    with_secret_matcher(value, options, explicit, remaining, |matcher| {
+        scrub(value, options, matcher)
+    })
+}
+
+fn privacy_observer(
+    value: &Value,
+    options: &NormalizeOptions,
+    remaining: &mut usize,
+) -> Result<Value> {
+    let profile = catalog::profile(value["provider"].as_str().unwrap_or("typesafe"));
+    let retained = with_secret_matcher(value, options, &[], remaining, |matcher| {
+        scrub_with_context(
+            value,
+            options,
+            matcher,
+            PrivacyContext::Observer(&profile),
+            &mut SemanticIdentifiers::default(),
+        )
+    })?;
+    // Observer imports select their validator from this retained field. Privacy
+    // must not silently substitute a different profile before revalidation.
+    ensure!(
+        !value["answers"]
+            .as_array()
+            .is_some_and(|answers| !answers.is_empty())
+            || profile == catalog::profile(retained["provider"].as_str().unwrap_or("typesafe")),
+        RedactionValidationError
+    );
+    Ok(retained)
+}
+
+fn privacy_capture_envelope(
+    envelope: &Value,
+    options: &NormalizeOptions,
+    explicit: &[&str],
+    remaining: &mut usize,
+) -> Result<Value> {
+    let profile = catalog::profile(options.provider.as_deref().unwrap_or("typesafe"));
+    with_secret_matcher(envelope, options, explicit, remaining, |matcher| {
+        let mut out = Map::new();
+        let mut identifiers = SemanticIdentifiers::default();
+        // These root names are generated structure, not captured data. Scrubbing
+        // "id" into a different key would make an otherwise valid capture
+        // unsaveable. Original body keys and all metadata values still pass
+        // through the ordinary privacy rules with one shared secret matcher.
+        for (key, value) in envelope.as_object().expect("constructed capture envelope") {
+            let value = if sensitive_key(key, options) {
+                json!(REDACTED)
+            } else {
+                let context = match key.as_str() {
+                    "request" => PrivacyContext::Request(&profile),
+                    "response" => PrivacyContext::Response(&profile),
+                    _ => PrivacyContext::Other,
+                };
+                scrub_with_context(value, options, matcher, context, &mut identifiers)?
+            };
+            out.insert(key.clone(), value);
+        }
+        Ok(Value::Object(out))
+    })
 }
 
 fn canonical(value: &Value) -> Value {
@@ -437,6 +933,10 @@ fn token_count(value: &Value) -> Option<i64> {
 
 fn text_shape(value: &Value) -> bool {
     value.is_string() || value.is_object() || value.is_array()
+}
+
+fn accepts_text(value: &Value, profile: &Profile, optional_null: bool) -> bool {
+    text_shape(value) || profile.json_text || (optional_null && value.is_null())
 }
 
 fn extras(value: &Value, excluded: &[&str]) -> Value {
@@ -516,10 +1016,11 @@ fn validate_answer(
         ) {
             errors.push("Question type must be noul, choice, or score".into());
         }
-        if !(text_shape(&definition["instructions"])
-            || profile.json_text
-            || (profile.optional_instructions && definition["instructions"].is_null()))
-        {
+        if !accepts_text(
+            &definition["instructions"],
+            profile,
+            profile.optional_instructions,
+        ) {
             errors.push("Question instructions must be a string, object, or array".into());
         }
     }
@@ -539,7 +1040,7 @@ fn validate_answer(
                 let valid = criteria.as_object().is_some_and(|map| {
                     map.iter().all(|(key, value)| {
                         matches!(key.as_str(), "true" | "false")
-                            && (text_shape(value) || profile.json_text)
+                            && accepts_text(value, profile, false)
                     })
                 });
                 if !valid {
@@ -702,12 +1203,54 @@ fn jgrep_family(
 
 /// Normalize a bounded copy. This never mutates or reconstructs the forwarded bytes.
 pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
-    normalize_with_secrets(capture, options, &[])
+    match normalize_with_secrets(capture, options, &[]) {
+        Ok(record) => record,
+        Err(error) => privacy_failed_capture(
+            capture,
+            if error.is::<RedactionCollisionError>() {
+                REDACTION_COLLISION_MESSAGE
+            } else if error.is::<RedactionValidationError>() {
+                REDACTION_VALIDATION_MESSAGE
+            } else {
+                REDACTION_LIMIT_MESSAGE
+            },
+        ),
+    }
+}
+
+fn privacy_failed_capture(capture: &Capture, reason: &'static str) -> Value {
+    // Retain transport facts without cloning the captured bodies or copying
+    // any original text into the fallback. A fresh identity cannot collapse
+    // unrelated failed captures, even when their original IDs contained a
+    // credential. Use the ordinary builder to keep its record schema intact.
+    let safe_capture = Capture {
+        id: format!("redacted_v1_{}", uuid::Uuid::new_v4().simple()).into(),
+        timestamp: capture.timestamp,
+        source: REDACTED.into(),
+        status: capture.status,
+        duration_ms: capture.duration_ms,
+        capture_complete: false,
+        transport_error: capture.transport_error.as_ref().map(|_| REDACTED.into()),
+        ..Default::default()
+    };
+    let request = json!({"questions": {}});
+    let safe = json!({
+        "request": request, "response": {"answers": {}}, "id": safe_capture.id,
+        "source": safe_capture.source, "task_version": null,
+        "transport_error": safe_capture.transport_error
+    });
+    let options = NormalizeOptions {
+        provider: Some("unknown".into()),
+        ..Default::default()
+    };
+    let mut record = normalize_prepared(&safe_capture, &options, &request, &safe);
+    record["normalization_error"] = json!(reason);
+    record
 }
 
 fn clear_input_fields(value: &mut Value) {
     if let Some(map) = value.as_object_mut() {
-        for field in ["state", "images", "image", "audio", "video"] {
+        for field in INPUT_FIELDS {
             if let Some(input) = map.get_mut(field) {
                 *input = Value::Null;
             }
@@ -719,9 +1262,10 @@ fn normalize_with_secrets(
     capture: &Capture,
     options: &NormalizeOptions,
     import_secrets: &[String],
-) -> Value {
-    let (raw_request, safe) = prepare_capture(capture, options, import_secrets);
-    normalize_prepared(capture, options, &raw_request, &safe)
+) -> Result<Value> {
+    let mut remaining = REDACTION_LIMITS.work;
+    let (raw_request, safe) = prepare_capture(capture, options, import_secrets, &mut remaining)?;
+    Ok(normalize_prepared(capture, options, &raw_request, &safe))
 }
 
 fn normalize_import(
@@ -736,8 +1280,14 @@ fn normalize_import(
     // null because a raw-provider parser has a smaller recursion allowance.
     let raw_request = crate::normalized_json::from_slice(&capture.request)?;
     let response = crate::normalized_json::from_slice(&capture.response)?;
-    let (raw_request, safe) =
-        prepare_values(capture, options, import_secrets, raw_request, response);
+    let (raw_request, safe) = prepare_values(
+        capture,
+        options,
+        import_secrets,
+        raw_request,
+        response,
+        &mut budget.batch.redaction_remaining,
+    )?;
     if charge_input {
         budget.value(&safe)?;
     }
@@ -765,10 +1315,18 @@ fn prepare_capture(
     capture: &Capture,
     options: &NormalizeOptions,
     import_secrets: &[String],
-) -> (Value, Value) {
+    remaining: &mut usize,
+) -> Result<(Value, Value)> {
     let raw_request: Value = serde_json::from_slice(&capture.request).unwrap_or(Value::Null);
     let response: Value = serde_json::from_slice(&capture.response).unwrap_or(Value::Null);
-    prepare_values(capture, options, import_secrets, raw_request, response)
+    prepare_values(
+        capture,
+        options,
+        import_secrets,
+        raw_request,
+        response,
+        remaining,
+    )
 }
 
 fn prepare_values(
@@ -777,7 +1335,8 @@ fn prepare_values(
     import_secrets: &[String],
     raw_request: Value,
     response: Value,
-) -> (Value, Value) {
+    remaining: &mut usize,
+) -> Result<(Value, Value)> {
     let explicit_secrets: Vec<&str> = [
         capture.secret.as_deref(),
         capture.local_token.as_deref(),
@@ -794,7 +1353,22 @@ fn prepare_values(
             "transport_error": capture.transport_error
         });
         envelope["response"] = response;
-        privacy(&envelope, options, &explicit_secrets)
+        if capture.id.generated {
+            // A local UUID or computed fingerprint is structure, not captured
+            // secret text. Exclude it from secret discovery too, so a custom
+            // private key named `id` still applies only to supplied data.
+            envelope
+                .as_object_mut()
+                .expect("capture envelope")
+                .remove("id");
+        }
+        let mut safe = privacy_capture_envelope(&envelope, options, &explicit_secrets, remaining)?;
+        if capture.id.generated {
+            // Restore before grouping: redacted definitions use this identity
+            // to keep unrelated observations in separate groups.
+            safe["id"] = json!(capture.id);
+        }
+        safe
     };
     // Only the actual input snapshot is opt-in. A structured question can
     // legitimately contain a field named `state`; that is part of its rule.
@@ -809,7 +1383,7 @@ fn prepare_values(
             clear_input_fields(metadata);
         }
     }
-    (raw_request, safe)
+    Ok((raw_request, safe))
 }
 
 fn context_redacted(capture: &Capture, safe: &Value) -> bool {
@@ -1077,6 +1651,25 @@ fn imported_annotations(record: &Value, key: &str, source: &str, event_id: &str)
     Ok(json!(out))
 }
 
+fn remove_receipt_response_inputs(response: &mut Value) {
+    let Some(map) = response.as_object_mut() else {
+        return;
+    };
+    for field in INPUT_FIELDS {
+        map.remove(field);
+    }
+    // Older converters kept envelope inputs in this metadata wrapper. Only
+    // these known locations are inputs; answer semantics remain untouched.
+    if let Some(metadata) = map
+        .get_mut("original_metadata")
+        .and_then(Value::as_object_mut)
+    {
+        for field in INPUT_FIELDS {
+            metadata.remove(field);
+        }
+    }
+}
+
 fn remove_receipt_inputs(receipt: &mut Value) {
     let Some(map) = receipt.as_object_mut() else {
         return;
@@ -1094,13 +1687,13 @@ fn remove_receipt_inputs(receipt: &mut Value) {
     ] {
         map.remove(key);
     }
-    if let Some(raw) = map.get_mut("raw_jev").and_then(Value::as_object_mut) {
-        raw.remove("state");
+    if let Some(raw) = map.get_mut("raw_jev") {
+        remove_receipt_response_inputs(raw);
     }
     if let Some(stages) = map.get_mut("raw_jev_stages").and_then(Value::as_array_mut) {
         for stage in stages {
-            if let Some(response) = stage.get_mut("response").and_then(Value::as_object_mut) {
-                response.remove("state");
+            if let Some(response) = stage.get_mut("response") {
+                remove_receipt_response_inputs(response);
             }
         }
     }
@@ -1280,7 +1873,7 @@ fn import_observer(
         .any(|a| a["adapter"] == "jgrep-v1")
         .then(|| "jgrep-v1".to_owned());
     let capture = Capture {
-        id: id.to_owned(),
+        id: id.into(),
         timestamp: record["timestamp"].as_i64().unwrap_or(0),
         source: source.to_owned(),
         task_version: task,
@@ -1390,7 +1983,7 @@ fn import_observer(
             remove_receipt_inputs(action);
         }
     }
-    let out = privacy(&out, options, &[]);
+    let out = privacy_observer(&out, options, &mut budget.batch.redaction_remaining)?;
     // Reconstruction and retained provenance introduce later privacy passes.
     // Check the actual stored identity, not only the first filtered input.
     check_persisted_import_identity(&out, id, source, event_id, "observer-jsonl")?;
@@ -1455,7 +2048,7 @@ fn import_receipt(
         })
         .unwrap_or(json!({}));
     let capture = Capture {
-        id: fingerprint("receipt", &json!([source, decision_id])),
+        id: fingerprint("receipt", &json!([source, decision_id])).into(),
         source: source.into(),
         request: serde_json::to_vec(&json!({"questions": {}}))?,
         response: serde_json::to_vec(&response)?,
@@ -1501,7 +2094,7 @@ fn import_receipt(
         remove_receipt_inputs(&mut out["actions"][0]);
     }
     out["receipt"] = receipt;
-    let out = privacy(&out, options, &[]);
+    let out = privacy(&out, options, &[], &mut budget.batch.redaction_remaining)?;
     check_persisted_import_identity(&out, &capture.id, source, decision_id, "jevrouter-receipt")?;
     Ok(out)
 }
@@ -1545,10 +2138,7 @@ fn import_capture(
         );
     }
     nullable_number(record, "duration_ms")?;
-    let id = fingerprint(
-        "capture_v1",
-        &json!([source, provider.to_ascii_lowercase(), event_id]),
-    );
+    let id = CaptureId::raw_import(source, provider, event_id);
     let capture = Capture {
         id,
         timestamp,
@@ -1567,8 +2157,8 @@ fn import_capture(
     let mut import_secrets = Vec::new();
     collect_secrets(record, options, &mut import_secrets);
     let mut out = normalize_import(&capture, &imported_options, &import_secrets, budget, true)?;
-    // Use the sanitized ID for deduplication, without retaining unsanitized
-    // caller metadata. Export/reimport preserves this identity.
+    // The generated fingerprint retains no caller text. Preserve it through
+    // privacy filtering so distinct calls cannot become false duplicates.
     out["source_event_id"] = out["id"].clone();
     out["import_format"] = json!("systemone-capture");
     ensure!(
@@ -1649,6 +2239,7 @@ fn import_records_with_limits(
         limits,
         work: 0,
         normalized: 0,
+        redaction_remaining: REDACTION_LIMITS.work,
     };
     values
         .iter()
@@ -1669,7 +2260,11 @@ fn import_records_with_limits(
             }
             // Scrub before normalization so all recomputed identities describe the
             // retained definition, and credential echoes cannot leak into metadata.
-            let mut safe = privacy(record, options, &[]);
+            let mut safe = if format == "observer-jsonl" {
+                privacy_observer(record, options, &mut budget.batch.redaction_remaining)?
+            } else {
+                privacy(record, options, &[], &mut budget.batch.redaction_remaining)?
+            };
             // Before reconstruction/cloning, bound even privacy-expanded input.
             // Observer derived answer fields are not retained wholesale: its
             // reconstructed input and provenance are charged by import_observer.
@@ -1754,7 +2349,7 @@ pub fn sample_records() -> Vec<Value> {
             json!({"model":if i % 6 == 0 { "jev-synthetic-b" } else { "jev-synthetic-a" },"answers":answers,"usage":{"input_tokens":240 + i % 1700,"output_tokens":24 + i % 40}})
         };
         let capture = Capture {
-            id: format!("synthetic-{i:04}"), timestamp: now - (720 - i) as i64 * 110_000,
+            id: format!("synthetic-{i:04}").into(), timestamp: now - (720 - i) as i64 * 110_000,
             source: source.into(), adapter: indexed.then(|| "jgrep-v1".into()),
             status: if failed { 529 } else { 200 },
             duration_ms: (45 + i * 37 % 380 + if i % 43 == 0 { 430 } else { 0 }) as f64,
@@ -1775,6 +2370,11 @@ pub fn sample_records() -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scrub_test_string(value: &str, secrets: &[&str]) -> String {
+        let mut matcher = SecretMatcher::new(secrets.to_vec(), REDACTION_LIMITS).unwrap();
+        scrub_string(value, &mut matcher).unwrap()
+    }
 
     #[test]
     fn provider_score_discrepancy_is_preserved_with_a_warning() {
@@ -2220,15 +2820,15 @@ mod tests {
         assert_eq!(unique.len(), 3);
         assert_eq!(unique, ["long-secret", "bcd", "abc"]);
         assert_eq!(
-            scrub_string("abcd long-secret", &unique),
+            scrub_test_string("abcd long-secret", &unique),
             format!("a{REDACTED} {REDACTED}")
         );
         let reverse_secrets = ["abc".into(), "bcd".into()];
         let reverse = ordered_unique_secrets(&reverse_secrets);
-        assert_eq!(scrub_string("abcd", &reverse), format!("{REDACTED}d"));
+        assert_eq!(scrub_test_string("abcd", &reverse), format!("{REDACTED}d"));
         let longest_secrets = ["abc".into(), "abcd".into()];
         let longest = ordered_unique_secrets(&longest_secrets);
-        assert_eq!(scrub_string("abcd", &longest), REDACTED);
+        assert_eq!(scrub_test_string("abcd", &longest), REDACTED);
     }
 
     #[test]
@@ -2240,7 +2840,7 @@ mod tests {
             ("", vec!["x"], String::new()),
             ("unchanged", vec!["missing", ""], "unchanged".into()),
         ] {
-            let output = scrub_string(value, &secrets);
+            let output = scrub_test_string(value, &secrets);
             assert_eq!(output.len(), expected.len());
             assert_eq!(output, expected);
             assert!(output.len() <= value.len() * REDACTED.len());
@@ -3113,3 +3713,35 @@ mod import_budget_tests;
 #[cfg(test)]
 #[path = "import_identity_tests.rs"]
 mod import_identity_tests;
+
+#[cfg(test)]
+#[path = "redaction_tests.rs"]
+mod redaction_tests;
+
+#[cfg(test)]
+#[path = "envelope_privacy_tests.rs"]
+mod envelope_privacy_tests;
+
+#[cfg(test)]
+#[path = "generated_identity_tests.rs"]
+mod generated_identity_tests;
+
+#[cfg(test)]
+#[path = "redaction_collision_tests.rs"]
+mod redaction_collision_tests;
+
+#[cfg(test)]
+#[path = "redaction_validation_tests.rs"]
+mod redaction_validation_tests;
+
+#[cfg(test)]
+#[path = "semantic_identifier_tests.rs"]
+mod semantic_identifier_tests;
+
+#[cfg(test)]
+#[path = "semantic_header_tests.rs"]
+mod semantic_header_tests;
+
+#[cfg(test)]
+#[path = "receipt_privacy_tests.rs"]
+mod receipt_privacy_tests;

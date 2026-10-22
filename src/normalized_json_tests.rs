@@ -22,7 +22,7 @@ fn capture(location: &str, depth: usize) -> Capture {
         _ => panic!("unknown fixture"),
     }
     Capture {
-        id: format!("historical-{location}-{depth}"),
+        id: format!("historical-{location}-{depth}").into(),
         timestamp: chrono::Utc::now().timestamp_millis(),
         source: "synthetic-depth".into(),
         status: 200,
@@ -88,17 +88,14 @@ fn stored_wrapper_depth_recovers_detail_exports_and_roundtrip_identity() {
         window: Some("all".into()),
         ..Default::default()
     };
-    for (index, (location, depth)) in [
+    for (location, depth) in [
         ("definition", 124),
         ("raw_answer", 124),
         ("request_extra", 126),
         ("response_extra", 126),
         ("usage_extra", 125),
         ("state", 126),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    ] {
         let capture = capture(location, depth);
         assert!(serde_json::from_slice::<Value>(&capture.request).is_ok());
         assert!(serde_json::from_slice::<Value>(&capture.response).is_ok());
@@ -116,16 +113,22 @@ fn stored_wrapper_depth_recovers_detail_exports_and_roundtrip_identity() {
         let reopened = Store::open(&path, 7, 100).unwrap();
         let detail = reopened.request(&capture.id).unwrap().unwrap();
         assert_eq!(detail["answers"], normalized["answers"]);
-        let after = index as i64;
-        let through = Some(after + 1);
+        let filter = Filter {
+            search: Some(capture.id.as_str().to_owned()),
+            ..filter.clone()
+        };
         let exported = reopened
-            .export_page(&filter, "jsonl", after, through)
+            .start_export(&filter, "jsonl")
+            .unwrap()
+            .next_page()
             .unwrap()
             .0;
         assert_eq!(from_slice(exported.as_bytes()).unwrap(), detail);
         assert!(
             !reopened
-                .export_page(&filter, "csv", after, through)
+                .start_export(&filter, "csv")
+                .unwrap()
+                .next_page()
                 .unwrap()
                 .0
                 .is_empty()
@@ -187,7 +190,12 @@ fn receipt_provenance_wrappers_remain_readable_and_roundtrip_exactly() {
         window: Some("all".into()),
         ..Default::default()
     };
-    let exported = reopened.export_page(&filter, "jsonl", 0, None).unwrap().0;
+    let exported = reopened
+        .start_export(&filter, "jsonl")
+        .unwrap()
+        .next_page()
+        .unwrap()
+        .0;
     assert_eq!(from_slice(exported.as_bytes()).unwrap(), detail);
     normalized["import_format"] = json!("observer-jsonl");
     let imported = import_records(&exported, "observer-jsonl", &options).unwrap();

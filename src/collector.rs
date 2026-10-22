@@ -446,19 +446,28 @@ fn writer(
         };
         let (batch, next) = collect_batch(first, &receiver);
         deferred = next;
-        for (batch, records) in
-            normalized_batches(batch, |capture| {
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    normalize(capture, &options)
-                })) {
-                    Ok(record) => Some(record),
-                    Err(_) => {
-                        gap(&c, 1);
-                        None
+        for (batch, records) in normalized_batches(batch, |capture| {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                normalize(capture, &options)
+            })) {
+                Ok(record) => {
+                    // Normalization can intentionally retain only transport
+                    // facts when privacy work exceeds its bounded budget.
+                    // Count this new gap once; submit already counted raw
+                    // captures that arrived incomplete.
+                    if capture.capture_complete && record["capture_complete"] == false {
+                        c.truncated.fetch_add(1, Ordering::Relaxed);
+                        c.last_gap_at
+                            .store(chrono::Utc::now().timestamp_millis(), Ordering::Relaxed);
                     }
+                    Some(record)
                 }
-            })
-        {
+                Err(_) => {
+                    gap(&c, 1);
+                    None
+                }
+            }
+        }) {
             if connection.is_none() {
                 connection = open_writer(&store, &c);
             }
@@ -481,7 +490,16 @@ fn writer(
                     c.last_maintenance_at.store(checked_at, Ordering::Relaxed);
                     last_maintenance = Instant::now();
                     c.persisted.fetch_add(count as u64, Ordering::Relaxed);
-                    c.last_persisted_at.store(checked_at, Ordering::Relaxed);
+                    if count > 0 {
+                        c.last_persisted_at.store(checked_at, Ordering::Relaxed);
+                    }
+                    // Live captures have independent generated identities.
+                    // Any ignored row is an observation gap, even when the
+                    // remaining transaction committed successfully.
+                    let skipped = records.len().saturating_sub(count);
+                    if skipped > 0 {
+                        gap(&c, skipped as u64);
+                    }
                 }
                 None => {
                     c.write_failures.fetch_add(1, Ordering::Relaxed);
@@ -516,7 +534,7 @@ mod tests {
     fn pending(id: usize, size: u64, budget: &Arc<Semaphore>) -> Pending {
         Pending {
             capture: Capture {
-                id: id.to_string(),
+                id: id.to_string().into(),
                 ..Default::default()
             },
             _permit: budget.clone().try_acquire_owned().unwrap(),
@@ -543,9 +561,9 @@ mod tests {
         assert_eq!(budget.available_permits(), 0);
         let (first, deferred) = collect_batch(receiver.recv().unwrap(), &receiver);
         assert_eq!(first.len(), 1);
-        assert_eq!(first[0].capture.id, "0");
+        assert_eq!(first[0].capture.id.as_str(), "0");
         let deferred = deferred.expect("over-budget capture must be carried into the next batch");
-        assert_eq!(deferred.capture.id, "1");
+        assert_eq!(deferred.capture.id.as_str(), "1");
         assert_eq!(budget.available_permits(), 0);
         drop(first);
         assert_eq!(budget.available_permits(), 1);
@@ -583,7 +601,7 @@ mod tests {
             assert!(deferred.is_none());
             assert_eq!(batch.len(), count - 1);
             let last = receiver.recv().unwrap();
-            assert_eq!(last.capture.id, (count - 1).to_string());
+            assert_eq!(last.capture.id.as_str(), (count - 1).to_string());
             drop(batch);
             assert_eq!(budget.available_permits(), count - 1);
             drop(last);
