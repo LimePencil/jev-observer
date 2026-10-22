@@ -99,6 +99,8 @@ For overload, injected writer failures and recovery on the candidate, see [stres
 
 A further optimization evaluates search/group filters once per dashboard snapshot and reuses the matching parent sequence IDs across its queries. This avoids repeating correlated answer-key lookups for every answer and aggregate. The selection is connection-local and stores only integer IDs in memory. Temporary payload sorting also stays in memory; large filtered histories can therefore use additional memory. The selection does not modify the main database or cache results across snapshots. For more than 100 strict definitions, candidate ranking now precedes distribution calculation.
 
+Dashboard and group-detail reads reuse identical version totals within their read transaction. The count key includes the source and either the strict question key or family ID, with those two namespaces kept separate. Counts still describe all retained definitions, even under a narrower request filter, and are recomputed for each new snapshot. This avoids repeating a matching-index count for every displayed version; it does not bound family aggregation or total dashboard work.
+
 The [search comparison](../reports/benchmarks/search-comparison.json) compares `eadc2bf4…` with `ec5f0ae0f5ca6ef1f8267bb5dc4560747096736638a01c67a6bd5ec445d7c047` on the same 150,000-request / 705,000-answer fixture. Both filters used five observations per binary:
 
 | Filter | Previous median | New median |
