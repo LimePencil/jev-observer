@@ -4,8 +4,10 @@ use crate::store::{Filter, Store};
 const INPUT_FIELDS: [&str; 5] = ["state", "images", "image", "audio", "video"];
 
 fn receipt_with_inputs() -> Value {
-    let mut receipt: Value =
-        serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+    let mut receipt: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/model/jevrouter-receipt.json"
+    ))
+    .unwrap();
     for field in INPUT_FIELDS {
         receipt["raw_jev"][field] = json!(format!("private-envelope-{field}"));
     }

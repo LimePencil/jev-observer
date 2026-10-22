@@ -138,8 +138,10 @@ fn redacted_criteria_or_probability_keys_cannot_turn_invalid_choice_valid() {
     let mut observer = control;
     observer["request_extra"]["credentials"] = json!(["X", "Y"]);
     collision(import_records(&observer.to_string(), "observer-jsonl", &options).unwrap_err());
-    let mut receipt: Value =
-        serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+    let mut receipt: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/model/jevrouter-receipt.json"
+    ))
+    .unwrap();
     receipt["credentials"] = json!(["X", "Y"]);
     receipt["raw_jev"]["probabilities"] = json!({"option-X":0.8,"option-Y":1.0});
     collision(import_records(&receipt.to_string(), "jevrouter-receipt", &options).unwrap_err());

@@ -41,7 +41,10 @@ fn records() -> Vec<(&'static str, Value)> {
         ),
         (
             "jevrouter-receipt",
-            serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap(),
+            serde_json::from_str(include_str!(
+                "../../../fixtures/model/jevrouter-receipt.json"
+            ))
+            .unwrap(),
         ),
     ]
 }
