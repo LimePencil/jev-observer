@@ -67,6 +67,8 @@ jobs:
           npm run build --prefix ui
       - name: Verify decision capture converters
         run: python3 scripts/test-decision-capture.py
+      - name: Verify retention soak failure diagnostics
+        run: python3 scripts/test-retention-soak.py
       - name: Verify isolated keyring fixture failure diagnostics
         run: python3 scripts/test-linux-keyring-harness.py
       - name: Verify shell installation and failed-upgrade handling
@@ -97,6 +99,8 @@ jobs:
         env:
           OBSERVER_BINARY: ${{ github.workspace }}/target/release/jev-observer
         run: npm run test:integration --prefix ui
+      - name: Verify authenticated dashboard monitor
+        run: node scripts/test-watch-dashboard.mjs
       - name: Install pinned SDK fixtures
         run: |
           python -m venv "$RUNNER_TEMP/observer-sdk-python"

@@ -9,6 +9,11 @@ struct OverviewWork {
     feed_statements: usize,
     catalogs: i64,
     timeline_bounds: i64,
+    strict_answer_steps: i64,
+    strict_answer_statements: usize,
+    sparse_answer_steps: i64,
+    sparse_answer_statements: usize,
+    sparse_probe_steps: i64,
 }
 
 fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, OverviewWork) {
@@ -35,6 +40,19 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
                 rusqlite::ffi::SQLITE_STMTSTATUS_VM_STEP,
                 1,
             ));
+            if sql == STRICT_ANSWER_QUERY.as_bytes() {
+                work.strict_answer_steps += steps;
+                work.strict_answer_statements += 1;
+            }
+            if sql == SPARSE_ANSWER_QUERY.as_bytes() {
+                work.sparse_answer_steps += steps;
+                work.sparse_answer_statements += 1;
+            }
+            if sql
+                == b"SELECT EXISTS(SELECT 1 FROM requests INDEXED BY request_time LIMIT 1 OFFSET ?)"
+            {
+                work.sparse_probe_steps += steps;
+            }
             if sql.starts_with(b"SELECT min(timestamp),max(timestamp) FROM requests")
                 || sql.starts_with(b"SELECT r.timestamp FROM (SELECT seq,id,timestamp")
             {
@@ -78,6 +96,306 @@ fn measured_overview(store: &Store, filter: &Filter) -> (Result<Value>, Overview
     let result = Store::dashboard_from(&mut connection, filter);
     drop(trace);
     (result, work)
+}
+
+fn assert_sparse_matches_broad(store: &Store, filter: &Filter) {
+    let mut connection = store.reader().unwrap();
+    let transaction = connection.transaction().unwrap();
+    let (predicate, args) = Store::dashboard_predicate(&transaction, filter).unwrap();
+    let parents = Store::dashboard_requests(&transaction, &predicate, &args, filter)
+        .unwrap()
+        .parents;
+    let sparse = Store::sparse_dashboard_groups(&transaction, &parents, filter)
+        .unwrap()
+        .expect("fixture must exercise the sparse plan");
+    let broad = Store::broad_dashboard_groups(&transaction, &parents, filter).unwrap();
+    assert_eq!(sparse, broad);
+}
+
+#[test]
+fn sparse_dashboard_groups_avoid_unrelated_groups_and_answers() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("sparse-groups.sqlite"), 7, 10_000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut writer = store.writer_connection().unwrap();
+    let mut selected = dashboard_record("selected", now);
+    selected["source"] = json!("needle");
+    selected["model"] = json!("needle-model");
+    selected["status"] = json!(503);
+    selected["answers"][0]["group_id"] = json!("selected-group");
+    let mut shared = selected["answers"][0].clone();
+    shared["key"] = json!("shared");
+    shared["group_id"] = json!("shared-group");
+    selected["answers"]
+        .as_array_mut()
+        .unwrap()
+        .push(shared.clone());
+    store.write_batch(&mut writer, &[selected]).unwrap();
+    let mut previous = None;
+    let mut retained = 0;
+    for unrelated in [128, 4096] {
+        let records: Vec<_> = (retained..unrelated)
+            .map(|index| {
+                let mut record = dashboard_record(&format!("noise-{index}"), now - 10_000);
+                record["answers"][0]["group_id"] = json!(format!("noise-group-{index}"));
+                record["answers"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(shared.clone());
+                record
+            })
+            .collect();
+        store.write_batch(&mut writer, &records).unwrap();
+        retained = unrelated;
+        for filter in [
+            Filter {
+                source: Some("needle".into()),
+                ..Default::default()
+            },
+            Filter {
+                model: Some("needle-model".into()),
+                ..Default::default()
+            },
+            Filter {
+                from: Some(now),
+                to: Some(now),
+                ..Default::default()
+            },
+            Filter {
+                search: Some("selected".into()),
+                ..Default::default()
+            },
+            Filter {
+                group: Some("selected-group".into()),
+                ..Default::default()
+            },
+            Filter {
+                status: Some("error".into()),
+                ..Default::default()
+            },
+        ] {
+            let filter = Filter {
+                window: Some("all".into()),
+                as_of: Some(now),
+                ..filter
+            };
+            let (snapshot, work) = measured_overview(&store, &filter);
+            let snapshot = snapshot.unwrap();
+            assert_eq!(snapshot["summary"]["request_count"], 1);
+            assert_eq!(snapshot["groups"].as_array().unwrap().len(), 2);
+            assert_eq!(work.strict_answer_statements, 0);
+            assert_eq!(work.strict_answer_steps, 0);
+            assert_eq!(work.sparse_answer_statements, 1);
+            assert!(
+                work.sparse_answer_steps < 200,
+                "{} VM steps",
+                work.sparse_answer_steps
+            );
+            assert!(work.sparse_probe_steps < 100);
+            if let Some(expected) = &previous {
+                assert_eq!(
+                    &snapshot, expected,
+                    "unrelated history or selection plan changed the complete snapshot"
+                );
+            } else {
+                previous = Some(snapshot);
+            }
+            assert_sparse_matches_broad(&store, &filter);
+        }
+    }
+}
+
+#[test]
+fn sparse_dashboard_groups_preserve_order_bins_search_and_cursors() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("sparse-order.sqlite"), 7, 3000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut records = Vec::new();
+    for index in 0..2000 {
+        let mut record = dashboard_record(&format!("noise-{index}"), now - 1);
+        record["answers"] = json!([]);
+        records.push(record);
+    }
+    for index in 0..240 {
+        let mut record = dashboard_record(&format!("selected-{index:03}"), now - index % 3);
+        record["source"] = json!("selected");
+        let template = record["answers"][0].clone();
+        record["answers"] = json!([]);
+        for (key, value, confidence, kind) in [
+            ("z", 1e16, 0.1, "noul"),
+            ("a", -1e16, 0.2, "number"),
+            ("b", 0.3, 0.3, "noul"),
+            ("c", -0.0, 0.4, "number"),
+            ("d", 0.0, 0.8, "number"),
+        ] {
+            let mut answer = template.clone();
+            answer["key"] = json!(key);
+            answer["group_id"] = json!(if index % 3 == 0 {
+                format!("group_v1_{index:064x}")
+            } else if index % 3 == 1 {
+                format!("group_v1_{index:064x}\0suffix")
+            } else {
+                format!("strict-{index:03}\0한글")
+            });
+            answer["value"] = json!(value);
+            answer["confidence"] = json!(confidence);
+            // Legacy supported histories can contain multiple keys/kinds in
+            // a group. Their exact index order must still determine the sums.
+            answer["kind"] = json!(kind);
+            record["answers"].as_array_mut().unwrap().push(answer);
+        }
+        for (key, choice) in [("choice-z", "é"), ("choice-a", "a\0b")] {
+            let mut answer = template.clone();
+            answer["key"] = json!(key);
+            answer["group_id"] = json!("choice-shared");
+            answer["kind"] = json!("choice");
+            answer["value"] = json!(choice);
+            answer["confidence"] = json!(0.25);
+            record["answers"].as_array_mut().unwrap().push(answer);
+        }
+        let mut family = template.clone();
+        family["key"] = json!("family");
+        family["group_id"] = json!("family-member");
+        family["family_id"] = json!("family");
+        family["family_name"] = json!("Family");
+        record["answers"].as_array_mut().unwrap().push(family);
+        let mut invalid = template;
+        invalid["key"] = json!("invalid");
+        invalid["group_id"] = json!("invalid-group");
+        invalid["valid"] = json!(false);
+        invalid["value"] = Value::Null;
+        record["answers"].as_array_mut().unwrap().push(invalid);
+        records.push(record);
+    }
+    store
+        .write_batch(&mut store.writer_connection().unwrap(), &records)
+        .unwrap();
+    let base = Filter {
+        source: Some("selected".into()),
+        window: Some("all".into()),
+        as_of: Some(now),
+        ..Default::default()
+    };
+    for search in [
+        None,
+        Some("STRICT"),
+        Some("choice"),
+        Some("한글"),
+        Some("missing"),
+    ] {
+        let mut filter = Filter {
+            group_search: search.map(str::to_owned),
+            ..base.clone()
+        };
+        loop {
+            assert_sparse_matches_broad(&store, &filter);
+            let snapshot = store.dashboard(&filter).unwrap();
+            let Some(cursor) = snapshot["group_next_cursor"].as_str() else {
+                break;
+            };
+            filter.group_cursor = Some(cursor.to_owned());
+        }
+    }
+}
+
+#[test]
+fn sparse_dashboard_groups_bound_probes_rows_and_copied_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("sparse-bounds.sqlite"), 7, 3000).unwrap();
+    let now = Utc::now().timestamp_millis();
+    let mut writer = store.writer_connection().unwrap();
+    let records: Vec<_> = (0..2200)
+        .map(|index| dashboard_record(&format!("parent-{index}"), now))
+        .collect();
+    store.write_batch(&mut writer, &records).unwrap();
+    let filter = Filter {
+        window: Some("all".into()),
+        ..Default::default()
+    };
+    let all = records
+        .iter()
+        .map(|record| (text(record, "id"), now))
+        .collect::<HashMap<_, _>>();
+    assert!(
+        Store::sparse_dashboard_groups(&writer, &all, &filter)
+            .unwrap()
+            .is_none()
+    );
+    let boundary = (0..512)
+        .map(|index| (format!("parent-{index}"), now))
+        .collect::<HashMap<_, _>>();
+    assert!(
+        Store::sparse_dashboard_groups(&writer, &boundary, &filter)
+            .unwrap()
+            .is_some()
+    );
+    let mut over_boundary = boundary;
+    over_boundary.insert("parent-512".into(), now);
+    assert!(
+        Store::sparse_dashboard_groups(&writer, &over_boundary, &filter)
+            .unwrap()
+            .is_none()
+    );
+    let parents = HashMap::from([("parent-0".to_owned(), now)]);
+    assert!(
+        Store::sparse_dashboard_groups(&writer, &parents, &filter)
+            .unwrap()
+            .is_some()
+    );
+    writer
+        .execute("UPDATE groups SET family_id='family'", [])
+        .unwrap();
+    writer.execute_batch("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<5000) INSERT INTO answers SELECT request_id,'extra-'||x,group_id,kind,valid,value_num,value_text,confidence,data FROM answers CROSS JOIN n WHERE request_id='parent-0' AND key='urgent'").unwrap();
+    // Eligibility must not hide an unbounded scan, and stale parent metadata
+    // must not permit copying more than the actual answer-row limit.
+    let missing = Filter {
+        group_search: Some("missing".into()),
+        ..filter.clone()
+    };
+    assert!(
+        Store::sparse_dashboard_groups(&writer, &parents, &missing)
+            .unwrap()
+            .is_none()
+    );
+    writer
+        .execute(
+            "DELETE FROM answers WHERE request_id='parent-0' AND key<>'urgent'",
+            [],
+        )
+        .unwrap();
+    writer
+        .execute("UPDATE groups SET family_id=NULL,kind='choice'", [])
+        .unwrap();
+    writer
+        .execute(
+            "UPDATE answers SET value_text=? WHERE request_id='parent-0'",
+            ["x".repeat(1024 * 1024)],
+        )
+        .unwrap();
+    assert!(
+        Store::sparse_dashboard_groups(&writer, &parents, &filter)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        Store::strict_dashboard_groups(&writer, &parents, &filter).unwrap(),
+        Store::broad_dashboard_groups(&writer, &parents, &filter).unwrap()
+    );
+    writer
+        .execute(
+            "UPDATE answers SET value_text='small',kind=x'ff' WHERE request_id='parent-0'",
+            [],
+        )
+        .unwrap();
+    assert!(
+        Store::sparse_dashboard_groups(&writer, &parents, &filter)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        Store::strict_dashboard_groups(&writer, &parents, &filter).unwrap(),
+        Store::broad_dashboard_groups(&writer, &parents, &filter).unwrap()
+    );
 }
 
 #[test]

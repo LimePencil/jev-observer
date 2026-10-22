@@ -6,6 +6,7 @@ license = "MIT"
 description = "Local observability for recurring Jev decisions"
 
 [dependencies]
+aho-corasick = "1"
 anyhow = "1"
 async-stream = "0.3"
 axum = "0.8"
