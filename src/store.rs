@@ -19,6 +19,19 @@ pub struct Store {
     max_records: usize,
 }
 
+/// Export state moves between blocking tasks; no transaction spans a network send.
+/// Only the selection connection may use disk-backed temporary storage. It
+/// materializes integer sequences, never serialized parents or answers.
+pub struct ExportSession {
+    store: Store,
+    selection: Option<Connection>,
+    predicate: String,
+    args: Vec<SqlValue>,
+    format: String,
+    after: i64,
+    through: i64,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum LabelOutcome {
     Saved,
@@ -1915,54 +1928,75 @@ impl Store {
         ))
     }
 
-    /// A short read transaction per page prevents slow downloads from pinning
-    /// the WAL. `through` freezes the sequence ceiling while new calls arrive.
-    pub fn export_page(
-        &self,
-        filter: &Filter,
-        format: &str,
-        after: i64,
-        through: Option<i64>,
-    ) -> Result<(String, i64, i64, bool)> {
-        self.export_page_with_limits(
-            filter,
-            format,
-            after,
-            through,
-            2 * 1024 * 1024,
-            32 * 1024 * 1024,
-        )
+    /// Freeze the rowid ceiling and any source/model selection once. Those
+    /// indexes order by timestamp, so repeating an ORDER BY seq page query
+    /// would scan and sort the same selected history for every page.
+    pub fn start_export(&self, filter: &Filter, format: &str) -> Result<ExportSession> {
+        self.start_export_from(self.reader()?, filter, format)
     }
 
-    fn export_page_with_limits(
+    fn start_export_from(
         &self,
+        mut connection: Connection,
         filter: &Filter,
         format: &str,
-        after: i64,
-        through: Option<i64>,
-        target_bytes: usize,
-        max_bytes: usize,
-    ) -> Result<(String, i64, i64, bool)> {
+    ) -> Result<ExportSession> {
         if !["jsonl", "csv"].contains(&format) {
             bail!("Export format must be jsonl or csv");
         }
-        let mut connection = self.reader()?;
-        let conn = connection.transaction()?;
-        let through = match through {
-            Some(value) => value,
-            None => conn.query_row("SELECT coalesce(max(seq),0) FROM requests", [], |r| {
-                r.get(0)
-            })?,
-        };
-        let (predicate, mut args) = Self::predicate(filter)?;
-        args.push(after.into());
-        args.push(through.into());
-        let mut stmt = conn.prepare(&format!("SELECT id,seq FROM requests r WHERE {predicate} AND seq>? AND seq<=? ORDER BY seq LIMIT 100"))?;
-        let ids = stmt
-            .query_map(params_from_iter(&args), |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut filter = filter.clone();
+        filter
+            .as_of
+            .get_or_insert_with(|| Utc::now().timestamp_millis());
+        let (predicate, args) = Self::predicate(&filter)?;
+        let frozen = [&filter.source, &filter.model]
+            .into_iter()
+            .flatten()
+            .any(|value| !value.is_empty());
+        if frozen {
+            // Predicates may inspect a JSON scalar such as transport_error,
+            // but only integer sequences enter temporary storage. Record
+            // serialization uses a separate MEMORY connection on every page.
+            connection.execute_batch(
+                "PRAGMA temp_store=FILE; PRAGMA temp.cache_size=-2048; PRAGMA cache_size=-2048;",
+            )?;
+        }
+        let transaction = connection.transaction()?;
+        let through: i64 =
+            transaction.query_row("SELECT coalesce(max(seq),0) FROM requests", [], |row| {
+                row.get(0)
+            })?;
+        if frozen {
+            transaction
+                .execute_batch("CREATE TEMP TABLE export_request_ids(seq INTEGER PRIMARY KEY);")?;
+            let mut selection_args = args.clone();
+            selection_args.push(through.into());
+            transaction.execute(
+                &format!("INSERT INTO temp.export_request_ids SELECT r.seq FROM requests r WHERE {predicate} AND r.seq>0 AND r.seq<=?"),
+                params_from_iter(&selection_args),
+            )?;
+        }
+        transaction.commit()?;
+        Ok(ExportSession {
+            store: self.clone(),
+            selection: frozen.then_some(connection),
+            predicate,
+            args,
+            format: format.into(),
+            after: 0,
+            through,
+        })
+    }
+
+    fn export_page_from(
+        conn: &rusqlite::Transaction<'_>,
+        format: &str,
+        after: i64,
+        through: i64,
+        ids: Vec<(Option<String>, i64)>,
+        target_bytes: usize,
+        max_bytes: usize,
+    ) -> Result<(String, i64, i64, bool)> {
         let full_page = ids.len() == 100;
         let mut out = String::new();
         if format == "csv" && after == 0 {
@@ -1974,16 +2008,22 @@ impl Store {
         let header_bytes = out.len();
         let mut cursor = after;
         for (id, seq) in ids {
+            // A selected parent may disappear between pages. Advancing over
+            // its immutable sequence also handles an entirely deleted page.
+            let Some(id) = id else {
+                cursor = seq;
+                continue;
+            };
             if out.len() - header_bytes >= target_bytes {
                 return Ok((out, cursor, through, true));
             }
             let mut row = String::new();
             if format == "jsonl" {
-                if let Some(record) = Self::request_from(&conn, &id)? {
+                if let Some(record) = Self::request_from(conn, &id)? {
                     row = serde_json::to_string(&record)?;
                     row.push('\n');
                 }
-            } else if let Some((record, answer_count)) = Self::request_parent(&conn, &id)? {
+            } else if let Some((record, answer_count)) = Self::request_parent(conn, &id)? {
                 // CSV contains parent metrics only. Its saved answer count is
                 // committed atomically with the children, so exporting it does
                 // not require loading every answer, definition and review.
@@ -2020,16 +2060,10 @@ impl Store {
 
     #[cfg(test)]
     pub fn export(&self, filter: &Filter, format: &str) -> Result<String> {
-        let mut filter = filter.clone();
-        filter
-            .as_of
-            .get_or_insert_with(|| Utc::now().timestamp_millis());
+        let mut session = self.start_export(filter, format)?;
         let mut output = String::new();
-        let mut after = 0;
-        let mut ceiling = None;
         loop {
-            let (page, cursor, through, more) =
-                self.export_page(&filter, format, after, ceiling)?;
+            let (page, _, _, more) = session.next_page()?;
             output.push_str(&page);
             if output.len() > 16 * 1024 * 1024 {
                 bail!("Use paginated exports for large histories");
@@ -2037,8 +2071,6 @@ impl Store {
             if !more {
                 break;
             }
-            after = cursor;
-            ceiling = Some(through);
         }
         Ok(output)
     }
@@ -2090,6 +2122,61 @@ impl Store {
         tx.commit()?;
         conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
         Ok(())
+    }
+}
+
+impl ExportSession {
+    pub fn next_page(&mut self) -> Result<(String, i64, i64, bool)> {
+        self.next_page_with_limits(2 * 1024 * 1024, 32 * 1024 * 1024)
+    }
+
+    fn next_page_with_limits(
+        &mut self,
+        target_bytes: usize,
+        max_bytes: usize,
+    ) -> Result<(String, i64, i64, bool)> {
+        let selected = self.selection.as_ref().map(|selection| -> Result<Vec<i64>> {
+            Ok(selection.prepare("SELECT seq FROM temp.export_request_ids WHERE seq>? AND seq<=? ORDER BY seq LIMIT 100")?
+                .query_map(params![self.after, self.through], |row| row.get(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?)
+        }).transpose()?;
+        let mut connection = self.store.reader()?;
+        // Parent/answer reads can sort original JSON (for example by answer
+        // rowid). Keep those temporary values in memory, including demo mode.
+        connection.execute_batch("PRAGMA temp_store=MEMORY;")?;
+        let transaction = connection.transaction()?;
+        let ids = if let Some(selected) = selected {
+            let mut lookup = transaction.prepare("SELECT id FROM requests WHERE seq=?")?;
+            selected
+                .into_iter()
+                .map(|seq| {
+                    let id = lookup.query_row([seq], |row| row.get(0)).optional()?;
+                    Ok((id, seq))
+                })
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        } else {
+            let mut args = self.args.clone();
+            args.push(self.after.into());
+            args.push(self.through.into());
+            transaction.prepare(&format!("SELECT id,seq FROM requests r WHERE {} AND seq>? AND seq<=? ORDER BY seq LIMIT 100", self.predicate))?
+                .query_map(params_from_iter(&args), |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        let page = Store::export_page_from(
+            &transaction,
+            &self.format,
+            self.after,
+            self.through,
+            ids,
+            target_bytes,
+            max_bytes,
+        )?;
+        if page.3 && page.1 <= self.after {
+            bail!("Export cursor did not advance");
+        }
+        transaction.commit()?;
+        self.after = page.1;
+        Ok(page)
     }
 }
 
@@ -3200,17 +3287,14 @@ mod tests {
             as_of: Some(now - 60_000),
             ..Default::default()
         };
-        let (first, cursor, through, more) = store.export_page(&filter, "jsonl", 0, None).unwrap();
+        let mut session = store.start_export(&filter, "jsonl").unwrap();
+        let (first, _, _, more) = session.next_page().unwrap();
         assert_eq!(first.lines().count(), 100);
         assert!(more);
-        let (second, cursor, _, more) = store
-            .export_page(&filter, "jsonl", cursor, Some(through))
-            .unwrap();
+        let (second, _, _, more) = session.next_page().unwrap();
         assert_eq!(second.lines().count(), 100);
         assert!(more);
-        let (last, _, _, more) = store
-            .export_page(&filter, "jsonl", cursor, Some(through))
-            .unwrap();
+        let (last, _, _, more) = session.next_page().unwrap();
         assert_eq!(last.lines().count(), 5);
         assert!(!more);
         let external: Filter =
@@ -3218,7 +3302,9 @@ mod tests {
         assert!(external.as_of.is_none());
         assert!(
             store
-                .export_page(&external, "jsonl", 0, None)
+                .start_export(&external, "jsonl")
+                .unwrap()
+                .next_page()
                 .unwrap()
                 .0
                 .is_empty()
@@ -3328,9 +3414,14 @@ mod tests {
     fn snapshot_export(store: &Store, format: &str) -> Value {
         let filter = Filter {
             window: Some("all".into()),
+            source: Some("test".into()),
             ..Default::default()
         };
-        let (page, cursor, through, more) = store.export_page(&filter, format, 0, None).unwrap();
+        let (page, cursor, through, more) = store
+            .start_export(&filter, format)
+            .unwrap()
+            .next_page()
+            .unwrap();
         assert!(cursor > 0);
         assert_eq!(cursor, through);
         assert!(!more);

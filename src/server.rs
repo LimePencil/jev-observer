@@ -30,7 +30,7 @@ use crate::{
     config::{Config, UpstreamAuth},
     credentials::{Credentials, LOCAL_TOKEN_PREFIX, validate_key},
     model::{self, Capture},
-    store::{Filter, LabelOutcome, Store},
+    store::{ExportSession, Filter, LabelOutcome, Store},
 };
 
 static UI: Dir<'_> = include_dir!("$OUT_DIR/ui");
@@ -1212,8 +1212,15 @@ async fn export(State(state): State<AppState>, Query(mut query): Query<ExportQue
     // An in-progress page holds a clone even after the downloading client leaves.
     let lease = Arc::new(permit);
     let csv = query.format == "csv";
-    let (first, mut after, through, mut has_more) =
-        match export_page(&state, &query, 0, None, lease.clone()).await {
+    let store = state.store.clone();
+    let (mut session, (first, mut after, _, mut has_more)) =
+        match export_database(&state, lease.clone(), move || {
+            let mut session = store.start_export(&query.filter, &query.format)?;
+            let page = session.next_page()?;
+            Ok((session, page))
+        })
+        .await
+        {
             Ok(page) => page,
             Err(failure) => return failure.into_response(),
         };
@@ -1222,13 +1229,13 @@ async fn export(State(state): State<AppState>, Query(mut query): Query<ExportQue
         yield Ok::<Bytes, std::io::Error>(Bytes::from(first));
         while has_more {
             let page = tokio::select! {
-                page = export_page(&state, &query, after, Some(through), _lease.clone()) => page,
+                page = export_page(&state, session, _lease.clone()) => page,
                 _ = state.shutdown.cancelled() => {
                     yield Err(std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "Export interrupted by shutdown"));
                     break;
                 }
             };
-            let (text, next, _, more) = match page {
+            let (next_session, (text, next, _, more)) = match page {
                 Ok(page) => page,
                 Err(_) => {
                     yield Err(std::io::Error::other("Export interrupted by a local database failure"));
@@ -1239,6 +1246,7 @@ async fn export(State(state): State<AppState>, Query(mut query): Query<ExportQue
                 yield Err(std::io::Error::other("Export cursor did not advance"));
                 break;
             }
+            session = next_session;
             after = next;
             has_more = more;
             yield Ok(Bytes::from(text));
@@ -1266,17 +1274,26 @@ async fn export(State(state): State<AppState>, Query(mut query): Query<ExportQue
 
 async fn export_page(
     state: &AppState,
-    query: &ExportQuery,
-    after: i64,
-    through: Option<i64>,
+    mut session: ExportSession,
     lease: Arc<OwnedSemaphorePermit>,
-) -> std::result::Result<(String, i64, i64, bool), LocalError> {
-    let store = state.store.clone();
-    let filter = query.filter.clone();
-    let format = query.format.clone();
+) -> std::result::Result<(ExportSession, (String, i64, i64, bool)), LocalError> {
+    export_database(state, lease, move || {
+        let page = session.next_page()?;
+        Ok((session, page))
+    })
+    .await
+}
+
+async fn export_database<T: Send + 'static>(
+    state: &AppState,
+    lease: Arc<OwnedSemaphorePermit>,
+    operation: impl FnOnce() -> anyhow::Result<T> + Send + 'static,
+) -> std::result::Result<T, LocalError> {
     database(state.database_slots.clone(), move || {
+        // A blocking page may outlive its canceled HTTP future. Keep the
+        // export slot until its selection/body work has actually completed.
         let _lease = lease;
-        store.export_page(&filter, &format, after, through)
+        operation()
     })
     .await
 }
@@ -3043,9 +3060,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn canceled_export_work_holds_its_slot_until_the_blocking_page_finishes() {
+        for shutdown in [false, true] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+            let state = fixture.state.clone();
+            let lease = Arc::new(state.export_slots.clone().try_acquire_owned().unwrap());
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            let (finish_tx, finish_rx) = std::sync::mpsc::channel();
+            let task = tokio::spawn(async move {
+                tokio::select! {
+                    _ = export_database(&state, lease, move || {
+                        started_tx.send(()).unwrap();
+                        finish_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                        Ok(())
+                    }) => {},
+                    _ = state.shutdown.cancelled() => {},
+                }
+            });
+            tokio::time::timeout(Duration::from_secs(2), started_rx)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(fixture.state.export_slots.available_permits(), 0);
+            if shutdown {
+                fixture.state.shutdown.cancel();
+                task.await.unwrap();
+            } else {
+                task.abort();
+                assert!(task.await.unwrap_err().is_cancelled());
+            }
+            assert_eq!(
+                fixture.state.export_slots.available_permits(),
+                0,
+                "Canceling the response must not admit a second export while its page still runs"
+            );
+            finish_tx.send(()).unwrap();
+            let released = tokio::time::timeout(
+                Duration::from_secs(2),
+                fixture.state.export_slots.clone().acquire_owned(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            drop(released);
+            assert_eq!(fixture.state.export_slots.available_permits(), 1);
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
     async fn export_streams_all_pages_with_one_header_and_excludes_later_arrivals() {
         let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
-        let base = model::sample_records().into_iter().next().unwrap();
+        let mut base = model::sample_records().into_iter().next().unwrap();
+        base["model"] = json!("export-fixture");
         let records: Vec<_> = (0..205)
             .map(|index| {
                 let mut record = base.clone();
@@ -3062,7 +3129,9 @@ mod tests {
             .unwrap();
         fn request(format: &str) -> Request {
             Request::builder()
-                .uri(format!("/api/export?window=all&format={format}"))
+                .uri(format!(
+                    "/api/export?window=all&model=export-fixture&format={format}"
+                ))
                 .header("host", "127.0.0.1:8765")
                 .body(Body::empty())
                 .unwrap()
