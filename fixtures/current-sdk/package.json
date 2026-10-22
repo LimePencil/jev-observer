@@ -1,0 +1,8 @@
+{
+  "name": "jev-observer-current-sdk-compatibility",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "@typesafe-ai/sdk": "0.7.0"
+  }
+}

@@ -140,13 +140,17 @@ pub(super) fn supported_transfer_encoding(headers: &HeaderMap) -> bool {
     true
 }
 
-fn encoded(headers: &HeaderMap) -> bool {
-    headers.get_all(header::CONTENT_ENCODING).iter().any(|v| {
-        v.to_str().map_or(true, |s| {
-            s.split(',')
-                .any(|p| !p.trim().eq_ignore_ascii_case("identity"))
-        })
-    })
+fn body_transport(headers: &HeaderMap) -> model::capture_transport::BodyTransport {
+    model::capture_transport::BodyTransport::from_headers(
+        headers
+            .get_all(header::CONTENT_ENCODING)
+            .iter()
+            .map(|value| value.as_bytes()),
+        headers
+            .get_all(header::CONTENT_TYPE)
+            .iter()
+            .map(|value| value.as_bytes()),
+    )
 }
 
 pub(super) struct Capturing {
@@ -253,6 +257,7 @@ impl Drop for CaptureGuard {
             duration_ms: state.capture.duration_ms,
             request: std::mem::take(&mut state.capture.request),
             response: std::mem::take(&mut state.capture.response),
+            transport: state.capture.transport.take(),
             capture_complete: state.capture.capture_complete,
             transport_error: state.capture.transport_error.take(),
             secret: state.capture.secret.take(),
@@ -652,7 +657,11 @@ pub(super) async fn proxy(State(state): State<AppState>, request: Request) -> Re
                     duration_ms: 0.0,
                     request: Vec::new(),
                     response: Vec::new(),
-                    capture_complete: !encoded(&headers),
+                    transport: Some(model::capture_transport::CaptureTransport::new(
+                        body_transport(&headers),
+                        state.config.capture_limit,
+                    )),
+                    capture_complete: true,
                     transport_error: None,
                     secret,
                     local_token,
@@ -756,7 +765,9 @@ pub(super) async fn proxy(State(state): State<AppState>, request: Request) -> Re
         c.capture.status = status.as_u16();
         c.response_length = response_length;
         c.response_done = response_complete;
-        c.capture.capture_complete &= !encoded(&response_headers);
+        if let Some(transport) = &mut c.capture.transport {
+            transport.response = body_transport(&response_headers);
+        }
     });
     if !supported_transfer_encoding(&response_headers) {
         with_capture(&capture, |c| {

@@ -19,6 +19,7 @@ fn captured_record(id: &str, instructions: usize, extension: usize, model: &str)
         }}}))
         .unwrap(),
         capture_complete: true,
+        transport: None,
         transport_error: None,
         secret: None,
         local_token: None,
