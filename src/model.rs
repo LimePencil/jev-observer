@@ -464,11 +464,12 @@ fn ordered_unique_secrets(secrets: &[String]) -> Vec<&str> {
     unique
 }
 
-fn privacy(
+fn with_secret_matcher(
     value: &Value,
     options: &NormalizeOptions,
     explicit: &[&str],
     remaining: &mut usize,
+    redact: impl FnOnce(&mut SecretMatcher<'_>) -> Result<Value>,
 ) -> Result<Value> {
     let mut secrets = Vec::new();
     for secret in explicit {
@@ -482,9 +483,44 @@ fn privacy(
             ..REDACTION_LIMITS
         },
     )?;
-    let result = scrub(value, options, &mut matcher);
+    let result = redact(&mut matcher);
     *remaining = matcher.remaining;
     result
+}
+
+fn privacy(
+    value: &Value,
+    options: &NormalizeOptions,
+    explicit: &[&str],
+    remaining: &mut usize,
+) -> Result<Value> {
+    with_secret_matcher(value, options, explicit, remaining, |matcher| {
+        scrub(value, options, matcher)
+    })
+}
+
+fn privacy_capture_envelope(
+    envelope: &Value,
+    options: &NormalizeOptions,
+    explicit: &[&str],
+    remaining: &mut usize,
+) -> Result<Value> {
+    with_secret_matcher(envelope, options, explicit, remaining, |matcher| {
+        let mut out = Map::new();
+        // These root names are generated structure, not captured data. Scrubbing
+        // "id" into a different key would make an otherwise valid capture
+        // unsaveable. Original body keys and all metadata values still pass
+        // through the ordinary privacy rules with one shared secret matcher.
+        for (key, value) in envelope.as_object().expect("constructed capture envelope") {
+            let value = if sensitive_key(key, options) {
+                json!(REDACTED)
+            } else {
+                scrub(value, options, matcher)?
+            };
+            out.insert(key.clone(), value);
+        }
+        Ok(Value::Object(out))
+    })
 }
 
 fn canonical(value: &Value) -> Value {
@@ -944,7 +980,7 @@ fn prepare_values(
             "transport_error": capture.transport_error
         });
         envelope["response"] = response;
-        privacy(&envelope, options, &explicit_secrets, remaining)?
+        privacy_capture_envelope(&envelope, options, &explicit_secrets, remaining)?
     };
     // Only the actual input snapshot is opt-in. A structured question can
     // legitimately contain a field named `state`; that is part of its rule.
@@ -3219,3 +3255,7 @@ mod import_budget_tests;
 #[cfg(test)]
 #[path = "redaction_tests.rs"]
 mod redaction_tests;
+
+#[cfg(test)]
+#[path = "envelope_privacy_tests.rs"]
+mod envelope_privacy_tests;
