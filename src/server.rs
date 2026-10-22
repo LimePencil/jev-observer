@@ -3003,8 +3003,13 @@ mod tests {
         });
         let deep_text = format!("{}\n{}", first, deep);
         assert!(deep_text.len() < 64 * 1024);
+        let mut private = first.clone();
+        private["id"] = json!("redaction-limited-event");
+        private["credentials"] = json!("s".repeat(2 * 1024 * 1024));
+        let private_text = format!("{}\n{}", first, private);
         for (text, status, counts) in [
             (text, StatusCode::PAYLOAD_TOO_LARGE, None),
+            (private_text, StatusCode::PAYLOAD_TOO_LARGE, None),
             (deep_text, StatusCode::BAD_REQUEST, None),
             ("{}".into(), StatusCode::BAD_REQUEST, None),
             (first.to_string(), StatusCode::OK, Some((1, 0))),
