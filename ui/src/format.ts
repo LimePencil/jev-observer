@@ -12,10 +12,10 @@ const formattedDate = (value: number | null | undefined, options: Intl.DateTimeF
   if (value == null) return 'Unknown';
   if (!Number.isInteger(value)) return 'Invalid timestamp';
   const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString([], options) : 'Date out of range';
+  return Number.isFinite(date.getTime()) ? date.toLocaleString([], { ...options, ...(options.year && date.getFullYear() <= 0 ? { era: 'short' as const } : {}) }) : 'Date out of range';
 };
 export const time = (value: number | null | undefined) => formattedDate(value, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-export const dateTime = (value: number | null | undefined) => formattedDate(value, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+export const dateTime = (value: number | null | undefined) => formattedDate(value, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, timeZoneName: 'shortOffset', hour12: false });
 export const bytes = (value: number) => value >= 1024 * 1024 ? `${(value / (1024 * 1024)).toFixed(1)} MiB` : value >= 1024 ? `${Math.round(value / 1024)} KiB` : `${value} B`;
 export const shortId = (id: string | null | undefined) => id ? id.replace(/^(?:presentation|group|def|candidate|family)_v\d+_/, '').slice(0, 10) : 'Unknown';
 export const answerValue = (value: unknown, kind: string) => value == null ? 'Unknown' : kind === 'noul' && typeof value === 'number' ? percent(value) : typeof value === 'number' ? String(Number(value.toFixed(3))) : String(value);
