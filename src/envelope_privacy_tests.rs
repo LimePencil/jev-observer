@@ -3,7 +3,7 @@ use crate::store::{Filter, Store};
 
 fn collision_capture(secret: &str, sequence: usize) -> Capture {
     Capture {
-        id: format!("event-{sequence}-{secret}"),
+        id: format!("event-{sequence}-{secret}").into(),
         timestamp: chrono::Utc::now().timestamp_millis(),
         source: format!("fixture-{secret}"),
         task_version: Some(format!("version-{secret}")),
