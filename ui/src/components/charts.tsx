@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { ArrowRight } from '@phosphor-icons/react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { choiceLabel, typedChoiceLabel } from '../decisions';
 import { chartTime, compact, dateTime, money, ms, number } from '../format';
 import type { Group, TimelineBucket, TimelineMeta } from '../types';
 
@@ -68,12 +69,14 @@ export function Timeline({ data, meta, metric = 'requests', compact: small = fal
 export function Distribution({ group }: { group: Group }) {
   const [expanded, setExpanded] = useState(false);
   const distribution = group.distribution ?? [];
+  if (group.kind === 'box') return <p className="caption box-distribution-note">Box answers retain individual geometry. Inspect observations for coordinates and reported confidence; no scalar mean or histogram is computed.</p>;
+  const label = (item: Group['distribution'][number]) => group.adapter !== 'openai-decisions-v1' ? item.label : typeof item.value === 'string' || typeof item.value === 'boolean' ? typedChoiceLabel(item.value) : choiceLabel(item.key ?? item.label, group.definition, true);
   if (!group.valid_count || !distribution.length) return <div className="chart-empty">No valid answers in this window</div>;
   const sorted = [...distribution].sort(group.kind === 'choice' ? (a, b) => b.count - a.count : (a, b) => parseFloat(a.label) - parseFloat(b.label));
   const items = sorted.slice(0, expanded ? sorted.length : group.kind === 'choice' ? 8 : 20);
   const total = distribution.reduce((sum, item) => sum + item.count, 0);
   return <div className={`distribution ${expanded ? 'expanded' : ''}`} aria-label={`${group.name} answer distribution`}>
-    {items.map((item, index) => <div className="distribution-row" key={item.label}><div className="distribution-label"><span className="truncate" title={item.label}>{item.label}</span><span className="mono">{total ? (item.count / total * 100).toFixed(1) : 0}% <span className="subtle">· {number(item.count)}</span></span></div><div className="distribution-track"><div className={`distribution-fill color-${index % 4}`} style={{ width: `${total ? item.count / total * 100 : 0}%` }} /></div></div>)}
+    {items.map((item, index) => <div className="distribution-row" key={item.key ?? item.label}><div className="distribution-label"><span className="truncate" title={label(item)}>{label(item)}</span><span className="mono">{total ? (item.count / total * 100).toFixed(1) : 0}% <span className="subtle">· {number(item.count)}</span></span></div><div className="distribution-track"><div className={`distribution-fill color-${index % 4}`} style={{ width: `${total ? item.count / total * 100 : 0}%` }} /></div></div>)}
     {sorted.length > items.length && <button className="text-button" onClick={() => setExpanded(true)}>Show all {number(sorted.length)} values <ArrowRight size={13} /></button>}
   </div>;
 }

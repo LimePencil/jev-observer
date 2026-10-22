@@ -226,6 +226,7 @@
   .kind-badge { display: inline-flex; align-items: center; text-transform: uppercase; font-size: 8px; font-weight: 550; letter-spacing: .5px; padding: 2px 5px; border-radius: 3px; }
   .kind-choice { color: var(--blue); background: var(--blue-soft); }
   .kind-noul { color: var(--accent); background: var(--accent-soft); }
+  .kind-box { color: var(--blue); background: var(--blue-soft); }
   .kind-score { color: var(--purple); background: var(--purple-soft); }
   .kind-unknown { color: var(--text-secondary); background: var(--surface-secondary); }
   .distribution { display: grid; gap: 11px; }
@@ -312,6 +313,17 @@
   .answer-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .answer-heading h4 { overflow-wrap: anywhere; }
   .answer-value { font-size: 24px; letter-spacing: -.5px; font-weight: 560; margin: 13px 0 3px; overflow-wrap: anywhere; }
+  .answer-value-box { font-size: 13px; letter-spacing: 0; font-weight: 400; }
+  .box-value { min-width: 0; }
+  .box-diagram { display: block; width: 180px; max-width: 100%; height: auto; margin: 12px 0; overflow: visible; }
+  .box-plane { fill: var(--surface-secondary); stroke: var(--border); stroke-width: .5; }
+  .box-outline { fill: var(--blue-soft); stroke: var(--blue); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .box-coordinates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 10px 0; }
+  .box-coordinates dt { color: var(--text-secondary); font-size: 10px; text-transform: capitalize; }
+  .box-coordinates dd { margin: 2px 0 0; font-family: 'Geist Mono Variable', ui-monospace, monospace; overflow-wrap: anywhere; }
+  .box-value-compact { min-width: 150px; }
+  .box-value-compact .box-coordinates { margin: 0; font-size: 10px; }
+  .box-value-compact .caption { white-space: normal; }
   .answer-value .caption { display: block; font-weight: 400; letter-spacing: 0; }
   .probability-list { display: grid; gap: 10px; margin: 16px 0; }
   .probability-row { display: grid; grid-template-columns: minmax(80px, 1fr) 1.7fr 55px; align-items: center; gap: 10px; font-size: 11px; }
