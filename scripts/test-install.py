@@ -131,7 +131,7 @@ class InstallerTests(unittest.TestCase):
         self.serve("latest/download/SHA256SUMS", manifest)
         self.serve(f"download/v{version}/SHA256SUMS", manifest)
 
-    def run_installer(self, *arguments, overrides=None, default_directory=False):
+    def run_installer(self, *arguments, overrides=None, default_directory=False, cwd=None):
         environment = self.environment.copy()
         for key, value in (overrides or {}).items():
             if value is None:
@@ -141,7 +141,7 @@ class InstallerTests(unittest.TestCase):
         command = ["/bin/sh", str(INSTALLER)]
         if not default_directory:
             command.extend(["--install-dir", str(self.install_dir)])
-        return subprocess.run(command + list(arguments), cwd=self.directory, env=environment,
+        return subprocess.run(command + list(arguments), cwd=cwd or self.directory, env=environment,
                               text=True, capture_output=True, timeout=20)
 
     def assert_success(self, result, version=VERSION, directory=None):
@@ -231,6 +231,58 @@ shutil.copyfile(source, destination / name)
         # its destination. Compare the actual directory, retaining literal quotes.
         self.assertEqual(probe.stdout.strip(), str(self.install_dir.resolve()) + os.pathsep + self.environment["PATH"])
         self.assertFalse((self.directory / "should-not-execute").exists())
+
+    def test_newline_install_directory_preserves_exact_destination_and_sibling(self):
+        for ending, sibling_exists in (("\n", False), ("\n", True), ("\n\n", True)):
+            with self.subTest(ending=ending, sibling_exists=sibling_exists):
+                parent = self.directory / f"destination-{len(ending)}-{sibling_exists}"
+                parent.mkdir()
+                sibling = parent / "bin"
+                previous = executable("0.0.1")
+                if sibling_exists:
+                    sibling.mkdir()
+                    binary = sibling / "jev-observer"
+                    binary.write_bytes(previous)
+                    binary.chmod(0o751)
+                self.install_dir = parent / ("bin" + ending)
+                result = self.run_installer()
+                # Check the other destination even if installation failed.
+                if sibling_exists:
+                    self.assertEqual(binary.read_bytes(), previous)
+                    self.assertEqual(stat.S_IMODE(binary.stat().st_mode), 0o751)
+                    self.assertEqual(list(sibling.iterdir()), [binary])
+                else:
+                    self.assertFalse(sibling.exists())
+                self.assert_success(result)
+                command = result.stdout.split("For this shell, add the install directory to PATH:\n  ", 1)[1]
+                command = command.split("\nExplore the local sample dashboard:", 1)[0]
+                probe = subprocess.run(["/bin/sh", "-c", command + '\nprintf "%s" "$PATH"'],
+                                       cwd=self.directory, env=self.environment, text=True, capture_output=True, timeout=5)
+                self.assertEqual(probe.returncode, 0, probe.stderr)
+                self.assertEqual(probe.stdout, str(self.install_dir.resolve()) + os.pathsep + self.environment["PATH"])
+
+    def test_newline_temporary_directory_is_used_and_cleaned(self):
+        temporary = self.directory / "temporary\n\n"
+        temporary.mkdir()
+        self.assert_success(self.run_installer(overrides={"TMPDIR": str(temporary)}))
+        self.assertEqual(list(temporary.iterdir()), [])
+        self.assertFalse((self.directory / "temporary").exists())
+
+    def test_relative_install_from_newline_working_directory_preserves_sibling(self):
+        working = self.directory / "working\n\n"
+        working.mkdir()
+        sibling = self.directory / "working" / "bin"
+        sibling.mkdir(parents=True)
+        binary = sibling / "jev-observer"
+        previous = executable("0.0.1")
+        binary.write_bytes(previous)
+        binary.chmod(0o751)
+        self.install_dir = Path("bin")
+        result = self.run_installer(cwd=working)
+        self.assertEqual(binary.read_bytes(), previous)
+        self.assertEqual(stat.S_IMODE(binary.stat().st_mode), 0o751)
+        self.assertEqual(list(sibling.iterdir()), [binary])
+        self.assert_success(result, directory=working / "bin")
 
     def test_checksum_verification_handles_backslashes_in_temporary_directory(self):
         temporary = self.directory / "temporary\\files"
