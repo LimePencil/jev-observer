@@ -1,8 +1,10 @@
 use std::{
     future::{Future, IntoFuture},
     net::{Ipv4Addr, SocketAddr},
+    pin::Pin,
     str::FromStr,
     sync::{Arc, Mutex},
+    task::{Context as TaskContext, Poll, Waker},
     time::{Duration, Instant},
 };
 
@@ -17,7 +19,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use bytes::Bytes;
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt};
 use include_dir::{Dir, include_dir};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -30,7 +32,7 @@ use crate::{
     config::{Config, UpstreamAuth},
     credentials::{Credentials, LOCAL_TOKEN_PREFIX, validate_key},
     model::{self, Capture},
-    store::{Filter, LabelOutcome, Store},
+    store::{ExportSession, Filter, LabelOutcome, Store},
 };
 
 static UI: Dir<'_> = include_dir!("$OUT_DIR/ui");
@@ -607,6 +609,207 @@ impl Drop for CaptureGuard {
     }
 }
 
+type UpstreamBody = Pin<Box<dyn Stream<Item = reqwest::Result<Bytes>> + Send>>;
+type ResponseFailure = (std::io::ErrorKind, &'static str);
+
+enum ResponseEnd {
+    Complete,
+    Failed,
+    Deadline,
+    Shutdown,
+    ClientDrop,
+}
+
+struct ResponseState {
+    upstream: Option<UpstreamBody>,
+    guard: Option<CaptureGuard>,
+    capture: Option<SharedCapture>,
+    length: Option<u64>,
+    observed: u64,
+    complete: bool,
+    failure: Option<ResponseFailure>,
+    waker: Option<Waker>,
+}
+
+// Taking these resources under the state lock makes terminalization exactly
+// once. Drop the upstream and finalize capture outside it: their destructors
+// and the downstream waker must not reenter a locked response state.
+struct FinishedResponse {
+    upstream: UpstreamBody,
+    guard: Option<CaptureGuard>,
+    capture: Option<SharedCapture>,
+    failure: Option<ResponseFailure>,
+    waker: Option<Waker>,
+}
+
+impl FinishedResponse {
+    fn finish(self) {
+        if let Some((_, message)) = self.failure {
+            with_capture(&self.capture, |state| {
+                state.capture.transport_error = Some(message.into());
+            });
+        }
+        drop(self.upstream);
+        drop(self.guard);
+        if let Some(waker) = self.waker {
+            waker.wake();
+        }
+    }
+}
+
+impl ResponseState {
+    fn end(&mut self, reason: ResponseEnd) -> Option<FinishedResponse> {
+        let upstream = self.upstream.take()?;
+        let failure = match reason {
+            ResponseEnd::Failed => Some((
+                std::io::ErrorKind::UnexpectedEof,
+                "Upstream response transfer failed",
+            )),
+            ResponseEnd::Deadline if !self.complete => {
+                Some((std::io::ErrorKind::TimedOut, "Upstream response timed out"))
+            }
+            ResponseEnd::Shutdown if !self.complete => Some((
+                std::io::ErrorKind::ConnectionAborted,
+                "Observer shut down during response transfer",
+            )),
+            _ => None,
+        };
+        self.failure = failure;
+        Some(FinishedResponse {
+            upstream,
+            guard: self.guard.take(),
+            capture: self.capture.take(),
+            failure,
+            waker: self.waker.take(),
+        })
+    }
+
+    fn terminal_poll(&mut self) -> Poll<Option<std::io::Result<Bytes>>> {
+        Poll::Ready(
+            self.failure
+                .take()
+                .map(|(kind, message)| Err(std::io::Error::new(kind, message))),
+        )
+    }
+}
+
+/// Reads remain demand-driven, with no additional frame queue or byte copies.
+/// The independent watcher can drop unfinished upstream work and the capture
+/// permit even while a slow client prevents Hyper from polling this body.
+struct ForwardResponseBody {
+    state: Arc<Mutex<ResponseState>>,
+    watcher: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl ForwardResponseBody {
+    fn new(
+        upstream: impl Stream<Item = reqwest::Result<Bytes>> + Send + 'static,
+        guard: Option<CaptureGuard>,
+        capture: Option<SharedCapture>,
+        length: Option<u64>,
+        complete: bool,
+        deadline: tokio::time::Instant,
+        shutdown: CancellationToken,
+    ) -> Self {
+        let state = Arc::new(Mutex::new(ResponseState {
+            upstream: Some(Box::pin(upstream)),
+            guard,
+            capture,
+            length,
+            observed: 0,
+            complete,
+            failure: None,
+            waker: None,
+        }));
+        let watched = state.clone();
+        let watcher = tokio::spawn(async move {
+            let reason = tokio::select! {
+                _ = tokio::time::sleep_until(deadline) => ResponseEnd::Deadline,
+                _ = shutdown.cancelled() => ResponseEnd::Shutdown,
+            };
+            let finished = watched
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .end(reason);
+            if let Some(finished) = finished {
+                finished.finish();
+            }
+        });
+        Self {
+            state,
+            watcher: Some(watcher),
+        }
+    }
+
+    fn abort_watcher(&mut self) {
+        if let Some(watcher) = self.watcher.take() {
+            watcher.abort();
+        }
+    }
+}
+
+impl Stream for ForwardResponseBody {
+    type Item = std::io::Result<Bytes>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Option<Self::Item>> {
+        let (result, finished, terminal) = {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if state.upstream.is_none() {
+                (state.terminal_poll(), None, true)
+            } else {
+                state.waker = Some(cx.waker().clone());
+                match state.upstream.as_mut().unwrap().as_mut().poll_next(cx) {
+                    Poll::Pending => (Poll::Pending, None, false),
+                    Poll::Ready(Some(Ok(bytes))) => {
+                        state.observed += bytes.len() as u64;
+                        state.complete |=
+                            state.length.is_some_and(|length| state.observed >= length);
+                        with_capture(&state.capture, |capture| capture.append(&bytes, true));
+                        (Poll::Ready(Some(Ok(bytes))), None, false)
+                    }
+                    Poll::Ready(Some(Err(error))) => {
+                        let finished = state.end(if error.is_timeout() {
+                            ResponseEnd::Deadline
+                        } else {
+                            ResponseEnd::Failed
+                        });
+                        (state.terminal_poll(), finished, true)
+                    }
+                    Poll::Ready(None) => {
+                        with_capture(&state.capture, |capture| capture.response_done = true);
+                        let finished = state.end(ResponseEnd::Complete);
+                        (state.terminal_poll(), finished, true)
+                    }
+                }
+            }
+        };
+        if terminal {
+            self.abort_watcher();
+        }
+        if let Some(finished) = finished {
+            finished.finish();
+        }
+        result
+    }
+}
+
+impl Drop for ForwardResponseBody {
+    fn drop(&mut self) {
+        self.abort_watcher();
+        let finished = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .end(ResponseEnd::ClientDrop);
+        if let Some(finished) = finished {
+            finished.finish();
+        }
+    }
+}
+
 async fn proxy(State(state): State<AppState>, request: Request) -> Response {
     if state.config.demo {
         return error(
@@ -774,7 +977,7 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
         CaptureGuard {
             shared: Arc::new(Mutex::new(Capturing {
                 capture: Capture {
-                    id: uuid::Uuid::now_v7().to_string(),
+                    id: model::CaptureId::new_live(),
                     timestamp: chrono::Utc::now().timestamp_millis(),
                     source: metadata(&headers, "x-observer-source")
                         .unwrap_or_else(|| "default".into()),
@@ -832,6 +1035,8 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
         }
         with_capture(&request_capture, |c| c.request_done = true);
     };
+    let upstream_deadline =
+        tokio::time::Instant::now() + Duration::from_secs(state.config.upstream_timeout_secs);
     state.collector.record_forwarded();
     let outgoing = state
         .client
@@ -878,12 +1083,14 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
     };
     let status = response.status();
     let mut response_headers = response.headers().clone();
+    let response_length = content_length(&response_headers);
+    let response_complete = response_length == Some(0)
+        || status == StatusCode::NO_CONTENT
+        || status == StatusCode::NOT_MODIFIED;
     with_capture(&capture, |c| {
         c.capture.status = status.as_u16();
-        c.response_length = content_length(&response_headers);
-        c.response_done = c.response_length == Some(0)
-            || status == StatusCode::NO_CONTENT
-            || status == StatusCode::NOT_MODIFIED;
+        c.response_length = response_length;
+        c.response_done = response_complete;
         c.capture.capture_complete &= !encoded(&response_headers);
     });
     if !supported_transfer_encoding(&response_headers) {
@@ -899,36 +1106,15 @@ async fn proxy(State(state): State<AppState>, request: Request) -> Response {
     strip_hop_headers(&mut response_headers);
     // A provider must not set cookies for the local dashboard origin.
     response_headers.remove(header::SET_COOKIE);
-    let mut upstream_stream = response.bytes_stream();
-    let shutdown = state.shutdown.clone();
-    let stream = async_stream::stream! {
-        let _guard = guard;
-        loop {
-            let chunk = tokio::select! {
-                chunk = upstream_stream.next() => chunk,
-                _ = shutdown.cancelled() => {
-                    with_capture(&capture, |c| c.capture.transport_error = Some("Observer shut down during response transfer".into()));
-                    yield Err::<Bytes, std::io::Error>(std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "Observer is shutting down"));
-                    break;
-                }
-            };
-            match chunk {
-                Some(Ok(bytes)) => {
-                    with_capture(&capture, |c| c.append(&bytes, true));
-                    yield Ok::<Bytes, std::io::Error>(bytes);
-                }
-                Some(Err(_)) => {
-                    with_capture(&capture, |c| c.capture.transport_error = Some("Upstream response transfer failed".into()));
-                    yield Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "Upstream response transfer failed"));
-                    break;
-                }
-                None => {
-                    with_capture(&capture, |c| c.response_done = true);
-                    break;
-                }
-            }
-        }
-    };
+    let stream = ForwardResponseBody::new(
+        response.bytes_stream(),
+        guard,
+        capture,
+        response_length,
+        response_complete,
+        upstream_deadline,
+        state.shutdown.clone(),
+    );
     let mut response = Response::new(Body::from_stream(stream));
     *response.status_mut() = status;
     *response.headers_mut() = response_headers;
@@ -1084,6 +1270,21 @@ struct ImportBody {
     format: String,
 }
 
+fn import_failure(status: StatusCode) -> LocalError {
+    LocalError(
+        status,
+        match status {
+            StatusCode::BAD_REQUEST => {
+                "Import could not be parsed; check the format and record structure"
+            }
+            StatusCode::PAYLOAD_TOO_LARGE => {
+                "Import exceeds a size or normalization limit. Use smaller records or batches."
+            }
+            _ => "The local import could not be saved",
+        },
+    )
+}
+
 async fn import(State(state): State<AppState>, request: Request) -> Response {
     let Ok(permit) = state.import_slots.clone().try_acquire_owned() else {
         return error(
@@ -1124,40 +1325,50 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
     let options = state.config.normalize_options();
     // Hold the permit inside the blocking task, even if its HTTP caller cancels.
     let result =
-        tokio::task::spawn_blocking(move || -> std::result::Result<(usize, usize), StatusCode> {
+        tokio::task::spawn_blocking(move || -> std::result::Result<(usize, usize), LocalError> {
             let _permit = permit;
-            let body: ImportBody =
-                serde_json::from_slice(&bytes).map_err(|_| StatusCode::BAD_REQUEST)?;
+            let body: ImportBody = serde_json::from_slice(&bytes)
+                .map_err(|_| import_failure(StatusCode::BAD_REQUEST))?;
             drop(bytes);
             if body.text.len() > MAX_IMPORT_BYTES {
-                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                return Err(import_failure(StatusCode::PAYLOAD_TOO_LARGE));
             }
             if !matches!(
                 body.format.as_str(),
                 "observer-jsonl" | "jevrouter-receipt" | "systemone-capture"
             ) {
-                return Err(StatusCode::BAD_REQUEST);
+                return Err(import_failure(StatusCode::BAD_REQUEST));
             }
             let records =
                 model::import_records(&body.text, &body.format, &options).map_err(|error| {
                     if error.is::<model::ImportLimitError>() {
-                        StatusCode::PAYLOAD_TOO_LARGE
+                        import_failure(StatusCode::PAYLOAD_TOO_LARGE)
+                    } else if error.is::<model::RedactionCollisionError>() {
+                        LocalError(
+                            StatusCode::BAD_REQUEST,
+                            model::IMPORT_REDACTION_COLLISION_MESSAGE,
+                        )
+                    } else if error.is::<model::RedactionValidationError>() {
+                        LocalError(
+                            StatusCode::BAD_REQUEST,
+                            model::IMPORT_REDACTION_VALIDATION_MESSAGE,
+                        )
                     } else {
-                        StatusCode::BAD_REQUEST
+                        import_failure(StatusCode::BAD_REQUEST)
                     }
                 })?;
             if records.len() > 10_000 {
-                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                return Err(import_failure(StatusCode::PAYLOAD_TOO_LARGE));
             }
             let total = records.len();
             let mut connection = state
                 .store
                 .writer_connection()
-                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+                .map_err(|_| import_failure(StatusCode::SERVICE_UNAVAILABLE))?;
             let imported = state
                 .store
                 .write_batch(&mut connection, &records)
-                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+                .map_err(|_| import_failure(StatusCode::SERVICE_UNAVAILABLE))?;
             Ok((imported, total.saturating_sub(imported)))
         })
         .await;
@@ -1165,18 +1376,8 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
         Ok(Ok((imported, duplicates))) => {
             Json(json!({"imported": imported, "duplicates": duplicates})).into_response()
         }
-        Ok(Err(StatusCode::BAD_REQUEST)) => error(
-            StatusCode::BAD_REQUEST,
-            "Import could not be parsed; check the format and record structure",
-        ),
-        Ok(Err(StatusCode::PAYLOAD_TOO_LARGE)) => error(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "Import exceeds a size or normalization limit. Use smaller records or batches.",
-        ),
-        _ => error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "The local import could not be saved",
-        ),
+        Ok(Err(failure)) => failure.into_response(),
+        Err(_) => import_failure(StatusCode::SERVICE_UNAVAILABLE).into_response(),
     }
 }
 
@@ -1212,8 +1413,15 @@ async fn export(State(state): State<AppState>, Query(mut query): Query<ExportQue
     // An in-progress page holds a clone even after the downloading client leaves.
     let lease = Arc::new(permit);
     let csv = query.format == "csv";
-    let (first, mut after, through, mut has_more) =
-        match export_page(&state, &query, 0, None, lease.clone()).await {
+    let store = state.store.clone();
+    let (mut session, (first, mut after, _, mut has_more)) =
+        match export_database(&state, lease.clone(), move || {
+            let mut session = store.start_export(&query.filter, &query.format)?;
+            let page = session.next_page()?;
+            Ok((session, page))
+        })
+        .await
+        {
             Ok(page) => page,
             Err(failure) => return failure.into_response(),
         };
@@ -1222,13 +1430,13 @@ async fn export(State(state): State<AppState>, Query(mut query): Query<ExportQue
         yield Ok::<Bytes, std::io::Error>(Bytes::from(first));
         while has_more {
             let page = tokio::select! {
-                page = export_page(&state, &query, after, Some(through), _lease.clone()) => page,
+                page = export_page(&state, session, _lease.clone()) => page,
                 _ = state.shutdown.cancelled() => {
                     yield Err(std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "Export interrupted by shutdown"));
                     break;
                 }
             };
-            let (text, next, _, more) = match page {
+            let (next_session, (text, next, _, more)) = match page {
                 Ok(page) => page,
                 Err(_) => {
                     yield Err(std::io::Error::other("Export interrupted by a local database failure"));
@@ -1239,6 +1447,7 @@ async fn export(State(state): State<AppState>, Query(mut query): Query<ExportQue
                 yield Err(std::io::Error::other("Export cursor did not advance"));
                 break;
             }
+            session = next_session;
             after = next;
             has_more = more;
             yield Ok(Bytes::from(text));
@@ -1266,17 +1475,26 @@ async fn export(State(state): State<AppState>, Query(mut query): Query<ExportQue
 
 async fn export_page(
     state: &AppState,
-    query: &ExportQuery,
-    after: i64,
-    through: Option<i64>,
+    mut session: ExportSession,
     lease: Arc<OwnedSemaphorePermit>,
-) -> std::result::Result<(String, i64, i64, bool), LocalError> {
-    let store = state.store.clone();
-    let filter = query.filter.clone();
-    let format = query.format.clone();
+) -> std::result::Result<(ExportSession, (String, i64, i64, bool)), LocalError> {
+    export_database(state, lease, move || {
+        let page = session.next_page()?;
+        Ok((session, page))
+    })
+    .await
+}
+
+async fn export_database<T: Send + 'static>(
+    state: &AppState,
+    lease: Arc<OwnedSemaphorePermit>,
+    operation: impl FnOnce() -> anyhow::Result<T> + Send + 'static,
+) -> std::result::Result<T, LocalError> {
     database(state.database_slots.clone(), move || {
+        // A blocking page may outlive its canceled HTTP future. Keep the
+        // export slot until its selection/body work has actually completed.
         let _lease = lease;
-        store.export_page(&filter, &format, after, through)
+        operation()
     })
     .await
 }
@@ -1421,6 +1639,10 @@ mod tests {
     use axum::body::to_bytes;
     use clap::Parser;
     use tower::ServiceExt;
+
+    mod response_deadline_tests {
+        include!("response_deadline_tests.rs");
+    }
 
     struct Fixture {
         _directory: tempfile::TempDir,
@@ -2073,10 +2295,7 @@ mod tests {
         let record = saved(&fixture).await;
         assert_eq!(record["status"], 200);
         assert_eq!(record["capture_complete"], false);
-        assert_eq!(
-            record["transport_error"],
-            "Upstream response transfer failed"
-        );
+        assert_eq!(record["transport_error"], "Upstream response timed out");
         fixture.state.collector.shutdown().await;
         task.abort();
     }
@@ -2241,6 +2460,136 @@ mod tests {
         assert!(!record.to_string().contains("test-secret"));
         fixture.state.collector.shutdown().await;
         task.abort();
+    }
+
+    #[tokio::test]
+    async fn generated_live_ids_keep_hex_secret_captures_distinct() {
+        let body = serde_json::to_vec(&json!({
+            "questions":{},
+            "credentials":"0123456789abcdef".chars().map(|value| value.to_string()).collect::<Vec<_>>()
+        })).unwrap();
+        let expected = body.clone();
+        let response_body = br#"{"answers":{},"fixture":"unchanged"}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| {
+                let expected = expected.clone();
+                async move {
+                    assert_eq!(
+                        request.headers()[header::AUTHORIZATION],
+                        "Bearer test-secret"
+                    );
+                    assert_eq!(
+                        to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                        expected
+                    );
+                    response_body.as_slice()
+                }
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        for _ in 0..2 {
+            let response = router(fixture.state.clone())
+                .oneshot(native(body.clone()))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+                response_body
+            );
+        }
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted"] {
+            assert_eq!(health[field], 2, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        let output = fixture
+            .state
+            .store
+            .export(
+                &Filter {
+                    window: Some("all".into()),
+                    ..Default::default()
+                },
+                "jsonl",
+            )
+            .unwrap();
+        let records: Vec<Value> = output
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0]["id"], records[1]["id"]);
+        for record in records {
+            let id = record["id"].as_str().unwrap();
+            assert_eq!(uuid::Uuid::parse_str(id).unwrap().get_version_num(), 7);
+            assert!(!id.contains("[REDACTED]"));
+            // Supplied body keys still follow ordinary privacy rules.
+            assert_eq!(
+                record["normalization_error"],
+                "Request questions is not an object"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn credential_matching_generated_envelope_key_preserves_forwarding_and_capture() {
+        let request_body =
+            br#"{"questions":{"q":{"type":"noul","instructions":"Eligible?"}},"echo":"id"}"#;
+        let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.8}},"echo":"id"}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(request.headers()[header::AUTHORIZATION], "Bearer id");
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        let mut request = native(request_body.as_slice());
+        request
+            .headers_mut()
+            .insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer id"));
+        request
+            .headers_mut()
+            .insert("x-observer-source", HeaderValue::from_static("source-id"));
+        let response = router(fixture.state.clone())
+            .oneshot(request)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+            response_body
+        );
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        assert_eq!(health["persisted"], 1);
+        assert_eq!(health["dropped"], 0);
+        assert_eq!(health["write_failures"], 0);
+        let record = saved(&fixture).await;
+        assert_eq!(record["source"], "source-[REDACTED]");
+        assert_eq!(record["request_extra"]["echo"], "[REDACTED]");
+        assert_eq!(record["response_extra"]["echo"], "[REDACTED]");
+        assert_eq!(record["answers"][0]["valid"], true);
+        assert_eq!(record["answers"][0]["definition_redacted"], true);
+        assert_eq!(record["capture_complete"], true);
     }
 
     #[tokio::test]
@@ -2758,6 +3107,507 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn text_shape_redaction_keeps_wire_bytes_and_records_a_minimal_live_gap() {
+        for (field, request_body) in [
+            ("instructions", br#"{"questions":{"q":{"type":"noul","instructions":12}}}"#.as_slice()),
+            ("true", br#"{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"true":12}}}}"#.as_slice()),
+        ] {
+            let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.2}}}"#;
+            let (url, task) = mock(Router::new().route(
+                "/v1/systemone",
+                post(move |request: Request| async move {
+                    assert_eq!(request.headers()[header::AUTHORIZATION], "Bearer test-secret");
+                    assert_eq!(to_bytes(request.into_body(), 4096).await.unwrap().as_ref(), request_body);
+                    response_body.as_slice()
+                }),
+            )).await;
+            let fixture = fixture_with_config(&url, 4096, false, |config| {
+                config.provider = Some("typesafe".into());
+                config.redact_keys.push(field.into());
+            });
+            let response = router(fixture.state.clone()).oneshot(native(request_body)).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(to_bytes(response.into_body(), 4096).await.unwrap().as_ref(), response_body);
+            fixture.state.collector.shutdown().await;
+            task.abort();
+            let record = saved(&fixture).await;
+            assert_eq!(record["capture_complete"], false);
+            assert_eq!(record["answers"], json!([]));
+            assert_eq!(record["normalization_error"], "Credential redaction changed answer validation information; request and response content were not retained");
+            assert_eq!(record["request_extra"], json!({}));
+            assert_eq!(record["response_extra"], json!({}));
+            let health = fixture.state.collector.health();
+            for field in ["forwarded", "captured", "persisted", "truncated"] {
+                assert_eq!(health[field], 1, "{field}");
+            }
+            for field in ["dropped", "write_failures", "queue_depth", "active_captures"] {
+                assert_eq!(health[field], 0, "{field}");
+            }
+            assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn text_shape_redaction_imports_are_atomic_and_recoverable() {
+        let raw = json!({"id":"good-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"true":"Allowed"}}}},
+            "response":{"answers":{"q":{"type":"noul","noul":0.2}}}});
+        let observer =
+            model::import_records(&raw.to_string(), "systemone-capture", &Default::default())
+                .unwrap()
+                .remove(0);
+        for field in ["instructions", "true"] {
+            for (format, good) in [("systemone-capture", &raw), ("observer-jsonl", &observer)] {
+                let fixture =
+                    fixture_with_config("http://127.0.0.1:1/v1/systemone", 4096, true, |config| {
+                        config.redact_keys.push(field.into());
+                    });
+                let mut bad = good.clone();
+                let definition = if format == "systemone-capture" {
+                    &mut bad["request"]["questions"]["q"]
+                } else {
+                    &mut bad["answers"][0]["definition"]
+                };
+                if field == "instructions" {
+                    definition[field] = json!(12);
+                } else {
+                    definition["criteria"][field] = json!(12);
+                }
+                for (text, expected) in [
+                    (format!("{good}\n{bad}"), None),
+                    (good.to_string(), Some(json!({"imported":1,"duplicates":0}))),
+                    (good.to_string(), Some(json!({"imported":0,"duplicates":1}))),
+                ] {
+                    let request = Request::builder()
+                        .method("POST")
+                        .uri("/api/import")
+                        .header("host", "127.0.0.1:8765")
+                        .header("x-observer-request", "1")
+                        .header("content-type", "application/json")
+                        .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                        .unwrap();
+                    let response = router(fixture.state.clone())
+                        .oneshot(request)
+                        .await
+                        .unwrap();
+                    assert_eq!(
+                        response.status(),
+                        if expected.is_some() {
+                            StatusCode::OK
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        }
+                    );
+                    let body: Value = serde_json::from_slice(
+                        &to_bytes(response.into_body(), 1024).await.unwrap(),
+                    )
+                    .unwrap();
+                    if let Some(expected) = expected {
+                        assert_eq!(body, expected);
+                    } else {
+                        assert_eq!(
+                            body,
+                            json!({"error":model::IMPORT_REDACTION_VALIDATION_MESSAGE})
+                        );
+                        assert!(fixture.state.store.is_empty().unwrap());
+                    }
+                    assert_eq!(fixture.state.import_slots.available_permits(), 1);
+                }
+                fixture.state.collector.shutdown().await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn semantic_redaction_keeps_wire_bytes_but_records_an_incomplete_capture() {
+        let request_body = br#"{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"invalid":"Wrong"}}},"credentials":["criteria"]}"#;
+        let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.2}}}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        let response = router(fixture.state.clone())
+            .oneshot(native(request_body.as_slice()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+            response_body
+        );
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let record = saved(&fixture).await;
+        assert_eq!(record["capture_complete"], false);
+        assert_eq!(record["answers"], json!([]));
+        assert_eq!(
+            record["normalization_error"],
+            "Credential redaction changed answer validation information; request and response content were not retained"
+        );
+        assert!(!record.to_string().contains("Wrong"));
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted", "truncated"] {
+            assert_eq!(health[field], 1, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn semantic_redaction_import_rejection_is_specific_atomic_and_recoverable() {
+        let good = json!({"id":"fixture-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"invalid":"Wrong"}}}},
+            "response":{"answers":{"q":{"type":"noul","noul":0.2}}}});
+        let observer =
+            model::import_records(&good.to_string(), "systemone-capture", &Default::default())
+                .unwrap()
+                .remove(0);
+        for (format, good) in [("systemone-capture", good), ("observer-jsonl", observer)] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 4096, true);
+            let mut bad = good.clone();
+            bad[if format == "systemone-capture" {
+                "request"
+            } else {
+                "request_extra"
+            }]["credentials"] = json!(["criteria"]);
+            for (text, success) in [(format!("{good}\n{bad}"), false), (good.to_string(), true)] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    if success {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::BAD_REQUEST
+                    }
+                );
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if success {
+                    assert_eq!(body, json!({"imported":1,"duplicates":0}));
+                } else {
+                    assert_eq!(
+                        body,
+                        json!({"error":model::IMPORT_REDACTION_VALIDATION_MESSAGE})
+                    );
+                    assert!(fixture.state.store.is_empty().unwrap());
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn redacted_key_collisions_preserve_wire_bytes_and_report_live_gaps() {
+        let request_body = br#"{"questions":{"audit-X":{"type":"noul","instructions":"First"},"audit-Y":{"type":"noul","instructions":"Second"}},"credentials":["X","Y"]}"#;
+        let response_body = br#"{"answers":{"audit-Y":{"type":"noul","noul":0.8},"audit-X":{"type":"noul","noul":0.2}}}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(
+                    request.headers()[header::AUTHORIZATION],
+                    "Bearer test-secret"
+                );
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        for _ in 0..2 {
+            let response = router(fixture.state.clone())
+                .oneshot(native(request_body.as_slice()))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+                response_body
+            );
+        }
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted", "truncated"] {
+            assert_eq!(health[field], 2, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+        let output = fixture
+            .state
+            .store
+            .export(
+                &Filter {
+                    window: Some("all".into()),
+                    ..Default::default()
+                },
+                "jsonl",
+            )
+            .unwrap();
+        let records = output
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0]["id"], records[1]["id"]);
+        for record in records {
+            assert_eq!(record["capture_complete"], false);
+            assert_eq!(record["answers"], json!([]));
+            assert_eq!(
+                record["normalization_error"],
+                "Credential redaction caused an identifier or object key collision; request and response content were not retained"
+            );
+            assert!(!record.to_string().contains("audit-"));
+        }
+    }
+
+    #[tokio::test]
+    async fn semantic_identifier_collisions_preserve_wire_bytes_and_report_live_gaps() {
+        let request_body = br#"{"questions":{"q":{"type":"choice","instructions":"Choose","criteria":{"option-X":null}}},"credentials":["X","Y"]}"#;
+        let response_body = br#"{"answers":{"q":{"type":"choice","choice":"option-Y","probabilities":{"option-Y":1},"confidence":0.7}}}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(
+                    request.headers()[header::AUTHORIZATION],
+                    "Bearer test-secret"
+                );
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        for _ in 0..2 {
+            let response = router(fixture.state.clone())
+                .oneshot(native(request_body.as_slice()))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+                response_body
+            );
+        }
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted", "truncated"] {
+            assert_eq!(health[field], 2, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+        let output = fixture
+            .state
+            .store
+            .export(
+                &Filter {
+                    window: Some("all".into()),
+                    ..Default::default()
+                },
+                "jsonl",
+            )
+            .unwrap();
+        let records = output
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0]["id"], records[1]["id"]);
+        for record in records {
+            assert_eq!(record["capture_complete"], false);
+            assert_eq!(record["answers"], json!([]));
+            assert_eq!(
+                record["normalization_error"],
+                "Credential redaction caused an identifier or object key collision; request and response content were not retained"
+            );
+            assert!(!record.to_string().contains("option-"));
+        }
+    }
+
+    #[tokio::test]
+    async fn redacted_key_collision_imports_are_atomic_and_release_the_slot() {
+        let raw = json!({"id":"good-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{}}, "response":{"answers":{}}});
+        let observer = model::import_records(
+            &raw.to_string(),
+            "systemone-capture",
+            &model::NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        let receipt: Value =
+            serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+        for (format, good) in [
+            ("systemone-capture", raw),
+            ("observer-jsonl", observer),
+            ("jevrouter-receipt", receipt),
+        ] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 4096, true);
+            let mut bad = good.clone();
+            let extra = match format {
+                "systemone-capture" => &mut bad["request"],
+                "observer-jsonl" => {
+                    bad["request_extra"] = json!({});
+                    &mut bad["request_extra"]
+                }
+                _ => &mut bad["raw_jev"],
+            };
+            extra["credentials"] = json!(["X", "Y"]);
+            extra["extension"] = json!({"audit-X":1,"audit-Y":2});
+            let valid_text = good.to_string();
+            let text = format!("{good}\n{bad}\n{good}");
+            for (text, expected, counts) in [
+                (text, StatusCode::BAD_REQUEST, None),
+                (valid_text.clone(), StatusCode::OK, Some((1, 0))),
+                (valid_text, StatusCode::OK, Some((0, 1))),
+            ] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), expected, "{format}");
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if let Some((imported, duplicates)) = counts {
+                    assert_eq!(body, json!({"imported":imported,"duplicates":duplicates}));
+                } else {
+                    assert!(fixture.state.store.is_empty().unwrap());
+                    assert_eq!(
+                        body,
+                        json!({"error":"Import rejected because credential redaction makes distinct identifiers or object keys identical."})
+                    );
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn semantic_identifier_imports_are_atomic_and_release_the_slot() {
+        let raw = json!({"id":"good-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{"q":{"type":"choice","instructions":"Choose","criteria":{"option-X":null}}}},
+            "response":{"answers":{"q":{"type":"choice","choice":"option-Y","probabilities":{"option-Y":1},"confidence":0.7}}}});
+        let observer = model::import_records(
+            &raw.to_string(),
+            "systemone-capture",
+            &model::NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        assert_eq!(observer["answers"][0]["valid"], false);
+        for (format, good) in [("systemone-capture", raw), ("observer-jsonl", observer)] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 4096, true);
+            let mut bad = good.clone();
+            let extra = if format == "systemone-capture" {
+                &mut bad["request"]
+            } else {
+                &mut bad["request_extra"]
+            };
+            extra["credentials"] = json!(["X", "Y"]);
+            let valid_text = good.to_string();
+            for (text, expected, counts) in [
+                (
+                    format!("{good}\n{bad}\n{good}"),
+                    StatusCode::BAD_REQUEST,
+                    None,
+                ),
+                (valid_text.clone(), StatusCode::OK, Some((1, 0))),
+                (valid_text, StatusCode::OK, Some((0, 1))),
+            ] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), expected, "{format}");
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if let Some((imported, duplicates)) = counts {
+                    assert_eq!(body, json!({"imported":imported,"duplicates":duplicates}));
+                } else {
+                    assert!(fixture.state.store.is_empty().unwrap());
+                    assert_eq!(
+                        body,
+                        json!({"error":"Import rejected because credential redaction makes distinct identifiers or object keys identical."})
+                    );
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
     async fn import_normalization_limits_are_atomic_and_release_the_import_slot() {
         let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
         let first = model::sample_records().remove(0);
@@ -2775,8 +3625,13 @@ mod tests {
         });
         let deep_text = format!("{}\n{}", first, deep);
         assert!(deep_text.len() < 64 * 1024);
+        let mut private = first.clone();
+        private["id"] = json!("redaction-limited-event");
+        private["credentials"] = json!("s".repeat(2 * 1024 * 1024));
+        let private_text = format!("{}\n{}", first, private);
         for (text, status, counts) in [
             (text, StatusCode::PAYLOAD_TOO_LARGE, None),
+            (private_text, StatusCode::PAYLOAD_TOO_LARGE, None),
             (deep_text, StatusCode::BAD_REQUEST, None),
             ("{}".into(), StatusCode::BAD_REQUEST, None),
             (first.to_string(), StatusCode::OK, Some((1, 0))),
@@ -3096,9 +3951,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn canceled_export_work_holds_its_slot_until_the_blocking_page_finishes() {
+        for shutdown in [false, true] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+            let state = fixture.state.clone();
+            let lease = Arc::new(state.export_slots.clone().try_acquire_owned().unwrap());
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            let (finish_tx, finish_rx) = std::sync::mpsc::channel();
+            let task = tokio::spawn(async move {
+                tokio::select! {
+                    _ = export_database(&state, lease, move || {
+                        started_tx.send(()).unwrap();
+                        finish_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                        Ok(())
+                    }) => {},
+                    _ = state.shutdown.cancelled() => {},
+                }
+            });
+            tokio::time::timeout(Duration::from_secs(2), started_rx)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(fixture.state.export_slots.available_permits(), 0);
+            if shutdown {
+                fixture.state.shutdown.cancel();
+                task.await.unwrap();
+            } else {
+                task.abort();
+                assert!(task.await.unwrap_err().is_cancelled());
+            }
+            assert_eq!(
+                fixture.state.export_slots.available_permits(),
+                0,
+                "Canceling the response must not admit a second export while its page still runs"
+            );
+            finish_tx.send(()).unwrap();
+            let released = tokio::time::timeout(
+                Duration::from_secs(2),
+                fixture.state.export_slots.clone().acquire_owned(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            drop(released);
+            assert_eq!(fixture.state.export_slots.available_permits(), 1);
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
     async fn export_streams_all_pages_with_one_header_and_excludes_later_arrivals() {
         let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
-        let base = model::sample_records().into_iter().next().unwrap();
+        let mut base = model::sample_records().into_iter().next().unwrap();
+        base["model"] = json!("export-fixture");
         let records: Vec<_> = (0..205)
             .map(|index| {
                 let mut record = base.clone();
@@ -3115,7 +4020,9 @@ mod tests {
             .unwrap();
         fn request(format: &str) -> Request {
             Request::builder()
-                .uri(format!("/api/export?window=all&format={format}"))
+                .uri(format!(
+                    "/api/export?window=all&model=export-fixture&format={format}"
+                ))
                 .header("host", "127.0.0.1:8765")
                 .body(Body::empty())
                 .unwrap()

@@ -1,5 +1,57 @@
 use super::*;
 
+#[test]
+fn discarded_input_secrets_still_obey_the_shared_redaction_limits() {
+    let options = NormalizeOptions::default();
+    let secrets: Vec<_> = (0..=REDACTION_LIMITS.patterns)
+        .map(|index| format!("discarded-credential-{index}"))
+        .collect();
+    let mut value = json!({"state":{"credentials":secrets}, "extension":"retained"});
+    let mut remaining = REDACTION_LIMITS.work;
+    let error = privacy_with_input_filter(
+        &mut value,
+        &options,
+        &[],
+        &mut remaining,
+        clear_input_fields,
+    )
+    .unwrap_err();
+    assert!(error.is::<ImportLimitError>());
+    assert!(
+        value.get("state").is_some(),
+        "limits must be checked before pruning"
+    );
+
+    let original = json!({"state":{"password":"ONLY_DISCARDED_QZX"},
+        "extension":"ONLY_DISCARDED_QZX"});
+    let mut value = original.clone();
+    let retained = privacy_with_input_filter(
+        &mut value,
+        &options,
+        &[],
+        &mut remaining,
+        clear_input_fields,
+    )
+    .unwrap();
+    assert_eq!(retained["extension"], REDACTED);
+    assert!(retained.get("state").is_none());
+    let charged = REDACTION_LIMITS.work - remaining;
+    assert!(charged > "ONLY_DISCARDED_QZX".len());
+    let mut remaining = charged - 1;
+    let mut value = original;
+    assert!(
+        privacy_with_input_filter(
+            &mut value,
+            &options,
+            &[],
+            &mut remaining,
+            clear_input_fields
+        )
+        .unwrap_err()
+        .is::<ImportLimitError>()
+    );
+}
+
 fn inputs(prefix: &str) -> Value {
     Value::Object(
         INPUT_FIELDS

@@ -1,5 +1,30 @@
 # Local performance measurements
 
+## Bounded credential redaction
+
+Measured October 22, 2026 using sequential authenticated loopback imports on a shared Linux x64 host with four logical CPUs. The [baseline](../reports/benchmarks/credential-redaction-baseline.json) is the saved release executable from commit `5501c265f53c06462f7785a6ef1f277d094427d1`; the [candidate](../reports/benchmarks/credential-redaction-bounded.json) adds bounded secret matching. Each report identifies the executable and harness by SHA-256. All input was synthetic, and no provider requests were made.
+
+Each successful fixture contains the same number of distinct credentials and unrelated retained strings. The previous matcher examined every secret for every string. The existence-only prefilter now skips exact replacement when a string contains no secret.
+
+| Secrets / retained strings | Input bytes | Baseline import | Bounded import |
+|---|---:|---:|---:|
+| 1,000 / 1,000 | 54,291 | 87.91 ms | 8.47 ms |
+| 3,000 / 3,000 | 162,291 | 860.96 ms | 13.82 ms |
+| 8,000 / 8,000 | 432,291 | 5,770.42 ms | 32.71 ms |
+
+Both executables stored all three ordinary fixtures with credentials redacted and every public string preserved exactly. A 424,334-byte fixture containing many positive matches exhausted the candidate's shared work allowance: it returned HTTP 413 in 456.99 ms and stored nothing; the baseline accepted it in 723.81 ms. A 2,097,454-byte fixture containing a credential above the pattern-byte limit likewise returned HTTP 413 with no stored record in 28.43 ms; the baseline accepted it in 194.94 ms. These rejection cases exercise deliberate resource limits, rather than malformed JSON.
+
+These are single diagnostic samples on a shared host, not throughput or percentile guarantees. Deterministic tests separately check work accounting, overlap and Unicode equivalence against the previous matcher, atomic import failure, and schema-valid incomplete live records. See [storage limits](storage.md) for the user-visible failure behavior.
+
+Reproduce with separate output files and the corresponding release executables:
+
+```bash
+python3 scripts/benchmark-redaction.py --binary target/release/jev-observer \
+  --output reports/benchmarks/credential-redaction-local.json
+```
+
+The script uses a temporary demo database, bounds each HTTP request, terminates and waits for its own process, and removes its temporary files. It records observations without enforcing a timing threshold.
+
 ## Encrypted 0.2.0 measurements
 
 Measured October 2, 2026 on a shared Linux ARM64 host with two Neoverse-N1 logical CPUs and 11.6 GiB RAM. The proxy, loopback mock and load generator shared the host with unrelated processes. Live history used SQLCipher with a temporary key; the harness checked that the database had no plaintext SQLite header. No provider inference or real credential was used.
@@ -97,7 +122,9 @@ For overload, injected writer failures and recovery on the candidate, see [stres
 
 ## Reusing search selections
 
-A further optimization evaluates search/group filters once per dashboard snapshot and reuses the matching parent sequence IDs across its queries. This avoids repeating correlated answer-key lookups for every answer and aggregate. The selection is connection-local, stores only integer IDs and uses a 2 MiB temporary pager-cache target. It does not modify the main database or cache results across snapshots. For more than 100 strict definitions, candidate ranking now precedes distribution calculation.
+A further optimization evaluates search/group filters once per dashboard snapshot and reuses the matching parent sequence IDs across its queries. This avoids repeating correlated answer-key lookups for every answer and aggregate. The selection is connection-local and stores only integer IDs in memory. Temporary payload sorting also stays in memory; large filtered histories can therefore use additional memory. The selection does not modify the main database or cache results across snapshots. For more than 100 strict definitions, candidate ranking now precedes distribution calculation.
+
+Dashboard and group-detail reads reuse identical version totals within their read transaction. The count key includes the source and either the strict question key or family ID, with those two namespaces kept separate. Counts still describe all retained definitions, even under a narrower request filter, and are recomputed for each new snapshot. This avoids repeating a matching-index count for every displayed version; it does not bound family aggregation or total dashboard work.
 
 The [search comparison](../reports/benchmarks/search-comparison.json) compares `eadc2bf4…` with `ec5f0ae0f5ca6ef1f8267bb5dc4560747096736638a01c67a6bd5ec445d7c047` on the same 150,000-request / 705,000-answer fixture. Both filters used five observations per binary:
 
@@ -171,6 +198,7 @@ node scripts/benchmark.mjs --seconds=300 --rate=500 --baseline-seconds=5 \
   --dashboard-search=urgency --output=reports/benchmarks/large-history-live-load.json
 # In another terminal, after history reaches approximately 100,000 requests:
 node scripts/watch-dashboard.mjs --origin=http://127.0.0.1:PORT --seconds=90 \
+  --access-token-file=/exact/token/path/printed/by/benchmark \
   --output=reports/benchmarks/large-history-browser.json
 ```
 
@@ -220,11 +248,14 @@ node scripts/benchmark.mjs --seconds=60 --rate=500 --upstream-ms=1000 --no-burst
 
 The harness creates temporary ports and a database on the project filesystem, then removes its database on completion. `--keep-db` retains it for inspection; `--work-dir=/path` selects a filesystem. `--baseline-seconds=N` overrides the positive duration of the direct mock control phase. `--dashboard-search=TEXT` exercises search during load; final accounting still checks the entire retained history. Reports identify hardware, binary hash, limits, capture health and counts. New runs also sample whole-host CPU, load average, available memory and swap each second to expose shared-machine contention; unsupported measurements remain null. A nonzero exit indicates a failed check.
 
-To add a real browser, install the UI's Playwright Chromium and, in another terminal, use the `observer_origin` printed by the running benchmark:
+To add a real browser, install the UI's Playwright Chromium and, in another terminal, use the `observer_origin` and `access_token_file` printed by the running benchmark:
 
 ```bash
-node scripts/watch-dashboard.mjs --origin=http://127.0.0.1:PORT --seconds=90
+node scripts/watch-dashboard.mjs --origin=http://127.0.0.1:PORT --seconds=90 \
+  --access-token-file=/exact/token/path/printed/by/benchmark
 ```
+
+The companion reads the token from that file and authenticates only to the selected loopback origin. It does not print or save the token in its report. Quote paths containing spaces; do not put token contents in command arguments.
 
 Choose a browser duration that ends before the benchmark stops its proxy, or stop the companion with Ctrl-C while the proxy still runs so it can save its report. This adds a dashboard reader to the harness's existing polling. The original byte/status, streaming, overflow, SQLite-lock/recovery, cancellation, retention, export and shutdown cases are covered by `cargo test --locked`.
 

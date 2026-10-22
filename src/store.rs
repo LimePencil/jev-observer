@@ -11,12 +11,27 @@ use std::{
     time::Duration,
 };
 
+const DELETE_BATCH_SIZE: i64 = 256;
+
 #[derive(Clone)]
 pub struct Store {
     path: Arc<PathBuf>,
     key: Option<Arc<String>>,
     retention_days: u32,
     max_records: usize,
+}
+
+/// Export state moves between blocking tasks; no transaction spans a network send.
+/// Only the selection connection may use disk-backed temporary storage. It
+/// materializes integer sequences, never serialized parents or answers.
+pub struct ExportSession {
+    store: Store,
+    selection: Option<Connection>,
+    predicate: String,
+    args: Vec<SqlValue>,
+    format: String,
+    after: i64,
+    through: i64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -44,6 +59,10 @@ pub struct Filter {
     pub group_search: Option<String>,
 }
 
+// Counts describe retained definitions, not the filtered answers. Keep this map
+// inside one read snapshot; family IDs and strict keys are separate namespaces.
+type VersionCounts = HashMap<(bool, String, String), i64>;
+
 fn text(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_default().to_owned()
 }
@@ -54,6 +73,16 @@ fn parse(s: String) -> rusqlite::Result<Value> {
     crate::normalized_json::from_slice(s.as_bytes()).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
     })
+}
+
+fn label_fields(annotation: &Value) -> Option<(&str, &str)> {
+    let key = annotation["key"]
+        .as_str()
+        .or(annotation["question_key"].as_str())?;
+    let label = annotation["label"].as_str()?;
+    ["correct", "incorrect", "unknown"]
+        .contains(&label)
+        .then_some((key, label))
 }
 
 fn serialize_without_field(
@@ -135,6 +164,135 @@ struct TimelineBucket {
     cost: Mean,
 }
 
+#[derive(Default)]
+struct GroupAnswers<'a> {
+    count: i64,
+    valid: i64,
+    requests: i64,
+    last: Option<i64>,
+    previous_request: Option<&'a str>,
+    values: Mean,
+    confidence: Mean,
+    numeric_bins: BTreeMap<i64, i64>,
+    choice_bins: BTreeMap<String, i64>,
+}
+
+struct AnswerValues<'a> {
+    valid: bool,
+    number: Option<f64>,
+    confidence: Option<f64>,
+    choice: Option<&'a str>,
+}
+
+impl<'a> GroupAnswers<'a> {
+    fn add(
+        &mut self,
+        kind: &str,
+        request: &'a str,
+        timestamp: i64,
+        answer: AnswerValues<'_>,
+    ) -> Result<()> {
+        self.count += 1;
+        if self.previous_request != Some(request) {
+            self.requests += 1;
+            self.previous_request = Some(request);
+        }
+        self.last = Some(self.last.map_or(timestamp, |last| last.max(timestamp)));
+        if !answer.valid {
+            return Ok(());
+        }
+        self.valid += 1;
+        if let Some(number) = answer.number {
+            self.values.add(number);
+        }
+        if let Some(confidence) = answer.confidence {
+            self.confidence.add(confidence);
+        }
+        if kind == "choice" {
+            let choice = answer.choice.context("Valid choice value is missing")?;
+            if let Some(count) = self.choice_bins.get_mut(choice) {
+                *count += 1;
+            } else {
+                self.choice_bins.insert(choice.to_owned(), 1);
+            }
+        } else {
+            let number = answer.number.context("Valid numeric value is missing")?;
+            let bin = if kind == "noul" {
+                ((number * 10.0) as i64).min(9)
+            } else {
+                number as i64
+            };
+            *self.numeric_bins.entry(bin).or_default() += 1;
+        }
+        Ok(())
+    }
+
+    fn finish(self, kind: &str) -> Value {
+        let bins: Vec<_> = if kind == "choice" {
+            self.choice_bins.into_iter().collect()
+        } else {
+            self.numeric_bins
+                .into_iter()
+                .map(|(bin, count)| (bin.to_string(), count))
+                .collect()
+        };
+        json!({
+            "answer_count":self.count,"valid_count":self.valid,"request_count":self.requests,
+            "last_seen":self.last,"mean_value":self.values.value(),
+            "mean_confidence":self.confidence.value(),
+            "distribution":bins.into_iter().map(|(bin,count)| json!({"label":bin,"count":count})).collect::<Vec<_>>()
+        })
+    }
+}
+
+struct SparseAnswer<'a> {
+    group: String,
+    group_kind: String,
+    request: &'a str,
+    timestamp: i64,
+    kind: String,
+    valid: i64,
+    number: Option<f64>,
+    choice: Option<String>,
+    confidence: Option<f64>,
+}
+
+fn sqlite_number_order(left: Option<f64>, right: Option<f64>) -> std::cmp::Ordering {
+    match (left, right) {
+        // SQLite treats signed zeros as equal and stores NaN as NULL.
+        (Some(left), Some(right)) => left
+            .partial_cmp(&right)
+            .unwrap_or(std::cmp::Ordering::Equal),
+        _ => left.is_some().cmp(&right.is_some()),
+    }
+}
+
+fn retain_dashboard_group(
+    selected: &mut Vec<(String, Value)>,
+    id: String,
+    stats: GroupAnswers<'_>,
+    kind: &str,
+    after: &Option<(i64, String)>,
+) {
+    let Some(last) = stats.last else {
+        return;
+    };
+    if after
+        .as_ref()
+        .is_some_and(|(time, cursor_id)| last > *time || (last == *time && id <= *cursor_id))
+    {
+        return;
+    }
+    let position = selected.partition_point(|(other_id, other)| {
+        other["last_seen"].as_i64().unwrap() > last
+            || (other["last_seen"] == last && other_id < &id)
+    });
+    if position < 101 {
+        selected.insert(position, (id, stats.finish(kind)));
+        selected.truncate(101);
+    }
+}
+
 const DASHBOARD_SELECTION: &str = "r.seq IN (SELECT seq FROM temp.dashboard_request_ids)";
 const GROUP_SELECTION: &str = "r.seq IN (SELECT seq FROM temp.group_request_ids)";
 const GROUP_TIMELINE_SELECTION: &str = "r.timestamp BETWEEN (SELECT min(timestamp) FROM temp.group_request_ids) AND (SELECT max(timestamp) FROM temp.group_request_ids) AND r.seq IN (SELECT seq FROM temp.group_request_ids)";
@@ -145,6 +303,8 @@ const FAILED: &str = "(r.status>=400 OR json_extract(r.data,'$.transport_error')
 // every remaining index column/order for deterministic floating-point sums.
 // Built-in SQL functions keep the additive index writable by v0.3.0 too.
 const STRICT_ANSWER_QUERY: &str = "SELECT request_id,valid,value_num,confidence,value_text FROM answers INDEXED BY answer_overview WHERE (CASE WHEN length(group_id)=73 AND length(CAST(group_id AS BLOB))=73 AND substr(group_id,1,9)='group_v1_' AND substr(group_id,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(group_id,10)) ELSE group_id END)=(CASE WHEN length(?1)=73 AND length(CAST(?1 AS BLOB))=73 AND substr(?1,1,9)='group_v1_' AND substr(?1,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(?1,10)) ELSE ?1 END) ORDER BY request_id";
+
+const SPARSE_ANSWER_QUERY: &str = "SELECT a.group_id,g.kind,a.kind,a.valid,a.value_num,a.value_text,a.confidence,g.id IS NOT NULL AND g.family_id IS NULL AND instr(lower(g.key || ' ' || g.source || ' ' || g.kind || ' ' || g.id || ' ' || coalesce(g.task_version,'')),lower(?1))>0 FROM answers a INDEXED BY sqlite_autoindex_answers_1 LEFT JOIN groups g ON g.id=a.group_id WHERE a.request_id=?2 LIMIT ?3";
 
 const DASHBOARD_INDEX: &str = "CREATE INDEX request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id,json_extract(data,'$.transport_error'))";
 
@@ -523,11 +683,23 @@ impl Store {
             DROP INDEX IF EXISTS answer_group;
             CREATE TABLE IF NOT EXISTS labels(
               request_id TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,key TEXT NOT NULL,
-              label TEXT NOT NULL,timestamp INTEGER NOT NULL,source TEXT NOT NULL,
+              label TEXT NOT NULL,timestamp INTEGER NOT NULL,source TEXT NOT NULL,annotation TEXT,
               PRIMARY KEY(request_id,key));
             CREATE TABLE IF NOT EXISTS maintenance(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS credential_approval(
               id INTEGER PRIMARY KEY CHECK(id=1), token_hash TEXT NOT NULL);")?;
+        // Additive: older binaries use explicit column lists. Their local-review
+        // INSERT OR REPLACE also clears annotation, just like current writes.
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let has_annotation: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('labels') WHERE name='annotation')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_annotation {
+            tx.execute_batch("ALTER TABLE labels ADD COLUMN annotation TEXT")?;
+        }
+        tx.commit()?;
         // Upgrade the covering index once, transactionally, for transfer outcomes.
         let index_sql: String = conn.query_row(
             "SELECT sql FROM sqlite_schema WHERE name='request_dashboard'",
@@ -570,7 +742,9 @@ impl Store {
         )?;
         self.apply_key(&conn)?;
         conn.busy_timeout(Duration::from_secs(2))?;
-        conn.execute_batch("PRAGMA cache_size=-8192;")?;
+        // A read snapshot can also sort retained definitions and metadata.
+        // Keep all such temporary payloads in RAM, including demo readers.
+        conn.execute_batch("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-8192;")?;
         Ok(conn)
     }
 
@@ -649,12 +823,8 @@ impl Store {
             }
             if let Some(labels) = record["labels"].as_array() {
                 for label in labels {
-                    let key = label["key"].as_str().or(label["question_key"].as_str());
-                    let value = label["label"].as_str();
-                    if let (Some(key), Some(value)) = (key, value)
-                        && ["correct", "incorrect", "unknown"].contains(&value)
-                    {
-                        tx.prepare_cached("INSERT OR REPLACE INTO labels(request_id,key,label,timestamp,source) VALUES(?,?,?,?,?)")?.execute(params![id,key,value,label["timestamp"].as_i64().unwrap_or_else(|| Utc::now().timestamp_millis()),label["source"].as_str().unwrap_or("import")])?;
+                    if let Some((key, value)) = label_fields(label) {
+                        tx.prepare_cached("INSERT OR REPLACE INTO labels(request_id,key,label,timestamp,source,annotation) VALUES(?,?,?,?,?,?)")?.execute(params![id,key,value,label["timestamp"].as_i64().unwrap_or_else(|| Utc::now().timestamp_millis()),label["source"].as_str().unwrap_or("import"),serde_json::to_string(label)?])?;
                     }
                 }
             }
@@ -672,6 +842,49 @@ impl Store {
         Ok(ran)
     }
 
+    fn delete_request_batches(tx: &Connection, query: &str, cutoff: i64) -> Result<usize> {
+        let mut statement = tx.prepare_cached(query)?;
+        let mut removed = 0;
+        loop {
+            let changed = statement.execute([cutoff, DELETE_BATCH_SIZE])?;
+            removed += changed;
+            if changed < DELETE_BATCH_SIZE as usize {
+                return Ok(removed);
+            }
+        }
+    }
+
+    fn delete_group_batches(tx: &Connection, orphaned_only: bool) -> Result<()> {
+        // Cursor by rowid, including negative values and legacy NULL group IDs.
+        // Advancing past each batch avoids rescanning a surviving group prefix.
+        // Only integer boundaries are selected; definitions remain in the DB.
+        let predicate = if orphaned_only {
+            "NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id)"
+        } else {
+            "1"
+        };
+        let mut first = tx.prepare_cached(&format!("SELECT min(seq),max(seq) FROM (SELECT rowid AS seq FROM groups WHERE {predicate} ORDER BY rowid LIMIT ?)"))?;
+        let mut next = tx.prepare_cached(&format!("SELECT min(seq),max(seq) FROM (SELECT rowid AS seq FROM groups WHERE rowid>? AND {predicate} ORDER BY rowid LIMIT ?)"))?;
+        let mut delete = tx.prepare_cached(&format!(
+            "DELETE FROM groups WHERE rowid BETWEEN ? AND ? AND {predicate}"
+        ))?;
+        let bounds = |row: &rusqlite::Row<'_>| {
+            Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
+        };
+        let mut after = None;
+        loop {
+            let range = match after {
+                Some(after) => next.query_row([after, DELETE_BATCH_SIZE], bounds)?,
+                None => first.query_row([DELETE_BATCH_SIZE], bounds)?,
+            };
+            let (Some(low), Some(high)) = range else {
+                return Ok(());
+            };
+            delete.execute([low, high])?;
+            after = Some(high);
+        }
+    }
+
     fn prune_in_transaction(&self, tx: &Connection, force: bool) -> Result<bool> {
         let now = Utc::now().timestamp_millis();
         let last: i64 = tx
@@ -683,9 +896,13 @@ impl Store {
             .optional()?
             .unwrap_or(0);
         if force || now < last || now - last >= 30_000 {
-            let expired = tx.execute(
-                "DELETE FROM requests WHERE timestamp < ?",
-                [now - i64::from(self.retention_days) * 86_400_000],
+            // Expression indexes and foreign keys can require a RAM statement
+            // journal. Finish bounded DELETE statements while retaining the
+            // existing outer transaction and fixed cutoffs for atomicity.
+            let expired = Self::delete_request_batches(
+                tx,
+                "DELETE FROM requests WHERE seq IN (SELECT seq FROM requests WHERE timestamp < ? ORDER BY timestamp,seq LIMIT ?)",
+                now - i64::from(self.retention_days) * 86_400_000,
             )?;
             // Distinct positive row IDs cannot outnumber their inclusive span.
             // Two endpoint lookups avoid walking the whole retained history
@@ -739,15 +956,24 @@ impl Store {
                     // Preserve the existing cutoff for legacy nonpositive IDs.
                     -1
                 };
-                tx.execute("DELETE FROM requests WHERE seq <= ?", [cutoff])?
+                Self::delete_request_batches(
+                    tx,
+                    "DELETE FROM requests WHERE seq IN (SELECT seq FROM requests WHERE seq <= ? ORDER BY seq LIMIT ?)",
+                    cutoff,
+                )?
             } else {
-                tx.execute("DELETE FROM requests WHERE seq <= COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?),-1)", [self.max_records as i64])?
+                let cutoff = tx.query_row("SELECT COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?),-1)", [self.max_records as i64], |row| row.get(0))?;
+                Self::delete_request_batches(
+                    tx,
+                    "DELETE FROM requests WHERE seq IN (SELECT seq FROM requests WHERE seq <= ? ORDER BY seq LIMIT ?)",
+                    cutoff,
+                )?
             };
             // Parent/answer/group writes and cascading deletions are atomic.
             // A periodic pass that removed no parents cannot orphan a group.
             // Forced startup maintenance still repairs pre-existing orphans.
             if force || expired > 0 || excess > 0 {
-                tx.execute("DELETE FROM groups WHERE NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id)", [])?;
+                Self::delete_group_batches(tx, true)?;
             }
             tx.execute(
                 "INSERT OR REPLACE INTO maintenance(key,value) VALUES('pruned_at',?)",
@@ -1020,12 +1246,10 @@ impl Store {
         {
             return Ok((predicate, args));
         }
-        // The main database remains read-only. Keep only integer IDs in a
-        // connection-local temporary table, with a small pager cache target.
-        conn.execute_batch(
-            "PRAGMA temp_store=FILE; PRAGMA temp.cache_size=-2048;
-             CREATE TEMP TABLE dashboard_request_ids(seq INTEGER PRIMARY KEY);",
-        )?;
+        // Keep the integer selection in the reader's MEMORY temp store.
+        // Later queries on this same snapshot can sort retained text, so
+        // switching the connection to FILE here would also spill payloads.
+        conn.execute_batch("CREATE TEMP TABLE dashboard_request_ids(seq INTEGER PRIMARY KEY);")?;
         // All predicate fields live in these indexes. Reading the request body
         // table here would pull large saved JSON pages into every search poll.
         let index = if filter.window.as_deref() == Some("all") && !narrow_date_scope {
@@ -1162,7 +1386,11 @@ impl Store {
         }
     }
 
-    fn group_metadata(conn: &Connection, id: &str) -> Result<Option<Value>> {
+    fn group_metadata(
+        conn: &Connection,
+        id: &str,
+        version_counts: &mut VersionCounts,
+    ) -> Result<Option<Value>> {
         let meta = conn.query_row("SELECT id,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter FROM groups WHERE id=? OR family_id=? ORDER BY id LIMIT 1",params![id,id], |r| Ok(json!({"id":id,"key":r.get::<_,String>(1)?,"name":r.get::<_,String>(1)?,"kind":r.get::<_,String>(2)?,"source":r.get::<_,String>(3)?,"definition_id":r.get::<_,String>(4)?,"presentation_id":r.get::<_,String>(5)?,"definition":parse(r.get(6)?)?,"task_version":r.get::<_,Option<String>>(7)?,"family_id":r.get::<_,Option<String>>(8)?,"family_name":r.get::<_,Option<String>>(9)?,"adapter":r.get::<_,Option<String>>(10)?}))).optional()?;
         let Some(mut result) = meta else {
             return Ok(None);
@@ -1172,18 +1400,27 @@ impl Store {
             result["name"] = result["family_name"].clone();
         }
         result["is_family"] = json!(family);
-        let version_count: i64 = conn.query_row(
-            Self::version_count_query(family),
-            params![
-                text(&result, "source"),
-                if family {
-                    id
-                } else {
-                    result["key"].as_str().unwrap_or_default()
-                }
-            ],
-            |r| r.get(0),
-        )?;
+        let scope = (
+            family,
+            text(&result, "source"),
+            if family {
+                id.to_owned()
+            } else {
+                text(&result, "key")
+            },
+        );
+        let version_count = match version_counts.entry(scope) {
+            std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let (_, source, selector) = entry.key();
+                let count = conn.query_row(
+                    Self::version_count_query(family),
+                    params![source, selector],
+                    |r| r.get::<_, i64>(0),
+                )?;
+                *entry.insert(count)
+            }
+        };
         result["version_count"] = json!(version_count);
         Ok(Some(result))
     }
@@ -1493,8 +1730,8 @@ impl Store {
         })
     }
 
-    /// Read each strict group's answers once, accumulating both its metrics and
-    /// bins. Ordering by parent ID makes distinct-request counting constant-space.
+    /// Use bounded parent lookups for sparse scopes and the covering group
+    /// index for broad scopes. Both keep the same answer accumulation order.
     fn strict_dashboard_groups(
         conn: &Connection,
         parents: &HashMap<String, i64>,
@@ -1503,6 +1740,143 @@ impl Store {
         if parents.is_empty() {
             return Ok(Vec::new());
         }
+        if let Some(groups) = Self::sparse_dashboard_groups(conn, parents, filter)? {
+            return Ok(groups);
+        }
+        Self::broad_dashboard_groups(conn, parents, filter)
+    }
+
+    /// A sparse selection should not visit every retained group and answer.
+    /// Bound the probe, copied text and answer count independently. The broad
+    /// covering-index path remains preferable for large or dense selections.
+    fn sparse_dashboard_groups(
+        conn: &Connection,
+        parents: &HashMap<String, i64>,
+        filter: &Filter,
+    ) -> Result<Option<Vec<(String, Value)>>> {
+        if parents.len() > 512 {
+            return Ok(None);
+        }
+        let sparse: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM requests INDEXED BY request_time LIMIT 1 OFFSET ?)",
+            [(parents.len() * 4) as i64],
+            |row| row.get(0),
+        )?;
+        if !sparse {
+            return Ok(None);
+        }
+        let mut statement = conn.prepare(SPARSE_ANSWER_QUERY)?;
+        let mut answers = Vec::new();
+        let mut visited = 0;
+        let mut copied_bytes = 0;
+        for (request, &timestamp) in parents {
+            let mut rows = statement.query(params![
+                filter.group_search.as_deref().unwrap_or(""),
+                request,
+                4097 - visited
+            ])?;
+            while let Some(row) = rows.next()? {
+                visited += 1;
+                if visited > 4096 {
+                    return Ok(None);
+                }
+                // Count before applying family/search eligibility so even an
+                // ineligible large parent cannot turn this into an open scan.
+                if !row.get::<_, bool>(7)? {
+                    continue;
+                }
+                let group = row.get_ref(0)?.as_str()?;
+                let group_kind = row.get_ref(1)?.as_str()?;
+                let Ok(kind) = row.get_ref(2)?.as_str() else {
+                    // The original plan does not decode answer kinds. Keep
+                    // unusual SQLite storage classes on that existing path.
+                    return Ok(None);
+                };
+                let valid: i64 = row.get(3)?;
+                let (number, choice, confidence) = if valid != 0 {
+                    (
+                        row.get::<_, Option<f64>>(4)?,
+                        match row.get_ref(5)?.as_str_or_null() {
+                            Ok(choice) => choice,
+                            Err(_) => return Ok(None),
+                        },
+                        row.get::<_, Option<f64>>(6)?,
+                    )
+                } else {
+                    (None, None, None)
+                };
+                // Choice labels and legacy IDs can be large. Do not copy an
+                // unbounded record into the in-memory ordering buffer.
+                for bytes in [
+                    group.len(),
+                    group_kind.len(),
+                    kind.len(),
+                    choice.map_or(0, str::len),
+                ] {
+                    if bytes > 1024 * 1024 - copied_bytes {
+                        return Ok(None);
+                    }
+                    copied_bytes += bytes;
+                }
+                answers.push(SparseAnswer {
+                    group: group.to_owned(),
+                    group_kind: group_kind.to_owned(),
+                    request,
+                    timestamp,
+                    kind: kind.to_owned(),
+                    valid,
+                    number,
+                    choice: choice.map(str::to_owned),
+                    confidence,
+                });
+            }
+        }
+        // Match answer_overview's complete tie order, including malformed
+        // legacy groups with several keys/kinds in one parent. Sorting only
+        // request IDs would change compensated sums and some exact means.
+        answers.sort_by(|left, right| {
+            left.group
+                .cmp(&right.group)
+                .then_with(|| left.request.cmp(right.request))
+                .then_with(|| left.kind.cmp(&right.kind))
+                .then_with(|| left.valid.cmp(&right.valid))
+                .then_with(|| sqlite_number_order(left.number, right.number))
+                .then_with(|| left.choice.cmp(&right.choice))
+                .then_with(|| sqlite_number_order(left.confidence, right.confidence))
+        });
+        let after = Self::group_cursor(filter)?;
+        let mut selected = Vec::new();
+        for group in answers.chunk_by(|left, right| left.group == right.group) {
+            let mut stats = GroupAnswers::default();
+            for answer in group {
+                stats.add(
+                    &answer.group_kind,
+                    answer.request,
+                    answer.timestamp,
+                    AnswerValues {
+                        valid: answer.valid != 0,
+                        number: answer.number,
+                        confidence: answer.confidence,
+                        choice: answer.choice.as_deref(),
+                    },
+                )?;
+            }
+            retain_dashboard_group(
+                &mut selected,
+                group[0].group.clone(),
+                stats,
+                &group[0].group_kind,
+                &after,
+            );
+        }
+        Ok(Some(selected))
+    }
+
+    fn broad_dashboard_groups(
+        conn: &Connection,
+        parents: &HashMap<String, i64>,
+        filter: &Filter,
+    ) -> Result<Vec<(String, Value)>> {
         let mut ids = conn.prepare("SELECT id,kind FROM groups WHERE family_id IS NULL AND instr(lower(key || ' ' || source || ' ' || kind || ' ' || id || ' ' || coalesce(task_version,'')),lower(?))>0 ORDER BY id")?;
         let after = Self::group_cursor(filter)?;
         let mut answers = conn.prepare(STRICT_ANSWER_QUERY)?;
@@ -1512,81 +1886,40 @@ impl Store {
         })? {
             let (id, kind) = row?;
             let mut rows = answers.query([&id])?;
-            let (mut count, mut valid, mut requests) = (0_i64, 0_i64, 0_i64);
-            let (mut values, mut confidence) = (Mean::default(), Mean::default());
-            let mut last = i64::MIN;
-            let mut previous_request = "";
-            let mut numeric_bins = std::collections::BTreeMap::<i64, i64>::new();
-            let mut choice_bins = std::collections::BTreeMap::<String, i64>::new();
+            let mut stats = GroupAnswers::default();
             while let Some(row) = rows.next()? {
                 let Some((request, &timestamp)) = parents.get_key_value(row.get_ref(0)?.as_str()?)
                 else {
                     continue;
                 };
-                count += 1;
-                if count == 1 || request != previous_request {
-                    requests += 1;
-                    previous_request = request;
-                }
-                last = last.max(timestamp);
-                if !row.get::<_, bool>(1)? {
-                    continue;
-                }
-                valid += 1;
-                let number: Option<f64> = row.get(2)?;
-                if let Some(number) = number {
-                    values.add(number);
-                }
-                if let Some(value) = row.get::<_, Option<f64>>(3)? {
-                    confidence.add(value);
-                }
-                if kind == "choice" {
-                    let bin = row.get_ref(4)?.as_str()?;
-                    if let Some(count) = choice_bins.get_mut(bin) {
-                        *count += 1;
-                    } else {
-                        choice_bins.insert(bin.to_owned(), 1);
-                    }
+                let valid = row.get::<_, bool>(1)?;
+                let (number, confidence, choice) = if valid {
+                    (
+                        row.get(2)?,
+                        row.get(3)?,
+                        if kind == "choice" {
+                            Some(row.get_ref(4)?.as_str()?)
+                        } else {
+                            None
+                        },
+                    )
                 } else {
-                    let number = number.context("Valid numeric value is missing")?;
-                    let bin = if kind == "noul" {
-                        ((number * 10.0) as i64).min(9)
-                    } else {
-                        number as i64
-                    };
-                    *numeric_bins.entry(bin).or_default() += 1;
-                }
+                    (None, None, None)
+                };
+                stats.add(
+                    &kind,
+                    request,
+                    timestamp,
+                    AnswerValues {
+                        valid,
+                        number,
+                        confidence,
+                        choice,
+                    },
+                )?;
             }
-            if count == 0
-                || after.as_ref().is_some_and(|(time, cursor_id)| {
-                    last > *time || (last == *time && id <= *cursor_id)
-                })
-            {
-                continue;
-            }
-            let bins: Vec<_> = if kind == "choice" {
-                choice_bins.into_iter().collect()
-            } else {
-                numeric_bins
-                    .into_iter()
-                    .map(|(bin, count)| (bin.to_string(), count))
-                    .collect()
-            };
-            let stats = json!({
-                "answer_count":count,"valid_count":valid,"request_count":requests,"last_seen":last,
-                "mean_value":values.value(),
-                "mean_confidence":confidence.value(),
-                "distribution":bins.into_iter().map(|(bin,count)| json!({"label":bin,"count":count})).collect::<Vec<_>>()
-            });
             // Retain one page plus lookahead, even for high-cardinality data.
-            let position = selected.partition_point(|(other_id, other)| {
-                other["last_seen"].as_i64().unwrap() > last
-                    || (other["last_seen"] == last && other_id < &id)
-            });
-            if position < 101 {
-                selected.insert(position, (id, stats));
-                selected.truncate(101);
-            }
+            retain_dashboard_group(&mut selected, id, stats, &kind, &after);
         }
         Ok(selected)
     }
@@ -1684,8 +2017,9 @@ impl Store {
             None
         };
         let mut groups = Vec::new();
+        let mut version_counts = VersionCounts::new();
         for (id, stats) in &stats {
-            if let Some(mut group) = Self::group_metadata(&tx, id)? {
+            if let Some(mut group) = Self::group_metadata(&tx, id, &mut version_counts)? {
                 group
                     .as_object_mut()
                     .unwrap()
@@ -1789,10 +2123,51 @@ impl Store {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         record["answers"] = Value::Array(answers);
+        // Legacy databases kept the original annotations only in the parent.
+        // Last valid annotation wins, matching write_batch's replacement order.
+        let imported_labels: HashMap<_, _> = record["labels"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|annotation| label_fields(annotation).map(|(key, _)| (key, annotation)))
+            .collect();
         let mut stmt = conn.prepare(
-            "SELECT key,label,timestamp,source FROM labels WHERE request_id=? ORDER BY key",
+            "SELECT key,label,timestamp,source,annotation FROM labels WHERE request_id=? ORDER BY key",
         )?;
-        let labels=stmt.query_map([id],|r|Ok(json!({"key":r.get::<_,String>(0)?,"label":r.get::<_,String>(1)?,"timestamp":r.get::<_,i64>(2)?,"source":r.get::<_,String>(3)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let labels = stmt
+            .query_map([id], |row| {
+                let key: String = row.get(0)?;
+                let label: String = row.get(1)?;
+                let timestamp: i64 = row.get(2)?;
+                let source: String = row.get(3)?;
+                let saved: Option<String> = row.get(4)?;
+                let mut annotation = if let Some(saved) = saved {
+                    parse(saved)?
+                } else {
+                    // A local replacement must never inherit imported notes,
+                    // even if its value and millisecond timestamp happen to match.
+                    imported_labels
+                        .get(key.as_str())
+                        .filter(|original| {
+                            source != "local-reviewer"
+                                && original["label"].as_str() == Some(label.as_str())
+                                && original["timestamp"].as_i64() == Some(timestamp)
+                                && original["source"].as_str().unwrap_or("import") == source
+                        })
+                        .map(|original| (*original).clone())
+                        .unwrap_or_else(|| json!({}))
+                };
+                if !annotation.is_object() {
+                    annotation = json!({});
+                }
+                // The indexed columns remain authoritative for current review state.
+                annotation["key"] = json!(key);
+                annotation["label"] = json!(label);
+                annotation["timestamp"] = json!(timestamp);
+                annotation["source"] = json!(source);
+                Ok(annotation)
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         record["labels"] = Value::Array(labels);
         record["failed"] = json!(
             record["status"]
@@ -1825,7 +2200,8 @@ impl Store {
         id: &str,
         filter: &Filter,
     ) -> Result<Option<Value>> {
-        let Some(metadata) = Self::group_metadata(conn, id)? else {
+        let mut version_counts = VersionCounts::new();
+        let Some(metadata) = Self::group_metadata(conn, id, &mut version_counts)? else {
             return Ok(None);
         };
         let lookup_limit = Self::group_lookup_limit(conn, filter)?;
@@ -1882,7 +2258,7 @@ impl Store {
                 versions.push(group.clone());
                 continue;
             }
-            if let Some(metadata) = Self::group_metadata(conn, &id)? {
+            if let Some(metadata) = Self::group_metadata(conn, &id, &mut version_counts)? {
                 let (version, _) = Self::group_summary(conn, &id, filter, lookup_limit, metadata)?;
                 versions.push(version);
             }
@@ -1915,54 +2291,75 @@ impl Store {
         ))
     }
 
-    /// A short read transaction per page prevents slow downloads from pinning
-    /// the WAL. `through` freezes the sequence ceiling while new calls arrive.
-    pub fn export_page(
-        &self,
-        filter: &Filter,
-        format: &str,
-        after: i64,
-        through: Option<i64>,
-    ) -> Result<(String, i64, i64, bool)> {
-        self.export_page_with_limits(
-            filter,
-            format,
-            after,
-            through,
-            2 * 1024 * 1024,
-            32 * 1024 * 1024,
-        )
+    /// Freeze the rowid ceiling and any source/model selection once. Those
+    /// indexes order by timestamp, so repeating an ORDER BY seq page query
+    /// would scan and sort the same selected history for every page.
+    pub fn start_export(&self, filter: &Filter, format: &str) -> Result<ExportSession> {
+        self.start_export_from(self.reader()?, filter, format)
     }
 
-    fn export_page_with_limits(
+    fn start_export_from(
         &self,
+        mut connection: Connection,
         filter: &Filter,
         format: &str,
-        after: i64,
-        through: Option<i64>,
-        target_bytes: usize,
-        max_bytes: usize,
-    ) -> Result<(String, i64, i64, bool)> {
+    ) -> Result<ExportSession> {
         if !["jsonl", "csv"].contains(&format) {
             bail!("Export format must be jsonl or csv");
         }
-        let mut connection = self.reader()?;
-        let conn = connection.transaction()?;
-        let through = match through {
-            Some(value) => value,
-            None => conn.query_row("SELECT coalesce(max(seq),0) FROM requests", [], |r| {
-                r.get(0)
-            })?,
-        };
-        let (predicate, mut args) = Self::predicate(filter)?;
-        args.push(after.into());
-        args.push(through.into());
-        let mut stmt = conn.prepare(&format!("SELECT id,seq FROM requests r WHERE {predicate} AND seq>? AND seq<=? ORDER BY seq LIMIT 100"))?;
-        let ids = stmt
-            .query_map(params_from_iter(&args), |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut filter = filter.clone();
+        filter
+            .as_of
+            .get_or_insert_with(|| Utc::now().timestamp_millis());
+        let (predicate, args) = Self::predicate(&filter)?;
+        let frozen = [&filter.source, &filter.model]
+            .into_iter()
+            .flatten()
+            .any(|value| !value.is_empty());
+        if frozen {
+            // Predicates may inspect a JSON scalar such as transport_error,
+            // but only integer sequences enter temporary storage. Record
+            // serialization uses a separate MEMORY connection on every page.
+            connection.execute_batch(
+                "PRAGMA temp_store=FILE; PRAGMA temp.cache_size=-2048; PRAGMA cache_size=-2048;",
+            )?;
+        }
+        let transaction = connection.transaction()?;
+        let through: i64 =
+            transaction.query_row("SELECT coalesce(max(seq),0) FROM requests", [], |row| {
+                row.get(0)
+            })?;
+        if frozen {
+            transaction
+                .execute_batch("CREATE TEMP TABLE export_request_ids(seq INTEGER PRIMARY KEY);")?;
+            let mut selection_args = args.clone();
+            selection_args.push(through.into());
+            transaction.execute(
+                &format!("INSERT INTO temp.export_request_ids SELECT r.seq FROM requests r WHERE {predicate} AND r.seq>0 AND r.seq<=?"),
+                params_from_iter(&selection_args),
+            )?;
+        }
+        transaction.commit()?;
+        Ok(ExportSession {
+            store: self.clone(),
+            selection: frozen.then_some(connection),
+            predicate,
+            args,
+            format: format.into(),
+            after: 0,
+            through,
+        })
+    }
+
+    fn export_page_from(
+        conn: &rusqlite::Transaction<'_>,
+        format: &str,
+        after: i64,
+        through: i64,
+        ids: Vec<(Option<String>, i64)>,
+        target_bytes: usize,
+        max_bytes: usize,
+    ) -> Result<(String, i64, i64, bool)> {
         let full_page = ids.len() == 100;
         let mut out = String::new();
         if format == "csv" && after == 0 {
@@ -1974,16 +2371,22 @@ impl Store {
         let header_bytes = out.len();
         let mut cursor = after;
         for (id, seq) in ids {
+            // A selected parent may disappear between pages. Advancing over
+            // its immutable sequence also handles an entirely deleted page.
+            let Some(id) = id else {
+                cursor = seq;
+                continue;
+            };
             if out.len() - header_bytes >= target_bytes {
                 return Ok((out, cursor, through, true));
             }
             let mut row = String::new();
             if format == "jsonl" {
-                if let Some(record) = Self::request_from(&conn, &id)? {
+                if let Some(record) = Self::request_from(conn, &id)? {
                     row = serde_json::to_string(&record)?;
                     row.push('\n');
                 }
-            } else if let Some((record, answer_count)) = Self::request_parent(&conn, &id)? {
+            } else if let Some((record, answer_count)) = Self::request_parent(conn, &id)? {
                 // CSV contains parent metrics only. Its saved answer count is
                 // committed atomically with the children, so exporting it does
                 // not require loading every answer, definition and review.
@@ -2020,16 +2423,10 @@ impl Store {
 
     #[cfg(test)]
     pub fn export(&self, filter: &Filter, format: &str) -> Result<String> {
-        let mut filter = filter.clone();
-        filter
-            .as_of
-            .get_or_insert_with(|| Utc::now().timestamp_millis());
+        let mut session = self.start_export(filter, format)?;
         let mut output = String::new();
-        let mut after = 0;
-        let mut ceiling = None;
         loop {
-            let (page, cursor, through, more) =
-                self.export_page(&filter, format, after, ceiling)?;
+            let (page, _, _, more) = session.next_page()?;
             output.push_str(&page);
             if output.len() > 16 * 1024 * 1024 {
                 bail!("Use paginated exports for large histories");
@@ -2037,8 +2434,6 @@ impl Store {
             if !more {
                 break;
             }
-            after = cursor;
-            ceiling = Some(through);
         }
         Ok(output)
     }
@@ -2084,12 +2479,77 @@ impl Store {
 
     pub fn delete_all(&self) -> Result<()> {
         let mut conn = self.writer_connection()?;
+        Self::delete_all_from_connection(&mut conn)
+    }
+
+    fn delete_all_from_connection(conn: &mut Connection) -> Result<()> {
         let tx = conn.transaction()?;
-        tx.execute("DELETE FROM requests", [])?;
-        tx.execute("DELETE FROM groups", [])?;
+        Self::delete_request_batches(
+            &tx,
+            "DELETE FROM requests WHERE seq IN (SELECT seq FROM requests WHERE seq <= ? ORDER BY seq LIMIT ?)",
+            i64::MAX,
+        )?;
+        // Delete every group, retaining the original error behavior if corrupt
+        // legacy history contains an answer whose missing parent cannot cascade.
+        Self::delete_group_batches(&tx, false)?;
         tx.commit()?;
         conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
         Ok(())
+    }
+}
+
+impl ExportSession {
+    pub fn next_page(&mut self) -> Result<(String, i64, i64, bool)> {
+        self.next_page_with_limits(2 * 1024 * 1024, 32 * 1024 * 1024)
+    }
+
+    fn next_page_with_limits(
+        &mut self,
+        target_bytes: usize,
+        max_bytes: usize,
+    ) -> Result<(String, i64, i64, bool)> {
+        let selected = self.selection.as_ref().map(|selection| -> Result<Vec<i64>> {
+            Ok(selection.prepare("SELECT seq FROM temp.export_request_ids WHERE seq>? AND seq<=? ORDER BY seq LIMIT 100")?
+                .query_map(params![self.after, self.through], |row| row.get(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?)
+        }).transpose()?;
+        let mut connection = self.store.reader()?;
+        // Parent/answer reads can sort original JSON (for example by answer
+        // rowid). Keep those temporary values in memory, including demo mode.
+        connection.execute_batch("PRAGMA temp_store=MEMORY;")?;
+        let transaction = connection.transaction()?;
+        let ids = if let Some(selected) = selected {
+            let mut lookup = transaction.prepare("SELECT id FROM requests WHERE seq=?")?;
+            selected
+                .into_iter()
+                .map(|seq| {
+                    let id = lookup.query_row([seq], |row| row.get(0)).optional()?;
+                    Ok((id, seq))
+                })
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        } else {
+            let mut args = self.args.clone();
+            args.push(self.after.into());
+            args.push(self.through.into());
+            transaction.prepare(&format!("SELECT id,seq FROM requests r WHERE {} AND seq>? AND seq<=? ORDER BY seq LIMIT 100", self.predicate))?
+                .query_map(params_from_iter(&args), |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        let page = Store::export_page_from(
+            &transaction,
+            &self.format,
+            self.after,
+            self.through,
+            ids,
+            target_bytes,
+            max_bytes,
+        )?;
+        if page.3 && page.1 <= self.after {
+            bail!("Export cursor did not advance");
+        }
+        transaction.commit()?;
+        self.after = page.1;
+        Ok(page)
     }
 }
 
@@ -2138,6 +2598,10 @@ fn csv_cell(value: &Value) -> String {
     };
     format!("\"{}\"", safe.replace('"', "\"\""))
 }
+
+#[cfg(test)]
+#[path = "label_provenance_tests.rs"]
+mod label_provenance_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2382,6 +2846,98 @@ mod tests {
     }
     fn record(id: &str) -> Value {
         json!({"schema_version":1,"id":id,"timestamp":Utc::now().timestamp_millis(),"source":"test","model":"jev-test","status":200,"duration_ms":4.0,"cost_usd":0.1,"cost_basis":"synthetic","input_tokens":100,"output_tokens":3,"capture_complete":true,"sample":true,"answers":[{"key":"urgent","kind":"noul","group_id":"g","definition_id":"d","presentation_id":"p","definition":{"type":"noul","instructions":"Urgent?"},"valid":true,"value":0.8}]})
+    }
+
+    fn dashboard_temp_storage_case(encrypted: bool) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("temporary-payload.sqlite");
+        let store = if encrypted {
+            Store::open_encrypted(&path, "d".repeat(64), 7, 100).unwrap()
+        } else {
+            Store::open_demo(&path, 7, 100).unwrap()
+        };
+        let mut saved = record("synthetic-large-definition");
+        saved["answers"][0]["definition"]["instructions"] =
+            json!("SYNTHETIC_DASHBOARD_TEMP_MARKER_Q7Z9 ".repeat(95_000));
+        store
+            .write_batch(&mut store.writer_connection().unwrap(), &[saved.clone()])
+            .unwrap();
+        let base = Filter {
+            window: Some("all".into()),
+            as_of: saved["timestamp"].as_i64(),
+            ..Default::default()
+        };
+        let expected = store.dashboard(&base).unwrap();
+        let expected_detail = store.group("g", &base).unwrap().unwrap();
+        assert_eq!(expected["groups"].as_array().unwrap().len(), 1);
+        assert_eq!(expected["requests"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            expected["groups"][0]["definition"],
+            saved["answers"][0]["definition"]
+        );
+        for filter in [
+            base.clone(),
+            Filter {
+                search: Some("test".into()),
+                ..base.clone()
+            },
+            Filter {
+                group: Some("g".into()),
+                ..base.clone()
+            },
+            Filter {
+                search: Some("test".into()),
+                group: Some("g".into()),
+                ..base.clone()
+            },
+        ] {
+            let mut connection = store.reader().unwrap();
+            assert_eq!(
+                connection
+                    .pragma_query_value(None, "temp_store", |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+            // Search/group selection and subsequent full-definition metadata
+            // sorting share one connection and must preserve its privacy mode.
+            let dashboard = Store::dashboard_from(&mut connection, &filter).unwrap();
+            assert_eq!(dashboard, expected);
+            assert_eq!(
+                connection
+                    .pragma_query_value(None, "temp_store", |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+            let transaction = connection.transaction().unwrap();
+            let detail = Store::group_from(&transaction, "g", &filter)
+                .unwrap()
+                .unwrap();
+            assert_eq!(detail, expected_detail);
+            assert_eq!(
+                transaction
+                    .pragma_query_value(None, "temp_store", |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+        }
+        assert_eq!(
+            store
+                .request("synthetic-large-definition")
+                .unwrap()
+                .unwrap()["answers"][0]["definition"],
+            saved["answers"][0]["definition"]
+        );
+        assert_eq!(plaintext_database(&path).unwrap(), !encrypted);
+    }
+
+    #[test]
+    fn encrypted_dashboard_temporary_payloads_stay_in_memory() {
+        dashboard_temp_storage_case(true);
+    }
+
+    #[test]
+    fn demo_dashboard_temporary_payloads_stay_in_memory() {
+        dashboard_temp_storage_case(false);
     }
 
     #[test]
@@ -2789,7 +3345,9 @@ mod tests {
         let connection = store.reader().unwrap();
         for group in groups {
             let id = text(group, "id");
-            let metadata = Store::group_metadata(&connection, &id).unwrap().unwrap();
+            let metadata = Store::group_metadata(&connection, &id, &mut VersionCounts::new())
+                .unwrap()
+                .unwrap();
             let (baseline, _) =
                 Store::group_summary(&connection, &id, &filter, 0, metadata).unwrap();
             assert_overview_matches_detail(group, &baseline);
@@ -2814,7 +3372,7 @@ mod tests {
                 "strict-129",
                 &narrowed,
                 0,
-                Store::group_metadata(&connection, "strict-129")
+                Store::group_metadata(&connection, "strict-129", &mut VersionCounts::new())
                     .unwrap()
                     .unwrap(),
             )
@@ -3200,17 +3758,14 @@ mod tests {
             as_of: Some(now - 60_000),
             ..Default::default()
         };
-        let (first, cursor, through, more) = store.export_page(&filter, "jsonl", 0, None).unwrap();
+        let mut session = store.start_export(&filter, "jsonl").unwrap();
+        let (first, _, _, more) = session.next_page().unwrap();
         assert_eq!(first.lines().count(), 100);
         assert!(more);
-        let (second, cursor, _, more) = store
-            .export_page(&filter, "jsonl", cursor, Some(through))
-            .unwrap();
+        let (second, _, _, more) = session.next_page().unwrap();
         assert_eq!(second.lines().count(), 100);
         assert!(more);
-        let (last, _, _, more) = store
-            .export_page(&filter, "jsonl", cursor, Some(through))
-            .unwrap();
+        let (last, _, _, more) = session.next_page().unwrap();
         assert_eq!(last.lines().count(), 5);
         assert!(!more);
         let external: Filter =
@@ -3218,7 +3773,9 @@ mod tests {
         assert!(external.as_of.is_none());
         assert!(
             store
-                .export_page(&external, "jsonl", 0, None)
+                .start_export(&external, "jsonl")
+                .unwrap()
+                .next_page()
                 .unwrap()
                 .0
                 .is_empty()
@@ -3328,9 +3885,14 @@ mod tests {
     fn snapshot_export(store: &Store, format: &str) -> Value {
         let filter = Filter {
             window: Some("all".into()),
+            source: Some("test".into()),
             ..Default::default()
         };
-        let (page, cursor, through, more) = store.export_page(&filter, format, 0, None).unwrap();
+        let (page, cursor, through, more) = store
+            .start_export(&filter, format)
+            .unwrap()
+            .next_page()
+            .unwrap();
         assert!(cursor > 0);
         assert_eq!(cursor, through);
         assert!(!more);
@@ -3591,3 +4153,7 @@ mod export_tests;
 #[cfg(test)]
 #[path = "retention_tests.rs"]
 mod retention_tests;
+
+#[cfg(test)]
+#[path = "version_count_tests.rs"]
+mod version_count_tests;
