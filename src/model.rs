@@ -510,13 +510,14 @@ enum PrivacyContext<'a> {
     Answers(&'a Profile),
     Definition(&'a Profile),
     Answer(&'a Profile),
+    SemanticMap,
     Observer(&'a Profile),
     ObserverAnswers(&'a Profile),
     ObserverAnswer(&'a Profile),
 }
 
 impl<'a> PrivacyContext<'a> {
-    fn field(self, key: &str) -> Self {
+    fn field(self, object: &Value, key: &str) -> Self {
         match (self, key) {
             (Self::Request(profile), "questions") => Self::Questions(profile),
             (Self::Response(profile), "answers") => Self::Answers(profile),
@@ -525,8 +526,34 @@ impl<'a> PrivacyContext<'a> {
             (Self::Observer(profile), "answers") => Self::ObserverAnswers(profile),
             (Self::ObserverAnswer(profile), "definition") => Self::Definition(profile),
             (Self::ObserverAnswer(profile), "raw_answer") => Self::Answer(profile),
+            (Self::ObserverAnswer(_), "probabilities")
+                if matches!(
+                    object["raw_answer"]["type"].as_str(),
+                    Some("choice" | "score")
+                ) =>
+            {
+                Self::SemanticMap
+            }
+            (Self::Definition(_), "criteria")
+                if matches!(object["type"].as_str(), Some("noul" | "choice")) =>
+            {
+                Self::SemanticMap
+            }
+            (Self::Answer(_), "probabilities")
+                if matches!(object["type"].as_str(), Some("choice" | "score")) =>
+            {
+                Self::SemanticMap
+            }
+            (Self::Answer(_), "legend") if object["type"] == "score" => Self::SemanticMap,
             _ => Self::Other,
         }
+    }
+
+    fn semantic_keys(self) -> bool {
+        matches!(
+            self,
+            Self::Questions(_) | Self::Answers(_) | Self::SemanticMap
+        )
     }
 
     fn item(self) -> Self {
@@ -578,18 +605,21 @@ fn scrub_with_context(
         Value::Object(values) => {
             let mut out = Map::new();
             for (key, original) in values {
-                // Headers are not part of the retained event format, even if
-                // embedded in provider extensions or imported records.
-                if matches!(
-                    key_name(key).as_str(),
-                    "headers" | "requestheaders" | "responseheaders"
-                ) {
+                // Direct semantic-map keys identify questions, options or
+                // levels. A label named "headers" is not a header container.
+                // Nested extensions still use the ordinary omission rule.
+                if !context.semantic_keys()
+                    && matches!(
+                        key_name(key).as_str(),
+                        "headers" | "requestheaders" | "responseheaders"
+                    )
+                {
                     continue;
                 }
                 let retained = if sensitive_key(key, options) {
                     json!(REDACTED)
                 } else {
-                    scrub_with_context(original, options, matcher, context.field(key))?
+                    scrub_with_context(original, options, matcher, context.field(value, key))?
                 };
                 let retained_key = scrub_string(key, matcher)?;
                 // Follow only exact original protocol paths. Optional fields
@@ -3483,3 +3513,7 @@ mod redaction_collision_tests;
 #[cfg(test)]
 #[path = "redaction_validation_tests.rs"]
 mod redaction_validation_tests;
+
+#[cfg(test)]
+#[path = "semantic_header_tests.rs"]
+mod semantic_header_tests;
