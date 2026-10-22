@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Aperture, ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, Info, Pulse, WarningCircle } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 import type { Group, RequestSummary, Summary, TimelineBucket, TimelineMeta } from './types';
@@ -61,11 +61,26 @@ export function LazyDetails({ summary, children, className }: { summary: ReactNo
 export function Timeline({ data, meta, metric = 'requests', compact: small = false }: { data: TimelineBucket[]; meta?: TimelineMeta; metric?: 'requests' | 'latency' | 'cost'; compact?: boolean }) {
   const chartId = useId();
   const [active, setActive] = useState<number | null>(null);
-  const width = 900, height = small ? 120 : 170, pad = metric === 'cost' ? 76 : 36;
+  const chart = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const get = (point: TimelineBucket) => metric === 'latency' ? point.mean_latency_ms : metric === 'cost' ? point.cost_usd : point.requests;
   const values = data.map(get);
   const valid = values.filter((value): value is number => value !== null);
-  if (!data.length || !valid.length) return <div className="chart-empty">{metric === 'cost' ? 'No known cost in this window' : 'Activity will appear here as requests are recorded'}</div>;
+  const hasData = data.length > 0 && valid.length > 0;
+  useEffect(() => {
+    if (!chart.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      // Hidden charts keep the last usable geometry until they become visible.
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+      setSize(previous => previous?.width === width && previous.height === height ? previous : { width, height });
+    });
+    observer.observe(chart.current);
+    return () => observer.disconnect();
+  }, [hasData]);
+  if (!hasData) return <div className="chart-empty">{metric === 'cost' ? 'No known cost in this window' : 'Activity will appear here as requests are recorded'}</div>;
+  const pad = metric === 'cost' ? 76 : 36;
+  const width = Math.max(size?.width ?? 900, pad + 9), height = Math.max(size?.height ?? (small ? 120 : 170), 37);
   const largest = Math.max(...valid);
   const max = largest > 0 ? largest : 1;
   const plotWidth = width - pad - 8;
@@ -80,7 +95,7 @@ export function Timeline({ data, meta, metric = 'requests', compact: small = fal
   const label = (value: number | null) => metric === 'latency' ? ms(value) : metric === 'cost' ? money(value) : number(value);
   const activePoint = active === null ? null : data[active];
   return <div className="timeline-wrap">
-    <svg className="timeline-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={chartId}>
+    <svg ref={chart} className="timeline-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={chartId}>
       <title id={chartId}>{metric === 'requests' ? 'Requests and failures' : metric === 'latency' ? 'Mean request latency' : 'Known request cost'} over time. An accessible data table follows.</title>
       {[0, .5, 1].map(fraction => <g key={fraction}><line x1={pad} x2={width} y1={y(fraction * max)} y2={y(fraction * max)} className="chart-grid" /><text x={pad - 9} y={y(fraction * max) + 4} textAnchor="end" className="chart-axis">{metric === 'cost' ? money(fraction * max) : compact(fraction * max)}</text></g>)}
       {data.map((point, index) => {
@@ -96,7 +111,7 @@ export function Timeline({ data, meta, metric = 'requests', compact: small = fal
           <title>{dateTime(point.timestamp)}: {label(value)}{metric === 'requests' ? ` requests, ${number(point.errors)} failures` : ''}</title>
         </g>;
       })}
-      {[0, .5, 1].map(fraction => <text key={fraction} x={pad + fraction * plotWidth} y={height - 2} textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'} className="chart-axis">{chartTime(first + fraction * span, showDate)}</text>)}
+      {(plotWidth < 400 ? [0, 1] : [0, .5, 1]).map(fraction => <text key={fraction} x={pad + fraction * plotWidth} y={height - 2} textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'} className="chart-axis">{chartTime(first + fraction * span, showDate)}</text>)}
     </svg>
     {activePoint && <div className="chart-tooltip" aria-hidden="true"><span>{dateTime(activePoint.timestamp)}</span><strong>{label(get(activePoint))}{metric === 'requests' ? ' requests' : ''}</strong>{metric === 'requests' && <span>{number(activePoint.errors)} failures</span>}</div>}
     {meta?.truncated && <p className="caption">Only part of this time range is displayed.</p>}
