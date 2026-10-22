@@ -171,7 +171,7 @@ node scripts/benchmark.mjs --seconds=300 --rate=500 --baseline-seconds=5 \
   --dashboard-search=urgency --output=reports/benchmarks/large-history-live-load.json
 # In another terminal, after history reaches approximately 100,000 requests:
 node scripts/watch-dashboard.mjs --origin=http://127.0.0.1:PORT --seconds=90 \
-  --access-token-file=/path/from/benchmark/bench.access-token \
+  --access-token-file=/exact/token/path/printed/by/benchmark \
   --output=reports/benchmarks/large-history-browser.json
 ```
 
@@ -225,7 +225,7 @@ To add a real browser, install the UI's Playwright Chromium and, in another term
 
 ```bash
 node scripts/watch-dashboard.mjs --origin=http://127.0.0.1:PORT --seconds=90 \
-  --access-token-file=/path/from/benchmark/bench.access-token
+  --access-token-file=/exact/token/path/printed/by/benchmark
 ```
 
 The companion reads the token from that file and authenticates only to the selected loopback origin. It does not print or save the token in its report. Quote paths containing spaces; do not put token contents in command arguments.
