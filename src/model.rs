@@ -17,6 +17,11 @@ const REDACTED: &str = "[REDACTED]";
 const MAX_IMPORT_RECORDS: usize = 10_000;
 const PROBABILITY_TOLERANCE: f64 = 0.0001;
 
+/// Match the dashboard's JavaScript Date domain and HTTP date filters.
+pub fn valid_timestamp(timestamp: i64) -> bool {
+    (-8_640_000_000_000_000..=8_640_000_000_000_000).contains(&timestamp)
+}
+
 #[derive(Debug)]
 pub struct ImportLimitError(&'static str);
 
@@ -1084,14 +1089,10 @@ fn import_observer(
     }
     let id = required_string(record, "id")?;
     let source = required_string(record, "source")?;
-    ensure!(
-        record["timestamp"].is_null() || record["timestamp"].as_i64().is_some(),
-        "timestamp must be milliseconds or null"
-    );
-    if let Some(imported_at) = record.get("imported_at") {
+    for key in ["timestamp", "imported_at"] {
         ensure!(
-            imported_at.is_null() || imported_at.as_i64().is_some(),
-            "imported_at must be milliseconds or null"
+            record[key].is_null() || record[key].as_i64().is_some_and(valid_timestamp),
+            "{key} must be valid epoch milliseconds or null"
         );
     }
     for key in ["duration_ms", "cost_usd"] {
@@ -1463,7 +1464,8 @@ fn import_capture(
     );
     let timestamp = record["timestamp"]
         .as_i64()
-        .context("timestamp must be Unix milliseconds")?;
+        .filter(|timestamp| valid_timestamp(*timestamp))
+        .context("timestamp must be valid epoch milliseconds")?;
     let status = record["status"]
         .as_u64()
         .filter(|status| (100..=599).contains(status))
@@ -1885,6 +1887,48 @@ mod tests {
 
     fn normalized(c: &Capture) -> Value {
         normalize(c, &NormalizeOptions::default())
+    }
+
+    #[test]
+    fn imported_timestamps_share_the_dashboard_date_domain() {
+        let capture = noul();
+        let observer = normalized(&capture);
+        let raw = json!({
+            "id":"time-domain", "source":"time-domain", "provider":"typesafe",
+            "timestamp":capture.timestamp, "status":200, "capture_complete":true,
+            "request":serde_json::from_slice::<Value>(&capture.request).unwrap(),
+            "response":serde_json::from_slice::<Value>(&capture.response).unwrap()
+        });
+        for (format, mut record, key) in [
+            ("observer-jsonl", observer.clone(), "timestamp"),
+            ("observer-jsonl", observer, "imported_at"),
+            ("systemone-capture", raw, "timestamp"),
+        ] {
+            for timestamp in [-8_640_000_000_000_000_i64, -1, 0, 1, 8_640_000_000_000_000] {
+                record[key] = json!(timestamp);
+                let imported =
+                    import_records(&record.to_string(), format, &NormalizeOptions::default())
+                        .unwrap();
+                assert_eq!(imported[0][key], timestamp, "{format} {key}");
+            }
+            for invalid in [
+                json!(-8_640_000_000_000_001_i64),
+                json!(8_640_000_000_000_001_i64),
+                json!(i64::MIN),
+                json!(i64::MAX),
+                json!(u64::MAX),
+                json!(1.5),
+                json!(true),
+                json!("1700000000000"),
+            ] {
+                record[key] = invalid;
+                let error =
+                    import_records(&record.to_string(), format, &NormalizeOptions::default())
+                        .unwrap_err();
+                assert!(format!("{error:#}").contains(key), "{format}: {error:#}");
+                assert!(!error.is::<ImportLimitError>());
+            }
+        }
     }
 
     #[test]
