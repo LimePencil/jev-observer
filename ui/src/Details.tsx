@@ -9,25 +9,26 @@ import { ModelCatalog } from './ModelCatalog';
 import type { ReviewController, ReviewState } from './reviews';
 import type { CredentialController } from './credentials';
 import type { ImportController } from './imports';
+import type { HistoryDeletionController } from './deletion';
 import { answerValue, bytes, costBasis, dateTime, money, ms, number, percent, shortId } from './format';
 import { Definition, Distribution, Empty, ErrorNotice, KindBadge, LazyDetails, Loading, RequestTable, StatusBadge, Timeline } from './components';
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
 const DECISIONS_PER_PAGE = 50;
 const emptyReview: ReviewState = { pending: null, error: '', saved: false };
-type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; credentials: CredentialController; imports: ImportController; historyChanged: () => void; historyRevision: number; filterGroup: (id: string) => void; notify: (message: string) => void };
+type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; credentials: CredentialController; imports: ImportController; deletion: HistoryDeletionController; historyRevision: number; filterGroup: (id: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
   return <div className="drawer-heading"><div className="eyebrow">{icon}{eyebrow}</div><Dialog.Title>{title}</Dialog.Title><Dialog.Description>{description}</Dialog.Description></div>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="detail-field"><dt>{label}</dt><dd>{children}</dd></div>; }
 
-export default function Details({ health, panel, setPanel, filters, reviews, credentials, imports, historyChanged, historyRevision, filterGroup, notify }: Props) {
+export default function Details({ health, panel, setPanel, filters, reviews, credentials, imports, deletion, historyRevision, filterGroup }: Props) {
   return <Dialog.Root open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className={`drawer ${panel?.type === 'import' || panel?.type === 'connect' ? 'drawer-small' : ''}`}>
     <Dialog.Close className="icon-button drawer-close" aria-label="Close detail panel"><X size={20} weight="bold" /></Dialog.Close>
     {panel?.type === 'request' && <RequestDetails key={panel.id} id={panel.id} setPanel={setPanel} controller={reviews} historyRevision={historyRevision} />}
     {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} historyRevision={historyRevision} />}
-    {panel?.type === 'settings' && <SettingsDetails changed={historyChanged} notify={notify} close={() => setPanel(null)} />}
+    {panel?.type === 'settings' && <SettingsDetails controller={deletion} close={() => setPanel(null)} />}
     {panel?.type === 'import' && <ImportDetails controller={imports} initialFormat={panel.format} />}
     {panel?.type === 'connect' && <ConnectDetails health={health} controller={credentials} importCaptures={() => setPanel({ type: 'import', format: 'systemone-capture' })} />}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
@@ -141,29 +142,23 @@ function VersionComparison({ current, other }: { current: Group; other: Group })
   </section>;
 }
 
-function SettingsDetails({ changed, notify, close }: { changed: () => void; notify: Props['notify']; close: () => void }) {
+function SettingsDetails({ controller, close }: { controller: HistoryDeletionController; close: () => void }) {
   const { data, error, reload } = useResource<Settings>('/api/settings');
-  const [confirm, setConfirm] = useState(false), [typed, setTyped] = useState(''), [busy, setBusy] = useState(false), [deleteError, setDeleteError] = useState('');
+  const [confirm, setConfirm] = useState(false), [typed, setTyped] = useState('');
+  const { busy, error: deleteError, remove: deleteHistory } = controller;
   const active = useRef(false);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   async function remove() {
     if (busy || typed !== 'DELETE') return;
-    setBusy(true); setDeleteError('');
-    try {
-      await api('/api/data', { method: 'DELETE' });
-      changed(); notify(data?.demo ? 'Sample history deleted. It will be recreated on the next demo startup.' : 'Local history deleted. New incoming requests will still be recorded.');
-      // The user may have closed Settings and moved to another panel while
-      // storage was busy. Keep global history current without closing it.
-      if (active.current) close();
-    }
-    catch (error) { if (active.current) setDeleteError(error instanceof Error ? error.message : 'Could not delete history'); }
-    finally { if (active.current) setBusy(false); }
+    const deleted = await deleteHistory(data?.demo === true);
+    // Only close the Settings instance that submitted this operation.
+    if (deleted && active.current) close();
   }
   return <><DetailHeading eyebrow="Workspace settings" title="Local by design." description="Capture settings, storage limits and controls for your history." icon={<GearSix size={15} />} />{error ? <ErrorNotice message={error} retry={reload} /> : !data ? <Loading label="Loading settings" /> : <div className="drawer-body">
     <section className="settings-section"><div className="settings-section-icon"><ShieldCheck size={22} weight="duotone" /></div><div><h3>Input capture</h3><p>{data.capture_state ? 'Enabled with local opt-in. Retained input uses configured redaction.' : 'Raw input state is not retained. Question definitions and model answers are stored locally.'}</p><span className={`status-tag ${data.capture_state ? 'warning' : 'success'}`}>{data.capture_state ? 'Opt-in enabled' : 'Off by default'}</span></div></section>
     <section className="settings-section"><div className="settings-section-icon"><Database size={22} weight="duotone" /></div><div><h3>History and retention</h3><dl className="detail-grid"><Field label="Detailed history">{data.retention_days === 0 ? 'No age limit' : `${data.retention_days} days`}</Field><Field label="Record cap">{number(data.max_records)}</Field><Field label="Capture budget">{bytes(data.capture_limit)} per body</Field><Field label="Mode">{data.demo ? 'Isolated sample workspace' : 'Live collection'}</Field></dl><p className="caption">History can end earlier when the record cap is reached. Settings are configured when Observer starts.</p></div></section>
     <section className="detail-section"><h3>Connection</h3><dl className="detail-grid"><Field label="Upstream">{data.upstream}</Field><Field label="Observer version">{data.version}</Field></dl><p className="caption">Registered provider keys are never returned after setup. Live inference goes to the configured provider.</p></section>
-    <section className="danger-zone"><h3>Delete local history</h3><p>{data.demo ? 'Remove stored requests, answers and review labels from this sample workspace. Synthetic records will be recreated when you next start demo mode with an empty workspace.' : 'Remove stored requests, answers and review labels from this workspace. Forwarding and future collection will continue.'}</p>{!confirm ? <button className="button danger-button" onClick={() => setConfirm(true)}><Trash size={16} />Delete history</button> : <div className="delete-confirm"><label className="field-label">Type DELETE to confirm<input value={typed} onChange={event => setTyped(event.target.value)} placeholder="DELETE" autoComplete="off" /></label><div className="button-row"><button className="button" disabled={busy} onClick={() => { setConfirm(false); setTyped(''); }}>Cancel</button><button className="button danger-button" disabled={typed !== 'DELETE' || busy} onClick={() => void remove()}>{busy ? 'Deleting…' : 'Permanently delete history'}</button></div></div>}{deleteError && <ErrorNotice message={deleteError} />}</section>
+    <section className="danger-zone"><h3>Delete local history</h3><p>{data.demo ? 'Remove stored requests, answers and review labels from this sample workspace. Synthetic records will be recreated when you next start demo mode with an empty workspace.' : 'Remove stored requests, answers and review labels from this workspace. Forwarding and future collection will continue.'}</p>{!confirm ? <button className="button danger-button" disabled={busy} onClick={() => setConfirm(true)}>{busy ? 'Deleting…' : <><Trash size={16} />Delete history</>}</button> : <div className="delete-confirm"><label className="field-label">Type DELETE to confirm<input value={typed} onChange={event => setTyped(event.target.value)} placeholder="DELETE" autoComplete="off" /></label><div className="button-row"><button className="button" disabled={busy} onClick={() => { setConfirm(false); setTyped(''); }}>Cancel</button><button className="button danger-button" disabled={typed !== 'DELETE' || busy} onClick={() => void remove()}>{busy ? 'Deleting…' : 'Permanently delete history'}</button></div></div>}{deleteError && <ErrorNotice message={deleteError} />}</section>
   </div>}</>;
 }
 
