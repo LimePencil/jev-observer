@@ -2263,6 +2263,99 @@ test('question search reaches server history and stays editable after no matches
   await expect(page.locator('.group-row')).toContainText('department');
 });
 
+for (const { timezoneId, locale, expected } of [
+  { timezoneId: 'UTC', locale: 'en-US', expected: ['Oct 22, 2025, 03:00:00.123 GMT', 'Oct 22, 2026, 03:00:00.123 GMT', 'Dec 31, 2025, 23:30:00.456 GMT'] },
+  { timezoneId: 'Asia/Seoul', locale: 'en-US', expected: ['Oct 22, 2025, 12:00:00.123 GMT+9', 'Oct 22, 2026, 12:00:00.123 GMT+9', 'Jan 1, 2026, 08:30:00.456 GMT+9'] },
+  { timezoneId: 'America/Los_Angeles', locale: 'en-US', expected: ['Oct 21, 2025, 20:00:00.123 GMT-7', 'Oct 21, 2026, 20:00:00.123 GMT-7', 'Dec 31, 2025, 15:30:00.456 GMT-8'] },
+  { timezoneId: 'UTC', locale: 'en-GB', expected: ['22 Oct 2025, 03:00:00.123 GMT', '22 Oct 2026, 03:00:00.123 GMT', '31 Dec 2025, 23:30:00.456 GMT'] },
+]) {
+  test.describe(`full date inspection in ${timezoneId} (${locale})`, () => {
+    test.use({ timezoneId, locale });
+
+    test('request and chart inspection distinguish years and local date rollover', async ({ page }) => {
+      const state = await harness(page, { settings: { retention_days: 0 }, path: '/?window=all' });
+      const timestamps = ['2025-10-22T03:00:00.123Z', '2026-10-22T03:00:00.123Z', '2025-12-31T23:30:00.456Z'].map(Date.parse);
+      const records = timestamps.map((timestamp, index) => ({ ...structuredClone(record), id: `dated-${index}`, timestamp }));
+      state.dashboard.requests = records;
+      state.dashboard.timeline = [...timestamps].sort((a, b) => a - b).map(timestamp => ({ timestamp, requests: 1, errors: 0, mean_latency_ms: 1, cost_usd: null }));
+      state.dashboard.timeline_meta = { start: timestamps[0], end: timestamps[1] + 86_400_000, bucket_width: 86_400_000, truncated: false };
+      await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      await expect(page.locator('.request-table tbody tr')).toHaveCount(3);
+      const activity = page.locator('.activity-panel');
+      await activity.getByText('View chart data', { exact: true }).click();
+      for (const [index, item] of records.entries()) {
+        const opener = page.getByRole('button', { name: `Inspect request ${item.id}`, exact: true });
+        const row = page.locator('.request-table tbody tr').filter({ has: opener });
+        const fullDate = await row.locator('td > span[title]').getAttribute('title');
+        // ICU versions spell the zero offset as either GMT or GMT+0.
+        expect(fullDate?.replace(/GMT\+0$/, 'GMT')).toBe(expected[index]);
+        await expect(row.locator('td > span[title] > .sr-only')).toHaveText(fullDate!);
+        await expect(row.locator('td > span[title] > [aria-hidden="true"]')).not.toContainText(/202[56]/);
+        state.record = item;
+        await opener.click();
+        const date = page.getByRole('dialog').locator('.detail-field').filter({ has: page.getByText('Recorded', { exact: true }) }).locator('dd');
+        await expect(date).toHaveText(fullDate!);
+        await page.keyboard.press('Escape');
+        await expect(opener).toBeFocused();
+        const chartIndex = state.dashboard.timeline.findIndex(point => point.timestamp === item.timestamp);
+        await expect(activity.locator('.chart-accessible tbody tr').nth(chartIndex).locator('td').first()).toHaveText(fullDate!);
+        const point = activity.locator('.chart-bar').nth(chartIndex).locator('..');
+        await expect(point.locator('title')).toHaveText(`${fullDate}: 1 requests, 0 failures`);
+        await point.hover();
+        await expect(activity.locator('.chart-tooltip > span').first()).toHaveText(fullDate!);
+      }
+      await expect(activity.locator('.chart-axis').last()).not.toContainText(/202[56]|GMT/);
+      // Full inspection does not change local custom-range controls or their epoch scope.
+      await page.getByRole('button', { name: 'Custom date range' }).click();
+      await page.getByLabel('From date').fill('2025-12-31T23:30');
+      const expectedFrom = await page.evaluate(() => String(new Date('2025-12-31T23:30').getTime()));
+      await expect.poll(() => new URL(page.url()).searchParams.get('from')).toBe(expectedFrom);
+      await expect(page.getByLabel('From date')).toHaveValue('2025-12-31T23:30');
+    });
+  });
+}
+
+test.describe('full dates at daylight-saving and legacy boundaries', () => {
+  test.use({ timezoneId: 'America/Los_Angeles', locale: 'en-US' });
+
+  test('repeated local hours carry distinct offsets in request details', async ({ page }) => {
+    const state = await harness(page);
+    for (const [timestamp, expected] of [
+      ['2026-11-01T08:30:00Z', 'Nov 1, 2026, 01:30:00.000 GMT-7'],
+      ['2026-11-01T09:30:00Z', 'Nov 1, 2026, 01:30:00.000 GMT-8'],
+    ]) {
+      state.record.timestamp = Date.parse(timestamp);
+      await page.getByRole('button', { name: 'Inspect request request-one', exact: true }).click();
+      await expect(page.getByRole('dialog').locator('.detail-field').filter({ has: page.getByText('Recorded', { exact: true }) }).locator('dd')).toHaveText(expected);
+      await page.keyboard.press('Escape');
+    }
+  });
+
+  test('legacy timestamp states and import-time fallback remain explicit', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const state = await harness(page);
+    for (const { timestamp, imported_at, expected } of [
+      { timestamp: null, imported_at: null, expected: 'Unknown' },
+      { timestamp: null, imported_at: Date.parse('2025-12-31T23:30:00.456Z'), expected: 'Dec 31, 2025, 15:30:00.456 GMT-8' },
+      { timestamp: 1.5, imported_at: null, expected: 'Invalid timestamp' },
+      { timestamp: 8_640_000_000_000_001, imported_at: null, expected: 'Date out of range' },
+    ]) {
+      Object.assign(state.record, { timestamp, imported_at });
+      state.dashboard.requests = [structuredClone(state.record)];
+      await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      await expect(page.locator('.request-table td > span[title]')).toHaveAttribute('title', expected);
+      const opener = page.getByRole('button', { name: 'Inspect request request-one', exact: true });
+      await opener.click();
+      const field = page.getByRole('dialog').locator('.detail-field').filter({ has: page.getByText(timestamp == null ? 'Imported at' : 'Recorded', { exact: true }) });
+      await expect(field.locator('dd')).toHaveText(expected + (timestamp == null ? 'Original event time unknown' : ''));
+      await page.keyboard.press('Escape');
+      await expect(opener).toBeFocused();
+    }
+    expect(errors).toEqual([]);
+  });
+});
+
 for (const { timezoneId, endDate, lastBucketDate } of [
   { timezoneId: 'UTC', endDate: 'Oct 3', lastBucketDate: 'Oct 2' },
   { timezoneId: 'America/Los_Angeles', endDate: 'Oct 2', lastBucketDate: 'Oct 1' },
