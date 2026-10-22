@@ -3,7 +3,7 @@ import { useId, useState } from 'react';
 import { Aperture, ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, Info, Pulse, WarningCircle } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 import type { Group, RequestSummary, Summary, TimelineBucket, TimelineMeta } from './types';
-import { chartTime, compact, costBasis, money, ms, number, time } from './format';
+import { chartTime, compact, costBasis, dateTime, money, ms, number, time } from './format';
 
 // Reuse the website's duotone mark and two-weight wordmark in every app shell.
 export function Brand({ className = '', onNavigate }: { className?: string; onNavigate: () => void }) {
@@ -92,14 +92,14 @@ export function Timeline({ data, meta, metric = 'requests', compact: small = fal
           <rect x={x - pointStep / 2} y={0} width={pointStep} height={height - 16} fill="transparent" />
           {value !== null && <rect x={x - pointWidth / 2} y={y(value)} width={pointWidth} height={Math.max(value > 0 ? 2 : 0, y(0) - y(value))} rx={2} className={`chart-bar ${active === index ? 'active' : ''}`} />}
           {metric === 'requests' && point.errors > 0 && <rect x={x - pointWidth / 2} y={y(point.errors)} width={pointWidth} height={Math.max(2, y(0) - y(point.errors))} rx={2} className="chart-error" />}
-          <title>{chartTime(point.timestamp, showDate)}: {label(value)}{metric === 'requests' ? ` requests, ${number(point.errors)} failures` : ''}</title>
+          <title>{dateTime(point.timestamp)}: {label(value)}{metric === 'requests' ? ` requests, ${number(point.errors)} failures` : ''}</title>
         </g>;
       })}
       {[0, .5, 1].map(fraction => <text key={fraction} x={pad + fraction * plotWidth} y={height - 2} textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'} className="chart-axis">{chartTime(first + fraction * span, showDate)}</text>)}
     </svg>
-    {activePoint && <div className="chart-tooltip" aria-hidden="true"><span>{chartTime(activePoint.timestamp, showDate)}</span><strong>{label(get(activePoint))}{metric === 'requests' ? ' requests' : ''}</strong>{metric === 'requests' && <span>{number(activePoint.errors)} failures</span>}</div>}
+    {activePoint && <div className="chart-tooltip" aria-hidden="true"><span>{dateTime(activePoint.timestamp)}</span><strong>{label(get(activePoint))}{metric === 'requests' ? ' requests' : ''}</strong>{metric === 'requests' && <span>{number(activePoint.errors)} failures</span>}</div>}
     {meta?.truncated && <p className="caption">Only part of this time range is displayed.</p>}
-    <details className="chart-accessible"><summary>View chart data</summary><div className="table-scroll"><table><thead><tr><th>Time</th><th>Requests</th><th>Failures</th><th>Mean latency</th><th>Known cost</th></tr></thead><tbody>{data.map((point, index) => <tr key={`${point.timestamp}-${index}`}><td>{chartTime(point.timestamp, true)}</td><td>{number(point.requests)}</td><td>{number(point.errors)}</td><td>{ms(point.mean_latency_ms)}</td><td>{money(point.cost_usd)}</td></tr>)}</tbody></table></div></details>
+    <details className="chart-accessible"><summary>View chart data</summary><div className="table-scroll"><table><thead><tr><th>Time</th><th>Requests</th><th>Failures</th><th>Mean latency</th><th>Known cost</th></tr></thead><tbody>{data.map((point, index) => <tr key={`${point.timestamp}-${index}`}><td>{dateTime(point.timestamp)}</td><td>{number(point.requests)}</td><td>{number(point.errors)}</td><td>{ms(point.mean_latency_ms)}</td><td>{money(point.cost_usd)}</td></tr>)}</tbody></table></div></details>
   </div>;
 }
 
@@ -121,6 +121,6 @@ export function RequestTable({ requests, open, compact: small = false }: { reque
     <td><button className="request-link" onClick={() => open(request.id)} aria-label={`Inspect request ${request.id}`}><span className="request-source">{request.source}{!request.capture_complete && <span className="mini-warning" title="Capture is incomplete"><WarningCircle size={13} weight="fill" /></span>}</span><span className="mono subtle request-id">{request.id.slice(0, 16)}</span></button></td>
     <td>{request.event_kind && request.event_kind !== 'request' ? <span className="status-badge is-unknown">Action</span> : <StatusBadge status={request.status} failed={request.failed} />}</td>{!small && <td><span className="model-name">{request.model || 'Unknown'}</span><span className="table-subline">{number(request.answer_count)} questions</span></td>}
     <td className="align-right mono">{ms(request.duration_ms)}</td>{!small && <td className="align-right mono">{request.input_tokens == null || request.output_tokens == null ? 'Unknown' : number(request.input_tokens + request.output_tokens)}</td>}
-    <td className="align-right mono" title={costBasis(request.cost_basis)}>{money(request.cost_usd)}{request.cost_usd != null && <span className="table-subline cost-basis">{costBasis(request.cost_basis)}</span>}</td><td className="mono subtle">{time(request.timestamp ?? request.imported_at)}{(request.timestamp_basis === 'import' || request.timestamp == null && request.imported_at != null) && <span className="table-subline">Import time</span>}</td><td><button className="icon-button row-open" onClick={() => open(request.id)} aria-label={`Open ${request.id}`}><ArrowRight size={16} /></button></td>
+    <td className="align-right mono" title={costBasis(request.cost_basis)}>{money(request.cost_usd)}{request.cost_usd != null && <span className="table-subline cost-basis">{costBasis(request.cost_basis)}</span>}</td><td className="mono subtle"><span title={dateTime(request.timestamp ?? request.imported_at)}><span aria-hidden="true">{time(request.timestamp ?? request.imported_at)}</span><span className="sr-only">{dateTime(request.timestamp ?? request.imported_at)}</span></span>{(request.timestamp_basis === 'import' || request.timestamp == null && request.imported_at != null) && <span className="table-subline">Import time</span>}</td><td><button className="icon-button row-open" onClick={() => open(request.id)} aria-label={`Open ${request.id}`}><ArrowRight size={16} /></button></td>
   </tr>)}</tbody></table></div>;
 }
