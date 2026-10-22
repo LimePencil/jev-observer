@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import type { CredentialStatus, Dashboard, Group, RequestRecord, Settings } from '../src/types';
 import AxeBuilder from '@axe-core/playwright';
 
@@ -2474,6 +2474,122 @@ for (const { timezoneId, endDate, lastBucketDate } of [
     });
   });
 }
+
+test.describe('responsive timeline geometry', () => {
+  test.use({ timezoneId: 'UTC', locale: 'en-US' });
+
+  async function readableChart(svg: Locator) {
+    await expect.poll(() => svg.evaluate(element => {
+      const scale = (element as SVGSVGElement).getScreenCTM();
+      return scale ? Math.max(Math.abs(scale.a - 1), Math.abs(scale.d - 1)) : 1;
+    })).toBeLessThan(.01);
+    const geometry = await svg.evaluate(element => {
+      const svg = element as SVGSVGElement, bounds = svg.getBoundingClientRect();
+      const labels = [...svg.querySelectorAll<SVGTextElement>(':scope > .chart-axis')].map(label => {
+        const rect = label.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, height: rect.height };
+      });
+      return { left: bounds.left, right: bounds.right, labels, finite: [...svg.querySelectorAll('rect')].every(rect => ['x', 'y', 'width', 'height'].every(name => Number.isFinite(Number(rect.getAttribute(name))))) };
+    });
+    expect(geometry.finite).toBe(true);
+    for (const [index, label] of geometry.labels.entries()) {
+      expect(label.height).toBeGreaterThanOrEqual(9);
+      expect(label.left).toBeGreaterThanOrEqual(geometry.left - 1);
+      expect(label.right).toBeLessThanOrEqual(geometry.right + 1);
+      if (index) expect(label.left - geometry.labels[index - 1].right).toBeGreaterThan(8);
+    }
+  }
+
+  for (const [metric, values] of [
+    ['Volume', ['1', '2', '3']], ['Latency', ['10 ms', '20 ms', '30 ms']], ['Cost', ['$0.0100', '$0.0200', '$0.0300']],
+  ] as const) {
+    test(`${metric} keeps readable axes and exact data through phone desktop tablet resize`, async ({ page }, testInfo) => {
+      const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+      await page.setViewportSize({ width: 390, height: 1000 });
+      const state = await harness(page);
+      const start = Date.UTC(2026, 9, 21), hour = 3_600_000;
+      state.dashboard.timeline = [0, 6, 12].map((offset, index) => ({ timestamp: start + offset * hour, requests: index + 1, errors: index === 2 ? 1 : 0, mean_latency_ms: (index + 1) * 10, cost_usd: (index + 1) / 100 }));
+      state.dashboard.timeline_meta = { start, end: start + 24 * hour, bucket_width: hour, truncated: false };
+      await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      const activity = page.locator('.activity-panel'), svg = activity.locator('.timeline-chart');
+      await activity.getByRole('button', { name: metric, exact: true }).click();
+      await expect(svg.locator('.chart-bar')).toHaveCount(3);
+      await activity.getByText('View chart data', { exact: true }).click();
+      await page.evaluate(() => document.fonts.ready);
+      const table = activity.locator('.chart-accessible tbody');
+      const originalRows = await table.locator('tr').allTextContents();
+      for (let index = 0; index < 3; index += 1) {
+        await expect(table.locator('tr').nth(index).locator('td').nth(1)).toHaveText(String(index + 1));
+        await expect(table.locator('tr').nth(index).locator('td').nth(2)).toHaveText(index === 2 ? '1' : '0');
+        await expect(table.locator('tr').nth(index).locator('td').nth(3)).toHaveText(`${(index + 1) * 10} ms`);
+        await expect(table.locator('tr').nth(index).locator('td').nth(4)).toHaveText(`$0.0${index + 1}00`);
+      }
+      for (const width of [390, 1440, 768]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await readableChart(svg);
+        await expect(svg.locator(':scope > .chart-axis')).toHaveCount(width === 1440 ? 3 : 2);
+        await expect(svg.locator('.chart-bar')).toHaveCount(3);
+        await expect(svg.locator('.chart-error')).toHaveCount(metric === 'Volume' ? 1 : 0);
+        const relativePositions = await svg.evaluate(element => {
+          const ticks = element.querySelectorAll<SVGTextElement>(':scope > .chart-axis');
+          const left = Number(ticks[0].getAttribute('x')), right = Number(ticks[ticks.length - 1].getAttribute('x'));
+          return [...element.querySelectorAll<SVGRectElement>('.chart-bar')].map(bar => (Number(bar.getAttribute('x')) + Number(bar.getAttribute('width')) / 2 - left) / (right - left));
+        });
+        for (const [index, position] of relativePositions.entries()) expect(position).toBeCloseTo((index * 6 + .5) / 24);
+        const heights = await svg.locator('.chart-bar').evaluateAll(bars => bars.map(bar => Number(bar.getAttribute('height'))));
+        expect(heights[1] / heights[0]).toBeCloseTo(2);
+        expect(heights[2] / heights[0]).toBeCloseTo(3);
+        for (const [index, value] of values.entries()) {
+          const date = await table.locator('tr').nth(index).locator('td').first().textContent();
+          expect(date).toMatch(/Oct 21, 2026, (00|06|12):00:00\.000 GMT/);
+          const point = svg.locator('.chart-bar').nth(index).locator('..');
+          const suffix = metric === 'Volume' ? ` requests, ${index === 2 ? 1 : 0} failures` : '';
+          await expect(point.locator('title')).toHaveText(`${date}: ${value}${suffix}`);
+          await point.hover();
+          await expect(activity.locator('.chart-tooltip > span').first()).toHaveText(date!);
+          await expect(activity.locator('.chart-tooltip strong')).toHaveText(`${value}${metric === 'Volume' ? ' requests' : ''}`);
+        }
+        await expect(table.locator('tr')).toHaveText(originalRows);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        if (metric === 'Volume' && width !== 1440) await activity.screenshot({ path: testInfo.outputPath(`timeline-${width}.png`) });
+      }
+      expect(errors).toEqual([]);
+    });
+  }
+
+  test('empty hidden and compact charts recover usable geometry', async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width: 390, height: 1000 });
+    const state = await harness(page), activity = page.locator('.activity-panel');
+    const timeline = state.dashboard.timeline;
+    state.dashboard.timeline = [];
+    await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+    await expect(activity.locator('.timeline-chart')).toHaveCount(0);
+    await activity.evaluate(element => { element.style.display = 'none'; });
+    state.dashboard.timeline = timeline;
+    await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+    const svg = activity.locator('.timeline-chart');
+    await expect(svg).toHaveCount(1);
+    expect(await svg.getAttribute('viewBox')).not.toMatch(/NaN|Infinity/);
+    await activity.evaluate(element => { element.style.display = ''; });
+    await readableChart(svg);
+    const geometry = await svg.getAttribute('viewBox');
+    await activity.evaluate(element => { element.style.display = 'none'; });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await expect(svg).toHaveAttribute('viewBox', geometry!);
+    await activity.evaluate(element => { element.style.display = ''; });
+    await readableChart(svg);
+    await page.getByLabel('Inspect group department', { exact: true }).click();
+    const compactChart = page.getByRole('dialog').locator('.timeline-chart');
+    await readableChart(compactChart);
+    await expect(compactChart.locator('.chart-bar')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(compactChart).toHaveCount(0);
+    await page.setViewportSize({ width: 768, height: 1000 });
+    await readableChart(svg);
+    expect(errors).toEqual([]);
+  });
+});
 
 test('a partial timeline bucket keeps the selected exclusive range end', async ({ page }) => {
   const state = await harness(page);
