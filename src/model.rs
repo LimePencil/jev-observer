@@ -52,6 +52,19 @@ impl std::fmt::Display for ImportLimitError {
 
 impl std::error::Error for ImportLimitError {}
 
+pub const IMPORT_IDENTITY_ERROR_MESSAGE: &str = "Import rejected because privacy filtering changes an event identity. Use stable, non-sensitive IDs and source names.";
+
+#[derive(Debug)]
+pub struct ImportIdentityError;
+
+impl std::fmt::Display for ImportIdentityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(IMPORT_IDENTITY_ERROR_MESSAGE)
+    }
+}
+
+impl std::error::Error for ImportIdentityError {}
+
 #[derive(Clone, Copy)]
 struct ImportLimits {
     record: usize,
@@ -1237,6 +1250,52 @@ fn required_string<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
         .with_context(|| format!("{key} must be a nonempty string"))
 }
 
+fn observer_event_id<'a>(record: &'a Value, id: &'a str) -> &'a str {
+    record["source_event_id"]
+        .as_str()
+        .filter(|event| !event.is_empty())
+        .unwrap_or(id)
+}
+
+// External identities must survive privacy unchanged: replacing them with a
+// shared marker would turn distinct events into successful duplicate imports.
+fn check_import_identity(original: &Value, retained: &Value, format: &str) -> Result<()> {
+    if format == "observer-jsonl" {
+        let id = required_string(original, "id")?;
+        let source = required_string(original, "source")?;
+        ensure!(
+            retained["id"].as_str() == Some(id)
+                && retained["source"].as_str() == Some(source)
+                && observer_event_id(retained, id) == observer_event_id(original, id),
+            ImportIdentityError
+        );
+    } else {
+        let decision = required_string(original, "decision_id")?;
+        ensure!(
+            retained["decision_id"].as_str() == Some(decision),
+            ImportIdentityError
+        );
+    }
+    Ok(())
+}
+
+fn check_persisted_import_identity(
+    record: &Value,
+    id: &str,
+    source: &str,
+    event: &str,
+    format: &str,
+) -> Result<()> {
+    ensure!(
+        record["id"].as_str() == Some(id)
+            && record["source"].as_str() == Some(source)
+            && record["source_event_id"].as_str() == Some(event)
+            && record["import_format"].as_str() == Some(format),
+        ImportIdentityError
+    );
+    Ok(())
+}
+
 fn nullable_number(value: &Value, key: &str) -> Result<()> {
     ensure!(
         value[key].is_null() || finite(&value[key]).is_some_and(|n| n >= 0.0),
@@ -1421,10 +1480,7 @@ fn import_observer(
             "{key} must be a string or null"
         );
     }
-    let event_id = record["source_event_id"]
-        .as_str()
-        .filter(|s| !s.is_empty())
-        .unwrap_or(id);
+    let event_id = observer_event_id(record, id);
     // Charge retained provenance and defaults before reconstructing question
     // maps. Derived export fields are not themselves normalization inputs.
     for key in [
@@ -1627,7 +1683,11 @@ fn import_observer(
             remove_receipt_inputs(action);
         }
     }
-    privacy(&out, options, &[], &mut budget.batch.redaction_remaining)
+    let out = privacy(&out, options, &[], &mut budget.batch.redaction_remaining)?;
+    // Reconstruction and retained provenance introduce later privacy passes.
+    // Check the actual stored identity, not only the first filtered input.
+    check_persisted_import_identity(&out, id, source, event_id, "observer-jsonl")?;
+    Ok(out)
 }
 
 fn import_receipt(
@@ -1734,7 +1794,9 @@ fn import_receipt(
         remove_receipt_inputs(&mut out["actions"][0]);
     }
     out["receipt"] = receipt;
-    privacy(&out, options, &[], &mut budget.batch.redaction_remaining)
+    let out = privacy(&out, options, &[], &mut budget.batch.redaction_remaining)?;
+    check_persisted_import_identity(&out, &capture.id, source, decision_id, "jevrouter-receipt")?;
+    Ok(out)
 }
 
 /// A raw, explicitly identified call, including mapped library decisions. The
@@ -1907,6 +1969,7 @@ fn import_records_with_limits(
             if format == "jevrouter-receipt" {
                 budget.value(&safe)?;
             }
+            check_import_identity(record, &safe, format)?;
             if format == "observer-jsonl"
                 && let (Some(original), Some(retained)) = (
                     record.get("answers").and_then(Value::as_array),
@@ -3401,3 +3464,7 @@ mod envelope_privacy_tests;
 #[cfg(test)]
 #[path = "generated_identity_tests.rs"]
 mod generated_identity_tests;
+
+#[cfg(test)]
+#[path = "import_identity_tests.rs"]
+mod import_identity_tests;
