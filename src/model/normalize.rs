@@ -1,5 +1,6 @@
 //! Build observation records from bounded, privacy-filtered captures.
 
+use super::capture_transport::{CaptureDecodeError, DECODE_ERROR_MESSAGE, decoded_values};
 use super::identity::{fingerprint, group_fingerprint, jgrep_family};
 use super::privacy::{
     REDACTED, REDACTION_COLLISION_MESSAGE, REDACTION_LIMIT_MESSAGE, REDACTION_LIMITS,
@@ -35,6 +36,8 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
                 REDACTION_COLLISION_MESSAGE
             } else if error.is::<RedactionValidationError>() {
                 REDACTION_VALIDATION_MESSAGE
+            } else if error.is::<CaptureDecodeError>() {
+                DECODE_ERROR_MESSAGE
             } else {
                 REDACTION_LIMIT_MESSAGE
             },
@@ -88,8 +91,7 @@ fn prepare_capture(
     import_secrets: &[String],
     remaining: &mut usize,
 ) -> Result<(Value, Value)> {
-    let raw_request: Value = serde_json::from_slice(&capture.request).unwrap_or(Value::Null);
-    let response: Value = serde_json::from_slice(&capture.response).unwrap_or(Value::Null);
+    let (raw_request, response) = decoded_values(capture, options.capture_state)?;
     prepare_values(
         capture,
         options,

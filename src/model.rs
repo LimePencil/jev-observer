@@ -13,6 +13,7 @@
 // Provider shapes are validated before any derived observation is accepted.
 
 mod budget;
+pub(crate) mod capture_transport;
 mod identity;
 mod imports;
 mod normalize;

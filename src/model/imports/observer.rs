@@ -195,6 +195,7 @@ pub(super) fn import_observer(
         request: serde_json::to_vec(&request)?,
         response: serde_json::to_vec(&response)?,
         capture_complete: record["capture_complete"] == true,
+        transport: None,
         transport_error: record["transport_error"].as_str().map(str::to_owned),
         secret: None,
         local_token: None,
