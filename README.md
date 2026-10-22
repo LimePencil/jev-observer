@@ -130,7 +130,7 @@ jev-observer --upstream https://openrouter.ai/api/v1/systemone
 
 Open the dashboard and sign in as `observer` using the token in `.jev-observer/observer.access-token` (the live token file).
 
-In **Connect an application**, enter your provider key and choose session-only storage or your operating system's credential store. Copy the **local client token** shown once and set it as `JEV_OBSERVER_CLIENT_TOKEN` in your application's environment. Session-only keys need registration again after Observer restarts.
+In **Connect an application**, enter your provider key and choose session-only storage or your operating system's credential store. Copy the **local client token** and set it as `JEV_OBSERVER_CLIENT_TOKEN` in your application's environment. You can reopen the panel to copy it until the page reloads or closes, or the key is replaced or removed. Session-only keys need registration again after Observer restarts.
 
 ### 3. Point your SDK at Observer
 
