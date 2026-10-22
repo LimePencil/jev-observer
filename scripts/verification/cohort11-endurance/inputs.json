@@ -1,0 +1,14 @@
+{
+  "scope": "Exact nine synthetic harness/fixture source copies from reviewed continuation preparation. No local reports/workspaces/key/token contents.",
+  "files": {
+    "retention/scripts/check-retention-soak.py": "b7993b12e79c58dd6ab456c04e46cafd0ad8a2a0656f54274d41bd7051851031",
+    "retention/scripts/test-upgrade.py": "30ad71a14194e415520e3bef93d9996442aa46f4b6366927827a443e7f7dcdf3",
+    "retention/fixtures/sdk/request.json": "95f3d10a4ba4ca4842473585423a4c91c1aa9c4d7e45cb232aa67d2f0a81a49c",
+    "retention/fixtures/sdk/response.json": "2a0b16f7129cb8b1d7dc09655fb500f5fedbdd824efae0e2e82bd06daab85eca",
+    "mixed/harness.py": "3bfa83eeab946d9136a54137f2ea88a03cf58ac10b321fdbf4b61e33ab1f5270",
+    "retention/watch_soak_resources.py": "5380807df08411b417f63748b6afdc14efca895911208060b297f28235e930f9",
+    "process_guard.py": "d3ebc564f26d0f444032b46ade55bb611f098e55c2b64a71653b6105435e249e",
+    "run_continuation.py": "7e62da5c28624238b5f1ad50a3687ed3f7c5c5e46d763b8b743379fd431aacb3",
+    "self_check.py": "0c95c561ff47d855ce8968fa010ec172b47b5af54bb7e7c6221c72f408aee25e"
+  }
+}

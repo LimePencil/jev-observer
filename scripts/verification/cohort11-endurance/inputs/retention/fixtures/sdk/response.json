@@ -1,0 +1,21 @@
+{
+  "model": "jev-sdk-fixture-1",
+  "answers": {
+    "department": {
+      "type": "choice", "choice": "billing",
+      "probabilities": { "billing": 0.8, "technical": 0.15, "sales": 0.05 },
+      "confidence": 0.7,
+      "answer_extension": { "preserved": true }
+    },
+    "urgency": { "type": "noul", "noul": 0.9 },
+    "frustration": {
+      "type": "score", "score": 1.6,
+      "probabilities": { "0": 0.1, "1": 0.2, "2": 0.7 },
+      "legend": { "0": "Calm", "1": "Frustrated", "2": "Very angry" },
+      "confidence": 0.6
+    }
+  },
+  "usage": { "input_tokens": 100, "output_tokens": 12, "usage_extension": "preserved" },
+  "provider_extension": { "wire": true, "unknown": [2, null, "future"] },
+  "credential_echo": "sdk-compat-placeholder"
+}
