@@ -234,8 +234,10 @@ fn text_shape_guard_leaves_absent_fields_and_nonsemantic_metadata_unchanged() {
             REDACTED
         );
     }
-    let mut receipt: Value =
-        serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+    let mut receipt: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/model/jevrouter-receipt.json"
+    ))
+    .unwrap();
     receipt["extension"] = request["extension"].clone();
     let records = import_records(&receipt.to_string(), "jevrouter-receipt", &options).unwrap();
     assert!(!records.is_empty());
@@ -469,8 +471,10 @@ fn observer_provider_redaction_cannot_substitute_a_different_validator() {
 
 #[test]
 fn receipt_provenance_is_not_interpreted_as_inference_protocol() {
-    let mut receipt: Value =
-        serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+    let mut receipt: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/model/jevrouter-receipt.json"
+    ))
+    .unwrap();
     receipt["credentials"] = json!(["criteria"]);
     receipt["raw_jev"]["questions"] = json!({"q":{"type":"noul","criteria":{"invalid":"rule"}}});
     let options = NormalizeOptions::default();

@@ -258,8 +258,10 @@ fn semantic_map_values_still_scrub_secrets_and_remove_nested_header_containers()
 
 #[test]
 fn receipt_provenance_does_not_receive_semantic_header_exemptions() {
-    let mut receipt: Value =
-        serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+    let mut receipt: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/model/jevrouter-receipt.json"
+    ))
+    .unwrap();
     receipt["raw_jev"]["questions"] =
         json!({"headers":{"type":"noul","instructions":"Not inference"}});
     receipt["raw_jev"]["criteria"] = json!({"headers":"Not an option"});
