@@ -127,6 +127,46 @@ test('valid numeric probabilities keep their sorted bars and percentages', async
   await expect(card.getByText('Inspect raw answer', { exact: true })).toHaveCount(0);
 });
 
+test('JSON disclosures release closed content and retain keyboard focus across reviews', async ({ page }) => {
+  const state = await harness(page);
+  state.record.state_retained = true;
+  state.record.state = { message: 'Synthetic retained input', nested: [null, { value: '한글' }] };
+  state.record.answers[0] = { ...state.record.answers[0], valid: false, error: 'Synthetic invalid choice', raw_answer: { type: 'choice', choice: 'outside', evidence: [false, { value: '한글' }] } };
+  const opener = page.getByLabel('Inspect request request-one', { exact: true });
+  await opener.click();
+  const drawer = page.getByRole('dialog');
+  const definition = drawer.locator('.definition-details');
+  const raw = drawer.locator('.raw-answer-details');
+  const input = drawer.locator('details').filter({ has: page.getByText('Inspect retained input', { exact: true }) });
+  for (const [disclosure, value] of [[definition, state.record.answers[0].definition], [raw, state.record.answers[0].raw_answer], [input, state.record.state]] as const) {
+    const summary = disclosure.locator('summary');
+    await expect(disclosure.locator('.json-view')).toHaveCount(0);
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(disclosure.locator('.json-view')).toHaveText(JSON.stringify(value, null, 2));
+    await expect(summary).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(disclosure.locator('.json-view')).toHaveCount(0);
+    await expect(summary).toBeFocused();
+  }
+  const review = page.getByLabel('Review department');
+  await review.focus();
+  await review.selectOption('correct');
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
+  await expect(review).toBeFocused();
+  await expect(drawer.locator('details .json-view')).toHaveCount(0);
+  await raw.locator('summary').click();
+  await review.focus();
+  await review.selectOption('incorrect');
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
+  await expect(review).toBeFocused();
+  await expect(raw).toHaveAttribute('open', '');
+  await expect(raw.locator('.json-view')).toHaveText(JSON.stringify(state.record.answers[0].raw_answer, null, 2));
+  await expect(definition.locator('.json-view')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(opener).toBeFocused();
+});
+
 test('token totals disclose independently missing usage and preserve known zero values', async ({ page }) => {
   const state = await harness(page);
   // Request A reports only input tokens; request B reports only output tokens.
@@ -562,10 +602,24 @@ test('request labels persist through API and versions remain separate', async ({
   expect(state.labelHeaders?.['x-observer-request']).toBe('1');
   await expect(page.getByText('Not collected. An API response')).toBeVisible();
   await page.getByRole('button', { name: 'View recurring group' }).click();
+  const definition = page.getByRole('dialog').locator('details').filter({ has: page.getByText('Inspect definition', { exact: true }) });
+  await expect(definition.locator('.json-view')).toHaveCount(0);
+  await definition.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(definition.locator('.json-view')).toHaveText(JSON.stringify(group.definition, null, 2));
+  await page.keyboard.press('Space');
+  await expect(definition.locator('.json-view')).toHaveCount(0);
+  await expect(definition.locator('summary')).toBeFocused();
   await page.getByLabel('Compare with').selectOption('group_v1_2222222222');
+  const comparison = page.locator('.version-comparison details');
+  await expect(comparison.locator('.json-view')).toHaveCount(0);
   await page.getByText('Compare definitions and context', { exact: true }).click();
+  await expect(comparison.locator('.json-view')).toHaveText([JSON.stringify(group.definition, null, 2), JSON.stringify({ instructions: 'Changed department rules' }, null, 2)]);
   await expect(page.getByText('Changed department rules')).toBeVisible();
   await expect(page.getByText('Presentation: 2222222222')).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(comparison.locator('.json-view')).toHaveCount(0);
+  await expect(comparison.locator('summary')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
