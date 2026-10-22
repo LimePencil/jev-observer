@@ -22,7 +22,7 @@ Run it from your application's directory to keep history in that project's `.jev
 
 Point your application's SDK at the local **origin**, without appending `/v1/systemone`. The tested clients append that path themselves. Keep your existing credentials in the application environment.
 
-Alternatively, open **Connect an application** in the dashboard, enter your provider key, and choose session-only storage or your operating system's credential store. Observer shows a local client token once. Put that token in the SDK's `api_key` / `apiKey` setting instead of the provider key. Observer validates the token and substitutes the registered provider key before forwarding. Keep the token private; losing it requires registering the provider key again to rotate the token. An unavailable or locked system credential store returns an error; session-only storage remains available.
+Alternatively, open **Connect an application** in the dashboard, enter your provider key, and choose session-only storage or your operating system's credential store. Observer returns a local client token. Put that token in the SDK's `api_key` / `apiKey` setting instead of the provider key. Observer validates the token and substitutes the registered provider key before forwarding. Registration and removal continue if the panel closes; reopen it to see the result. The returned token stays in page memory across panel changes until the page reloads or closes, or the key is successfully replaced or removed. Keep the token private; losing it requires registering the provider key again to rotate the token. An unavailable or locked system credential store returns an error; session-only storage remains available, and a failed replacement keeps the previous token available.
 
 Python (`typesafe-sdk==0.7.1`):
 
@@ -58,6 +58,8 @@ Both SDKs passed the [reproducible local compatibility check](compatibility.md),
 Native forwarding covers `POST /v1/systemone`; the default destination is `https://api.typesafe.ai/v1/systemone`. Configure a different fixed endpoint with `--upstream URL`. Remote upstreams require HTTPS; HTTP is accepted for loopback servers. Caller authorization takes precedence over an optional `TYPESAFE_API_KEY` fallback in Observer's environment. Direct provider-key and environment-fallback requests must send the dashboard token in `X-Observer-Access`; the fallback also requires an `application/json` Content-Type. Provider keys cannot be passed as command-line arguments. Observer adds no upstream retries, caching or redirects.
 
 Observer allows **300 seconds for the entire upstream exchange**, including request upload, inference and response-body transfer. Change this with `--upstream-timeout-secs SECONDS` (1–86,400); connection establishment is still limited to 15 seconds. There is no shorter read timeout while waiting for inference. A deadline reached before response headers returns HTTP 504; a deadline reached during the response body ends the stream and records an incomplete transfer. The SDK's own timeout also applies.
+
+The deadline continues while a slow client stops reading. Observer drops unfinished upstream work and releases its capture reservation at the deadline, preserving a visible incomplete observation. Reads remain demand-driven without a separate response buffer. A response whose declared body has already been fully observed is not changed into a timeout while waiting for the client; a blocked downstream socket can remain open until the client reads or disconnects.
 
 ## Jev through OpenRouter
 

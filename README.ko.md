@@ -134,7 +134,7 @@ jev-observer --upstream https://openrouter.ai/api/v1/systemone
 
 대시보드에서 사용자 이름 `observer`와 `.jev-observer/observer.sqlite.token` 파일의 토큰으로 로그인하세요. 이 파일은 실제 요청 수집용 로그인 토큰을 담고 있습니다.
 
-**Connect an application**에서 제공업체 키를 입력하고, 현재 세션에만 보관할지 운영체제의 자격 증명 저장소에 보관할지 선택하세요. 한 번 표시되는 **로컬 클라이언트 토큰**을 복사해 애플리케이션 환경의 `JEV_OBSERVER_CLIENT_TOKEN`으로 설정합니다. 세션에만 보관한 키는 Observer를 재시작하면 다시 등록해야 합니다.
+**Connect an application**에서 제공업체 키를 입력하고, 현재 세션에만 보관할지 운영체제의 자격 증명 저장소에 보관할지 선택하세요. **로컬 클라이언트 토큰**을 복사해 애플리케이션 환경의 `JEV_OBSERVER_CLIENT_TOKEN`으로 설정합니다. 페이지를 새로고침하거나 닫거나, 키를 교체하거나 삭제하기 전까지는 패널을 다시 열어 토큰을 복사할 수 있습니다. 세션에만 보관한 키는 Observer를 재시작하면 다시 등록해야 합니다.
 
 ### 3. SDK의 요청 대상을 Observer로 설정
 
