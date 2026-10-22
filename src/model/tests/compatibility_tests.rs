@@ -102,7 +102,7 @@ fn all_catalog_integrations_capture_typed_answers_and_roundtrip_without_invented
     for model in catalog::CATALOG["models"].as_array().unwrap() {
         let provider = model["id"].as_str().unwrap();
         let mut original = envelope(provider);
-        if provider == "eikos" {
+        if catalog::profile(provider).modal_score {
             original["response"]["answers"]["rating"]["score"] = json!(1);
             original["response"]["answers"]["rating"]["expected"] = json!(0.8);
         }

@@ -80,6 +80,8 @@ pub(super) fn import_observer(
     }
     for key in [
         "provider",
+        "model_profile",
+        "protocol",
         "model",
         "requested_model",
         "source_event_id",
@@ -98,7 +100,10 @@ pub(super) fn import_observer(
     for key in [
         "provider",
         "cost_basis",
+        "model_profile",
+        "protocol",
         "price",
+        "protocol_metadata",
         "receipt",
         "imported_at",
         "timestamp_basis",
@@ -150,7 +155,12 @@ pub(super) fn import_observer(
         .unwrap_or(json!({}));
     request["model"] = record["requested_model"].clone();
     request["questions"] = Value::Object(questions);
-    request["state"] = if record["state_retained"] == true {
+    let input_field = if record["protocol"] == "openai-decisions" {
+        "input"
+    } else {
+        "state"
+    };
+    request[input_field] = if record["state_retained"] == true {
         record["state"].clone()
     } else {
         Value::Null
@@ -170,6 +180,14 @@ pub(super) fn import_observer(
     usage["input_tokens"] = record["input_tokens"].clone();
     usage["output_tokens"] = record["output_tokens"].clone();
     response["usage"] = usage;
+    if record["protocol"] == "cloudflare-systemone" {
+        let mut envelope = record["protocol_metadata"]
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        envelope.insert("result".into(), response);
+        response = Value::Object(envelope);
+    }
     let task = answers
         .first()
         .and_then(|a| a["task_version"].as_str())
@@ -195,6 +213,7 @@ pub(super) fn import_observer(
         request: serde_json::to_vec(&request)?,
         response: serde_json::to_vec(&response)?,
         capture_complete: record["capture_complete"] == true,
+        transport: None,
         transport_error: record["transport_error"].as_str().map(str::to_owned),
         secret: None,
         local_token: None,
@@ -202,7 +221,21 @@ pub(super) fn import_observer(
     };
     let mut imported_options = options.clone();
     imported_options.provider = record["provider"].as_str().map(str::to_owned);
-    let mut out = normalize_import(&capture, &imported_options, &[], budget, true)?;
+    imported_options.model_profile = record["model_profile"].as_str().map(str::to_owned);
+    ensure!(
+        imported_options
+            .model_profile
+            .as_deref()
+            .is_none_or(crate::catalog::known_profile),
+        "Unknown model_profile"
+    );
+    imported_options.protocol = if record["protocol"].is_null() {
+        super::super::types::Protocol::default()
+    } else {
+        serde_json::from_value(record["protocol"].clone())
+            .context("Unsupported capture protocol")?
+    };
+    let mut out = normalize_import(&capture, &imported_options, &[], budget, true, false)?;
     for derived in out["answers"].as_array_mut().expect("normalized answers") {
         // The same index validates uniqueness and retains per-answer privacy
         // evidence without rescanning a potentially large export for each key.
@@ -224,9 +257,14 @@ pub(super) fn import_observer(
                 &derived["definition_id"],
                 &derived["presentation_id"],
                 &derived["task_version"],
-                &json!(id)
+                &super::super::identity::group_context(&imported_options, &json!(id), true)
             ));
             for key in ["family_id", "family_name", "adapter", "instance_ref"] {
+                if key == "adapter"
+                    && imported_options.protocol == super::super::types::Protocol::OpenaiDecisions
+                {
+                    continue;
+                }
                 derived[key] = Value::Null;
             }
             derived["mapping_reason"] = json!(

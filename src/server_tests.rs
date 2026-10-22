@@ -43,6 +43,14 @@ mod response_deadline_tests {
     include!("response_deadline_tests.rs");
 }
 
+mod capture_decoding_tests {
+    include!("server/capture_decoding_tests.rs");
+}
+
+mod protocol_tests {
+    include!("server_protocol_tests.rs");
+}
+
 struct Fixture {
     _directory: tempfile::TempDir,
     state: AppState,
@@ -2548,7 +2556,7 @@ async fn forwards_compressed_bytes_without_mislabeling_encoding() {
         to_bytes(response.into_body(), 1024).await.unwrap().as_ref(),
         expected.as_slice()
     );
-    assert_eq!(saved(&fixture).await["capture_complete"], false);
+    assert_eq!(saved(&fixture).await["capture_complete"], true);
     fixture.state.collector.shutdown().await;
     task.abort();
 }

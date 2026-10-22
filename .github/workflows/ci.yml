@@ -32,11 +32,14 @@ jobs:
           cache-dependency-path: |
             ui/package-lock.json
             fixtures/sdk/package-lock.json
+            fixtures/current-sdk/package-lock.json
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: fixtures/sdk/python-requirements.txt
+          cache-dependency-path: |
+            fixtures/sdk/python-requirements.txt
+            fixtures/current-sdk/python-requirements.txt
       - name: Check release metadata
         run: |
           python3 scripts/check-release.py
@@ -66,7 +69,9 @@ jobs:
           npm ci --prefix ui --no-audit --no-fund
           npm run build --prefix ui
       - name: Verify decision capture converters
-        run: python3 scripts/test-decision-capture.py
+        run: |
+          python3 scripts/test-decision-capture.py
+          python3 scripts/test-model-catalog.py
       - name: Verify retention soak failure diagnostics
         run: python3 scripts/test-retention-soak.py
       - name: Verify stress helper discovery without building or loading a server
@@ -116,6 +121,17 @@ jobs:
             --binary target/release/jev-observer \
             --node-sdk "$GITHUB_WORKSPACE/fixtures/sdk/node_modules/@typesafe-ai/sdk" \
             --output "$RUNNER_TEMP/sdk-compatibility.json"
+      - name: Install current SDK default-encoding fixtures
+        run: |
+          python -m venv "$RUNNER_TEMP/observer-current-sdk-python"
+          "$RUNNER_TEMP/observer-current-sdk-python/bin/python" -m pip install -r fixtures/current-sdk/python-requirements.txt
+          npm ci --prefix fixtures/current-sdk --ignore-scripts --no-audit --no-fund
+      - name: Verify current SDK default JSON and multipart encodings
+        run: |
+          "$RUNNER_TEMP/observer-current-sdk-python/bin/python" scripts/current-sdk-compatibility.py \
+            --binary target/release/jev-observer \
+            --node-sdk "$GITHUB_WORKSPACE/fixtures/current-sdk/node_modules/@typesafe-ai/sdk" \
+            --output "$RUNNER_TEMP/current-sdk-compatibility.json"
       - name: Retain SDK results and browser failure traces
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -125,6 +141,7 @@ jobs:
           retention-days: 7
           path: |
             ${{ runner.temp }}/sdk-compatibility.json
+            ${{ runner.temp }}/current-sdk-compatibility.json
             ${{ runner.temp }}/keyring-compatibility.json
             ui/test-results/
             ui/test-results-integration/

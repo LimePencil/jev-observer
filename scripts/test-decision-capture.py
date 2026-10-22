@@ -22,6 +22,120 @@ def request():
 
 
 class CaptureTests(unittest.TestCase):
+    def convert(self, original, response, dialect, **extra):
+        return capture.convert(original, response, dialect=dialect, event_id='event-1',
+                               timestamp=1, source='app', provider='local-provider', **extra)
+
+    def test_omnijev_preserves_abstention_even_below_rounding_tolerance(self):
+        original = {'questions': {'answers': {'type': 'choice', 'instructions': 'Route',
+                                             'criteria': {'a': 'A', 'b': 'B'}}}}
+        for abstain, valid in ((.2, True), (.00001, True), (0, False)):
+            raw = {'answers': {'choice': 'a', 'probabilities': {'a': .5, 'b': .5 - abstain},
+                               'confidence': .3, 'abstain': abstain, 'valid': valid}}
+            out = self.convert(original, raw, 'omnijev')
+            answer = out['response']['answers']['answers']
+            self.assertEqual(answer['probabilities'], raw['answers']['probabilities'])
+            self.assertEqual(answer['abstain'], abstain)
+            self.assertIs(answer['valid'], valid)
+            self.assertEqual(answer['original_result'], raw['answers'])
+            self.assertEqual(out['response']['original_metadata'], {})
+            self.assertEqual(out['provider'], 'local-provider')
+            self.assertEqual(out['model_profile'], 'omnijev')
+            self.assertEqual(out['protocol'], 'systemone')
+
+    def test_omnijev_modal_score_uses_explicit_original_level_order(self):
+        original = {'questions': {'q': {'type': 'score', 'instructions': 'Rate',
+                                       'criteria': ['high', 'low', 'medium']}}}
+        raw = {'q': {'score': 'medium', 'probabilities': {'low': .1, 'medium': .7, 'high': .2},
+                     'confidence': .55, 'latency_s': .004}}
+        out = self.convert(original, raw, 'omnijev')['response']['answers']['q']
+        self.assertEqual(out['score'], 2)
+        self.assertEqual(out['probabilities'], {'0': .2, '1': .1, '2': .7})
+        self.assertEqual(out['original_result'], raw['q'])
+        self.assertNotIn('expected', out)
+        self.assertNotIn('legend', out)
+        self.assertIn('modal', out['mapping_note'])
+
+    def test_omnijev_missing_results_remain_invalid_without_invented_choices(self):
+        for kind, criteria in (('choice', {'a': 'A', 'b': 'B'}), ('score', ['low', 'high'])):
+            original = {'questions': {'q': {'type': kind, 'instructions': 'Decide', 'criteria': criteria}}}
+            raw = {'q': {'choice': None, 'score': None, 'probabilities': {},
+                         'abstain': 1.0, 'valid': False, 'confidence': 0.0}}
+            out = self.convert(original, raw, 'omnijev')['response']['answers']['q']
+            self.assertIsNone(out[kind])
+            self.assertEqual(out['probabilities'], {})
+            self.assertFalse(out['valid'])
+            self.assertEqual(out['abstain'], 1)
+
+    def test_omnijev_rejects_unknown_or_ambiguous_score_correspondence(self):
+        raw = {'q': {'score': 'low', 'probabilities': {'low': .8, 'high': .2}, 'confidence': .6}}
+        for levels in (['low', 'low'], ['low', 'other'], [{'text': 'low'}, 'high'], list(map(str, range(256)))):
+            original = {'questions': {'q': {'type': 'score', 'instructions': 'Rate', 'criteria': levels}}}
+            with self.assertRaises(ValueError): self.convert(original, raw, 'omnijev')
+
+    def test_omnijev_noul_does_not_use_threshold_or_latency_as_capture_duration(self):
+        original = {'questions': {'q': {'type': 'noul', 'instructions': 'Check'}}}
+        out = self.convert(original, {'q': {'noul': .7345, 'latency_s': .1}}, 'omnijev')
+        self.assertEqual(out['response']['answers']['q']['noul'], .7345)
+        self.assertIsNone(out['duration_ms'])
+        self.assertNotIn('usage', out['response'])
+
+    def test_jev_omni_preserves_map_values_and_exact_option_correspondence(self):
+        original = {'questions': {'q': {'type': 'choice', 'instructions': 'Choose',
+                                       'criteria': {'β': 'Beta', 'α': 'Alpha'}}}}
+        raw = {'prediction': 'α', 'prediction_index': 1, 'confidence': 2 / 3,
+               'probabilities': {'β': 1 / 3, 'α': 2 / 3}}
+        out = self.convert(original, raw, 'jev-omni')
+        answer = out['response']['answers']['q']
+        self.assertEqual(answer['choice'], 'α')
+        self.assertEqual(answer['probabilities'], raw['probabilities'])
+        self.assertEqual(answer['confidence'], raw['confidence'])
+        self.assertEqual(answer['original_result'], raw)
+        self.assertEqual(out['model_profile'], 'jev-omni')
+        self.assertEqual(out['provider'], 'local-provider')
+
+    def test_jev_omni_rejects_mismatched_index_order_batch_and_native_256(self):
+        for n in (2, 255, 256):
+            labels = [f'option{i}' for i in range(n)]
+            original = {'questions': {'q': {'type': 'choice', 'instructions': 'Choose',
+                                           'criteria': dict.fromkeys(labels, None)}}}
+            raw = {'prediction': labels[0], 'prediction_index': 0, 'confidence': 1,
+                   'probabilities': {label: int(i == 0) for i, label in enumerate(labels)}}
+            if n == 256:
+                with self.assertRaisesRegex(ValueError, '255'): self.convert(original, raw, 'jev-omni')
+                continue
+            self.assertEqual(len(self.convert(original, raw, 'jev-omni')['response']['answers']['q']['probabilities']), n)
+            for changed in ({**raw, 'prediction_index': True}, {**raw, 'prediction_index': 1},
+                            {**raw, 'prediction': 'missing'},
+                            {**raw, 'probabilities': dict(reversed(list(raw['probabilities'].items())))},
+                            {**raw, 'probabilities': [1] * n}):
+                with self.assertRaises(ValueError): self.convert(original, changed, 'jev-omni')
+            original['questions']['other'] = original['questions']['q']
+            with self.assertRaisesRegex(ValueError, 'one question'): self.convert(original, raw, 'jev-omni')
+
+    def test_new_envelope_media_fields_stay_under_capture_state_control(self):
+        original = {'questions': {'q': {'type': 'noul', 'instructions': 'Check'}}}
+        media = {'input': ['synthetic native input'], 'assets': {'asset': {'format': 'png', 'data_base64': 'synthetic'}},
+                 'media': [{'type': 'image', 'data': 'synthetic'}], 'videos': ['synthetic']}
+        out = self.convert(original, {'answers': {'q': {'noul': .7}}, **media}, 'autotrust',
+                           model_profile='another-profile')
+        for key, value in media.items():
+            self.assertEqual(out['response'][key], value)
+            self.assertNotIn(key, out['response']['original_metadata'])
+        self.assertEqual(out['model_profile'], 'another-profile')
+
+    def test_jev_omni_bare_result_inputs_do_not_duplicate_into_raw_answer(self):
+        original = {'questions': {'q': {'type': 'choice', 'instructions': 'Choose', 'criteria': {'a': 'A', 'b': 'B'}}}}
+        inputs = {key: ['synthetic input'] for key in capture.INPUT_FIELDS}
+        raw = {'prediction': 'a', 'prediction_index': 0, 'confidence': .8,
+               'probabilities': {'a': .8, 'b': .2}, 'extension': {'input': 'semantic extension'}, **inputs}
+        out = self.convert(original, raw, 'jev-omni')['response']
+        for key, value in inputs.items():
+            self.assertEqual(out[key], value)
+            self.assertNotIn(key, out['original_metadata'])
+            self.assertNotIn(key, out['answers']['q']['original_result'])
+        self.assertEqual(out['answers']['q']['original_result']['extension'], raw['extension'])
+
     def test_converter_keeps_input_fields_in_the_capture_envelope(self):
         original = {'questions': {'check': {'type': 'noul', 'instructions': 'Check'}}}
         inputs = {'state': 'private text', 'images': ['private images'],
@@ -164,6 +278,36 @@ class CaptureCliTests(unittest.TestCase):
         result = self.run_cli()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.output_path.read_bytes(), previous)
+
+    def test_malformed_roots_and_answers_fail_cleanly_without_reserving_output(self):
+        valid_request = {'questions': {'q': {'type': 'noul', 'instructions': 'Check'}}}
+        valid_response = {'answers': {'q': {'noul': .7}}}
+        for original, response in (([], valid_response), (valid_request, []),
+                                   ({'questions': {'q': None}}, valid_response),
+                                   (valid_request, {'answers': {'q': None}}),
+                                   (valid_request, {'answers': [None]})):
+            self.write_inputs(original, response)
+            result = self.run_cli('--dialect', 'autotrust')
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b'Capture conversion failed:', result.stderr)
+            self.assertNotIn(b'Traceback', result.stderr)
+            self.assertFalse(self.output_path.exists())
+        self.write_inputs(valid_request, valid_response)
+        self.assertEqual(self.run_cli('--dialect', 'autotrust').returncode, 0)
+
+    def test_duplicate_json_option_keys_are_rejected_before_correspondence_is_lost(self):
+        self.request_path.write_text('{"questions":{"q":{"type":"choice","instructions":"Choose",'
+                                     '"criteria":{"a":"first","a":"second"}}}}', encoding='utf-8')
+        result = self.run_cli('--dialect', 'jev-omni')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b'Duplicate JSON object keys', result.stderr)
+        self.assertNotIn(b'Traceback', result.stderr)
+        self.assertFalse(self.output_path.exists())
+        self.write_inputs()
+        self.response_path.write_text('{"answers":{},"answers":{}}', encoding='utf-8')
+        result = self.run_cli()
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(self.output_path.exists())
 
 
 if __name__ == '__main__': unittest.main()

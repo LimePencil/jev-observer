@@ -56,7 +56,7 @@ pub(super) async fn local_guard(
         }
     }
     let local_api = request.uri().path().starts_with("/api/");
-    let is_proxy = request.uri().path() == "/v1/systemone";
+    let is_proxy = request.uri().path() == state.config.protocol.local_path();
     // Cross-site image/navigation requests can omit Origin while still
     // reaching local GET endpoints. Browsers mark these with Fetch Metadata.
     if (local_api || is_proxy)
