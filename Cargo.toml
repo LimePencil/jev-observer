@@ -15,11 +15,13 @@ bytes = "1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 futures-util = "0.3"
+flate2 = "1"
 http-body-util = "0.1"
 include_dir = "0.7"
 keyring = "4.2"
 libc = "0.2"
 mime_guess = "2"
+memchr = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "stream", "json"] }
 rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = { version = "1", features = ["derive"] }
@@ -29,6 +31,7 @@ tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 uuid = { version = "1", features = ["v4", "v7"] }
+zstd = { version = "0.13.3", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }

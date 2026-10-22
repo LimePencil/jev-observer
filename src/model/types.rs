@@ -73,6 +73,8 @@ pub struct Capture {
     pub duration_ms: f64,
     pub request: Vec<u8>,
     pub response: Vec<u8>,
+    /// Bounded live transport metadata; imports and legacy fixtures use None.
+    pub transport: Option<super::capture_transport::CaptureTransport>,
     pub capture_complete: bool,
     pub transport_error: Option<String>,
     pub secret: Option<String>,
