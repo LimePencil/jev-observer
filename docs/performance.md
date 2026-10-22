@@ -99,6 +99,8 @@ For overload, injected writer failures and recovery on the candidate, see [stres
 
 A further optimization evaluates search/group filters once per dashboard snapshot and reuses the matching parent sequence IDs across its queries. This avoids repeating correlated answer-key lookups for every answer and aggregate. The selection is connection-local and stores only integer IDs in memory. Temporary payload sorting also stays in memory; large filtered histories can therefore use additional memory. The selection does not modify the main database or cache results across snapshots. For more than 100 strict definitions, candidate ranking now precedes distribution calculation.
 
+Sparse family overviews can reuse an in-memory selection of exact group/request pairs in their existing aggregate and distribution queries. The probe considers at most 512 selected parents, visits at most 4,097 answers to accept no more than 4,096, and limits copied identifier text to 1 MiB; dense selections, oversized text, or unsupported legacy identifier storage retain the original query path. This avoids unrelated groups and unrelated answers within a shared group while preserving SQL ordering and distinct-request counts. These are probe limits, not a total-memory or dashboard-latency guarantee. When combined with the separate sparse strict-group optimization, each path performs its own bounded probe.
+
 The [search comparison](../reports/benchmarks/search-comparison.json) compares `eadc2bf4…` with `ec5f0ae0f5ca6ef1f8267bb5dc4560747096736638a01c67a6bd5ec445d7c047` on the same 150,000-request / 705,000-answer fixture. Both filters used five observations per binary:
 
 | Filter | Previous median | New median |
