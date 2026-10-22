@@ -263,7 +263,7 @@ fn allowed_host(host: &str, port: u16) -> bool {
         return false;
     };
     let name = authority.host();
-    matches!(name, "127.0.0.1" | "localhost" | "[::1]")
+    (matches!(name, "127.0.0.1" | "[::1]") || name.eq_ignore_ascii_case("localhost"))
         && authority.port_u16().unwrap_or(80) == port
         && !host.contains('@')
 }
@@ -2765,6 +2765,148 @@ mod tests {
                 .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
                 .is_none()
         );
+        fixture.state.collector.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn localhost_host_case_accepts_authenticated_equivalent_origins() {
+        let mut fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+        let access = Access::test();
+        fixture.state.access = Some(access.clone());
+        for (host, origin) in [
+            ("localhost:8765", None),
+            ("LOCALHOST:8765", None),
+            ("LocalHost:8765", None),
+            ("LOCALHOST:8765", Some("http://localhost:8765")),
+            ("localhost:8765", Some("http://LOCALHOST:8765")),
+            ("LoCaLhOsT:8765", Some("http://lOcAlHoSt:8765")),
+            ("127.0.0.1:8765", Some("http://127.0.0.1:8765")),
+            ("[::1]:8765", Some("http://[::1]:8765")),
+        ] {
+            let mut request = Request::builder()
+                .uri("/api/health")
+                .header(header::HOST, host)
+                .header(header::AUTHORIZATION, access.basic_header())
+                .header("sec-fetch-site", "same-origin");
+            if let Some(origin) = origin {
+                request = request.header(header::ORIGIN, origin);
+            }
+            let response = router(fixture.state.clone())
+                .oneshot(request.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{host}, {origin:?}");
+            assert!(
+                response
+                    .headers()
+                    .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                    .is_none()
+            );
+            let health: Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 16 * 1024).await.unwrap())
+                    .unwrap();
+            assert_eq!(health["forwarded"], 0);
+        }
+        fixture.state.collector.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn localhost_host_case_still_requires_authentication() {
+        let mut fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+        fixture.state.access = Some(Access::test());
+        for host in ["localhost:8765", "LOCALHOST:8765", "LocalHost:8765"] {
+            for authorization in [None, Some("Basic b2JzZXJ2ZXI6d3Jvbmc=")] {
+                let mut request = Request::builder()
+                    .uri("/api/health")
+                    .header(header::HOST, host);
+                if let Some(value) = authorization {
+                    request = request.header(header::AUTHORIZATION, value);
+                }
+                let response = router(fixture.state.clone())
+                    .oneshot(request.body(Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{host}");
+                assert!(response.headers().contains_key(header::WWW_AUTHENTICATE));
+            }
+        }
+        fixture.state.collector.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn localhost_host_case_keeps_authority_allowlist_and_port_checks() {
+        let mut fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+        let access = Access::test();
+        fixture.state.access = Some(access.clone());
+        for host in [
+            "localhost:8766",
+            "LOCALHOST:8766",
+            "LOCALHOST",
+            "LOCALHOST.invalid:8765",
+            "evil-LOCALHOST:8765",
+            "LOCALHOST.:8765",
+            "observer@LOCALHOST:8765",
+            "LOCALHOST@attacker.invalid:8765",
+            "127.0.0.2:8765",
+            "127.1:8765",
+            "127.0.0.01:8765",
+            "[0:0:0:0:0:0:0:1]:8765",
+            "[::ffff:127.0.0.1]:8765",
+        ] {
+            let response = router(fixture.state.clone())
+                .oneshot(
+                    Request::builder()
+                        .uri("/api/health")
+                        .header(header::HOST, host)
+                        .header(header::AUTHORIZATION, access.basic_header())
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{host}");
+        }
+        fixture.state.collector.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn localhost_host_case_keeps_origin_fetch_and_mutation_guards() {
+        let mut fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+        let access = Access::test();
+        fixture.state.access = Some(access.clone());
+        for host in ["localhost:8765", "LOCALHOST:8765"] {
+            for (origin, fetch_site, mutation) in [
+                (Some("http://127.0.0.1:8765"), None, false),
+                (Some("http://localhost:8766"), None, false),
+                (Some("https://localhost:8765"), None, false),
+                (Some("http://observer@localhost:8765"), None, false),
+                (Some("http://localhost.invalid:8765"), None, false),
+                (None, Some("cross-site"), false),
+                (None, Some("same-site"), false),
+                (None, None, true),
+            ] {
+                let mut request = Request::builder()
+                    .method(if mutation { "DELETE" } else { "GET" })
+                    .uri(if mutation { "/api/data" } else { "/api/health" })
+                    .header(header::HOST, host)
+                    .header(header::AUTHORIZATION, access.basic_header());
+                if let Some(origin) = origin {
+                    request = request.header(header::ORIGIN, origin);
+                }
+                if let Some(site) = fetch_site {
+                    request = request.header("sec-fetch-site", site);
+                }
+                let response = router(fixture.state.clone())
+                    .oneshot(request.body(Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    StatusCode::FORBIDDEN,
+                    "{host}, {origin:?}, {fetch_site:?}, mutation={mutation}"
+                );
+            }
+        }
         fixture.state.collector.shutdown().await;
     }
 
