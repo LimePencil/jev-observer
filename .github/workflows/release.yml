@@ -142,7 +142,8 @@ jobs:
           python3 scripts/download-release-baseline.py --version 0.3.0 --target "$RELEASE_TARGET" --output-dir "$RUNNER_TEMP/keyring-baseline"
           python3 scripts/test-linux-keyring.py --baseline "$RUNNER_TEMP/keyring-baseline/jev-observer" --candidate "target/$RELEASE_TARGET/release/jev-observer" --output keyring-compatibility.json
       - name: Run browser interaction and accessibility checks
-        timeout-minutes: 12
+        # Windows ARM completed 167/200 tests before the former 12-minute limit.
+        timeout-minutes: ${{ matrix.target == 'aarch64-pc-windows-msvc' && 20 || 12 }}
         working-directory: ui
         run: |
           npx playwright install --with-deps chromium
