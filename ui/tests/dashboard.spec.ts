@@ -3302,3 +3302,195 @@ test('the researched catalog keeps setup separate from active credentials and op
   await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
   await expect(page.getByLabel('Or paste records')).toHaveAttribute('placeholder', /id, timestamp, source, provider/);
 });
+
+async function typedDecisionHarness(page: Page, answers: RequestRecord['answers'], current: Group = group) {
+  const state = await harness(page);
+  state.record = { ...state.record, protocol: 'openai-decisions', model_profile: 'openai-decisions', answers, answer_count: answers.length };
+  state.dashboard.groups = [current];
+  state.dashboard.requests = [{ ...state.record }];
+  await page.route('**/api/groups/*', route => route.fulfill({ json: {
+    group: current, versions: [current, { ...current, id: 'other-typed-version', definition_id: 'other-definition' }],
+    timeline: [], requests: [state.record], total_answers: answers.length,
+    answers: answers.map(answer => ({ ...answer, request_id: state.record.id, timestamp: now, source: state.record.source, label: null })),
+  } }));
+  await page.reload();
+  await expect(page.locator('.request-link')).toHaveCount(1);
+  return state;
+}
+
+const boxAnswer = (value: unknown, extra: Partial<RequestRecord['answers'][number]> = {}): RequestRecord['answers'][number] => ({
+  ...record.answers[0], key: 'target', kind: 'box', definition: { type: 'box', instructions: 'Locate the target' },
+  value: value as RequestRecord['answers'][number]['value'], probabilities: null, confidence: .75,
+  raw_answer: { type: 'box', value, confidence: .75 }, ...extra,
+});
+
+for (const { name, value } of [
+  { name: 'interior', value: { top: .125, bottom: .875, left: .25, right: .75 } },
+  { name: 'full boundary', value: { top: 0, bottom: 1, left: 0, right: 1 } },
+  { name: 'tiny nonzero', value: { top: .1234567890123, bottom: .1234567890124, left: .4, right: .4000000000001 } },
+]) test(`typed decisions render ${name} Box geometry without fetching images`, async ({ page }, testInfo) => {
+  const images: string[] = [];
+  page.on('request', request => { if (request.resourceType() === 'image') images.push(request.url()); });
+  await typedDecisionHarness(page, [boxAnswer(value)]);
+  await page.locator('.request-link').click();
+  const card = page.locator('.answer-card');
+  await expect(card.locator('.box-coordinates dd')).toHaveText([value.top, value.bottom, value.left, value.right].map(String));
+  const outline = card.locator('.box-outline');
+  await expect(outline).toHaveAttribute('x', String(value.left * 100));
+  await expect(outline).toHaveAttribute('y', String(value.top * 100));
+  await expect(outline).toHaveAttribute('width', String((value.right - value.left) * 100));
+  await expect(outline).toHaveAttribute('height', String((value.bottom - value.top) * 100));
+  await expect(card.locator('.box-diagram')).toHaveAccessibleName(`Normalized box: top ${value.top}, bottom ${value.bottom}, left ${value.left}, right ${value.right}`);
+  await expect(card).toContainText('Reported confidence 75.0% · not measured accuracy');
+  await expect(card.locator('.probability-list')).toHaveCount(0);
+  await card.getByText('Inspect raw answer', { exact: true }).click();
+  await expect(card.locator('.raw-answer-details pre')).toHaveText(JSON.stringify(boxAnswer(value).raw_answer, null, 2));
+  await card.getByText('Inspect raw answer', { exact: true }).click();
+  await expect(card.locator('.raw-answer-details pre')).toHaveCount(0);
+  if (name === 'interior') await testInfo.attach('box-desktop', { body: await page.screenshot(), contentType: 'image/png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const widths = await card.evaluate(element => ({ width: element.clientWidth, scroll: element.scrollWidth }));
+  expect(widths.scroll).toBeLessThanOrEqual(widths.width + 1);
+  if (name === 'interior') await testInfo.attach('box-mobile', { body: await page.screenshot(), contentType: 'image/png' });
+  expect((await new AxeBuilder({ page }).include('.answer-card').analyze()).violations).toEqual([]);
+  expect(images).toEqual([]);
+});
+
+for (const { name, value } of [
+  { name: 'reversed', value: { top: .8, bottom: .2, left: 0, right: 1 } },
+  { name: 'out of range', value: { top: 0, bottom: 2, left: 0, right: 1 } },
+  { name: 'string coordinate', value: { top: '0', bottom: 1, left: 0, right: 1 } },
+  { name: 'missing coordinate', value: { top: 0, bottom: 1, left: 0 } },
+]) test(`typed decisions keep ${name} Box geometry inspectable without drawing it`, async ({ page }) => {
+  // Deliberately inconsistent valid=true checks that rendering never coerces or
+  // invents geometry even if an external capture has malformed value metadata.
+  await typedDecisionHarness(page, [boxAnswer(value)]);
+  await page.locator('.request-link').click();
+  const card = page.locator('.answer-card');
+  await expect(card).toContainText('Invalid box geometry');
+  await expect(card.locator('.box-diagram')).toHaveCount(0);
+  await card.getByText('Inspect raw answer', { exact: true }).click();
+  await expect(card.locator('.raw-answer-details pre')).toHaveText(JSON.stringify(boxAnswer(value).raw_answer, null, 2));
+});
+
+test('typed decisions distinguish H2O no-localization fallback from a full-image Box and preserve zero presence', async ({ page }) => {
+  const sentinel = { top: 0, bottom: 1, left: 0, right: 1 };
+  const absent = boxAnswer(sentinel, { box_found: false, box_present: 0, confidence: 0, raw_answer: { value: sentinel, found: false, present: 0 } });
+  await typedDecisionHarness(page, [absent]);
+  await page.locator('.request-link').click();
+  const card = page.locator('.answer-card');
+  await expect(card).toContainText('No box localized (reported)');
+  await expect(card).toContainText('does not establish that the target is absent');
+  await expect(card).toContainText('Reported presence 0.0%');
+  await expect(card).toContainText('Reported confidence 0.0%');
+  await expect(card.locator('.box-diagram')).toHaveCount(0);
+  await card.getByText('Inspect raw answer', { exact: true }).click();
+  await expect(card.locator('.raw-answer-details pre')).toHaveText(JSON.stringify(absent.raw_answer, null, 2));
+  await card.getByLabel('Review target').selectOption('unknown');
+  await expect(card.getByRole('status')).toHaveText('Saved');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.request-link')).toBeFocused();
+});
+
+test('typed decisions show Box group observations and comparisons without scalar statistics', async ({ page }) => {
+  const value = { top: .1, bottom: .9, left: .2, right: .8 };
+  const current: Group = { ...group, kind: 'box', name: 'target', definition: { type: 'box', instructions: 'Locate target' }, valid_count: 2, distribution: [], mean_value: null };
+  await typedDecisionHarness(page, [boxAnswer(value, { box_found: true, box_present: .6 }), boxAnswer(value, { key: 'fallback', box_found: false, box_present: null })], current);
+  await expect(page.locator('.selected-distribution')).toContainText('Box answers retain individual geometry');
+  await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('.box-value-compact').first()).toContainText('Reported presence 60.0%');
+  await expect(dialog.locator('.box-value-compact').last()).toContainText('No box localized (reported)');
+  await expect(dialog.locator('.box-value-compact').last()).not.toContainText('Reported presence');
+  await expect(dialog.locator('.box-value-compact .box-diagram')).toHaveCount(0);
+  await expect(dialog).not.toContainText('Mean score');
+  await expect(dialog).not.toContainText('Mean yes-probability');
+  await page.getByLabel('Compare with').selectOption('other-typed-version');
+  const comparison = page.getByLabel('Version outcome comparison');
+  await expect(comparison.getByRole('rowheader', { name: /^Mean (score|yes-probability)$/ })).toHaveCount(0);
+  await expect(comparison.getByRole('rowheader', { name: 'Correct among judged answers' })).toBeVisible();
+  await expect(comparison.locator('.box-distribution-note')).toHaveCount(2);
+});
+
+test('typed decisions retain Boolean and String choice identities in winners probabilities and distributions', async ({ page }) => {
+  const values = [true, 'true', false, 'false', ''] as const;
+  const definition = { type: 'choice', instructions: 'Choose an exact typed value', choices: values.map(value => ({ value, description: 'Synthetic option' })) };
+  const key = (value: string | boolean) => `choice:v1:${JSON.stringify(value)}`;
+  const probabilities = Object.fromEntries(values.map(value => [key(value), .2]));
+  const answers = values.map((value, index) => ({ ...record.answers[0], key: `question:${index}`, definition, value, choice_key: key(value), probabilities, raw_answer: { type: 'choice', value } }));
+  const current = { ...group, definition, valid_count: 5, distribution: values.map(value => ({ key: key(value), label: String(value), value, count: 1 })) };
+  await typedDecisionHarness(page, answers, current);
+  const labels = ['true (boolean)', '"true"', 'false (boolean)', '"false"', '""'];
+  await expect(page.locator('.selected-distribution .distribution-label > span:first-child')).toHaveText(labels);
+  await page.locator('.request-link').click();
+  await expect(page.locator('.answer-value')).toHaveText(labels);
+  await expect(page.locator('.answer-card').first().locator('.probability-row > span:first-child')).toHaveText(labels);
+  await page.locator('.answer-card').first().getByText('Inspect raw answer', { exact: true }).click();
+  await expect(page.locator('.answer-card').first().locator('.raw-answer-details pre')).toContainText('"value": true');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+  await expect(page.locator('.box-value')).toHaveCount(0);
+  await expect(page.getByRole('dialog').getByRole('row').filter({ has: page.getByRole('button', { name: 'question:0', exact: true }) }).locator('td').nth(1)).toHaveText('true (boolean)');
+});
+
+test('typed decisions derive old typed bin labels from native choices without parsing opaque keys', async ({ page }) => {
+  const current = { ...group, definition: { choices: [{ value: false, description: 'False' }, { value: 'false', description: 'String false' }] }, distribution: [{ label: 'choice:v1:false', count: 2 }, { label: 'choice:v1:"false"', count: 1 }, { label: 'choice:v1:unrecognized', count: 1 }] };
+  await typedDecisionHarness(page, [], current);
+  await expect(page.locator('.selected-distribution .distribution-label > span:first-child')).toHaveText(['false (boolean)', '"false"', 'choice:v1:unrecognized']);
+});
+
+test('typed decisions connection uses OpenAI Decisions request shape and preserves provider identity', async ({ page }) => {
+  await harness(page, { settings: { provider: 'openai', protocol: 'openai-decisions', model_profile: 'openai-decisions', upstream: 'https://api.openai.com/v1/decisions' } });
+  await page.getByRole('button', { name: 'Connect an application', exact: true }).click();
+  await page.getByLabel('Model name', { exact: true }).fill('gpt-6-luna');
+  const snippet = page.getByLabel('SDK connection example');
+  await expect(snippet).toContainText('from openai import OpenAI');
+  await expect(snippet).toContainText('client.decisions.create');
+  await expect(snippet).toContainText('/v1"');
+  await expect(snippet).toContainText('"type": "predicate"');
+  await expect(snippet).toContainText('model="gpt-6-luna"');
+  await expect(snippet).toContainText('JEV_OBSERVER_CLIENT_TOKEN');
+  await expect(page.getByLabel('openai API key', { exact: true })).toBeVisible();
+  await expect(page.locator('.endpoint')).toHaveText('POST /v1/decisions');
+  await expect(page.getByRole('dialog')).not.toContainText('typesafe-sdk');
+  await page.getByRole('button', { name: 'JavaScript', exact: true }).click();
+  await expect(snippet).toContainText('import OpenAI from "openai"');
+  await expect(snippet).toContainText('questions: [{ type: "predicate"');
+  await expect(snippet).toContainText('maxRetries: 0');
+});
+
+test('typed decisions connection keeps Cloudflare native response envelope in both examples', async ({ page }) => {
+  await harness(page, { settings: { provider: 'cloudflare', protocol: 'cloudflare-systemone', model_profile: 'cf-jev', upstream: 'https://api.cloudflare.com/client/v4/accounts/example/ai/run/@typesafe/jev-1.14' } });
+  await page.getByRole('button', { name: 'Connect an application', exact: true }).click();
+  const snippet = page.getByLabel('SDK connection example');
+  await expect(page.getByRole('heading', { name: 'Connect with native HTTP' })).toBeVisible();
+  await expect(snippet).toContainText('from urllib.request import Request, urlopen');
+  await expect(snippet).toContainText('envelope["result"]');
+  await expect(snippet).toContainText('envelope.get("success") is not True');
+  await expect(snippet).toContainText('/v1/systemone');
+  await expect(snippet).not.toContainText('TypeSafeClient');
+  await page.getByRole('button', { name: 'JavaScript', exact: true }).click();
+  await expect(snippet).toContainText('await fetch(');
+  await expect(snippet).toContainText('envelope.success !== true');
+  await expect(snippet).toContainText('console.log(envelope.result)');
+});
+
+test('typed decisions catalog separates selected profile protocol and credential provider', async ({ page }) => {
+  const models: NonNullable<Settings['model_catalog']> = { checked_at: '2026-10-22', models: [
+    { id: 'profile-one', model_profile: 'profile-one', provider: 'billing-provider', protocol: 'openai-decisions', name: 'Synthetic Decisions', access: 'closed', integration: 'proxy', model_names: ['native-model'], upstream: 'https://example.com/v1/decisions', source_url: 'https://example.com/docs', note: 'Fixture', verification: 'source-reviewed', checked_at: '2026-10-22' },
+    { id: 'offline', model_profile: 'offline', provider: 'local', protocol: 'systemone', name: 'Offline fixture', access: 'open', integration: 'capture', model_names: [], upstream: null, source_url: 'https://example.com/offline', note: 'Offline only', verification: 'source-reviewed' },
+  ] };
+  await harness(page, { settings: { provider: 'billing-provider', model_profile: 'profile-one', protocol: 'openai-decisions', model_catalog: models } });
+  await page.getByRole('button', { name: 'Connect an application', exact: true }).click();
+  await expect(page.getByLabel('Model integration')).toHaveValue('profile-one');
+  await expect(page.getByLabel('Observer startup command')).toHaveText('jev-observer --upstream https://example.com/v1/decisions --provider billing-provider --protocol openai-decisions --model-profile profile-one');
+  await expect(page.locator('#configured-model-names option')).toHaveAttribute('value', 'native-model');
+  await page.getByLabel('Model integration').selectOption('offline');
+  await expect(page.getByLabel('Observer startup command')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Import mapped decisions' })).toBeVisible();
+  await expect(page.locator('.endpoint')).toHaveText('POST /v1/decisions');
+  await page.getByRole('button', { name: 'Import mapped decisions' }).click();
+  await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
+  await expect(page.getByRole('option', { name: 'Decision request/response capture' })).toHaveAttribute('value', 'systemone-capture');
+  await expect(page.getByRole('dialog')).toContainText('include protocol: openai-decisions or cloudflare-systemone');
+});
