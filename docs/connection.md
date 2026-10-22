@@ -97,6 +97,8 @@ See the [reviewed Laya HTTP server](https://github.com/NandhaKishorM/laya/blob/4
 
 Registration does not write the provider key or local client token to SQLite, exports, or the status API. SQLite stores only a hash of the random local token to approve restoring a saved system credential; replacing or removing the key revokes that approval even if the system store is locked. If a proxied request or response echoes either value, Observer redacts it from captured history. System storage is scoped to the workspace database path; session storage ends when Observer stops. The local token works for its registered workspace and is never forwarded to the provider. The environment fallback remains available for existing integrations when requests include the workspace access token. Leave `TYPESAFE_API_KEY` unset when you want to use only a registered key. Observer strips local request cookies, browser origin/referrer headers, and local forwarding metadata before forwarding; it ignores provider `Set-Cookie` headers.
 
+When a proxy request uses dashboard Basic authentication, Observer also redacts the accepted full header and its encoded credential component from captured bodies and local metadata. Known Basic authorization fields in imported data protect their full value and encoded component too. This uses exact matching without Base64 decoding; an ordinary string alone does not establish that it is a credential.
+
 Optional local metadata headers are stripped before forwarding:
 
 | Header | Purpose |

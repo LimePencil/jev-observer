@@ -274,6 +274,8 @@ pub struct Capture {
     pub capture_complete: bool,
     pub transport_error: Option<String>,
     pub secret: Option<String>,
+    // A local client token or accepted dashboard Basic header. These auth
+    // paths are mutually exclusive; this value is used only for redaction.
     pub local_token: Option<String>,
     pub access_token: Option<String>,
 }
@@ -330,8 +332,10 @@ fn collect_secret_string(value: &str, found: &mut Vec<String>) {
     }
     found.push(value.to_owned());
     if let Some((scheme, credential)) = value.split_once(char::is_whitespace)
-        && scheme.eq_ignore_ascii_case("bearer")
+        && (scheme.eq_ignore_ascii_case("bearer") || scheme.eq_ignore_ascii_case("basic"))
     {
+        // Match the supplied credential component as well as the full header.
+        // Basic stays encoded: do not decode or guess other representations.
         let credential = credential.trim();
         if !credential.is_empty() {
             found.push(credential.to_owned());
@@ -3468,3 +3472,7 @@ mod generated_identity_tests;
 #[cfg(test)]
 #[path = "import_identity_tests.rs"]
 mod import_identity_tests;
+
+#[cfg(test)]
+#[path = "basic_credential_tests.rs"]
+mod basic_credential_tests;
