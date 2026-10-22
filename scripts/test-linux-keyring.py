@@ -118,7 +118,7 @@ def main():
                                                     env=app.environment, stdout=log, stderr=subprocess.STDOUT, timeout=120)
                         app.check(result.returncode == 0, "upstream_backend_regressions")
                     app.phase = "old_write"
-                    app.start(args.baseline)
+                    app.start(args.baseline, legacy_token=True)
                     configured(False)
                     first = app.api("/api/credentials", "PUT", {"api_key": upgrade.KEY, "persist": True})
                     app.check(first["storage"] == "system", "old_saved_to_system")
@@ -138,7 +138,7 @@ def main():
                     stop(daemon)
                     start_daemon()
                     app.phase = "old_read_new_write_after_keyring_restart"
-                    app.start(args.baseline)
+                    app.start(args.baseline, legacy_token=True)
                     configured(True)
                     forward(second["client_token"])
                     app.stop()
@@ -149,7 +149,7 @@ def main():
                     forward(second["client_token"], False)
                     app.stop()
                     app.phase = "old_read_after_delete"
-                    app.start(args.baseline)
+                    app.start(args.baseline, legacy_token=True)
                     configured(False)
                     app.stop()
                     app.phase = "new_session_revocation"
@@ -159,7 +159,7 @@ def main():
                     app.check(session["storage"] == "session", "session_replaces_saved_entry")
                     app.stop()
                     app.phase = "old_read_after_session_revocation"
-                    app.start(args.baseline)
+                    app.start(args.baseline, legacy_token=True)
                     configured(False)
                     app.stop()
                     report["loopback_calls"] = upgrade.Mock.calls

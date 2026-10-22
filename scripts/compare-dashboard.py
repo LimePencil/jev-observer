@@ -131,6 +131,31 @@ def free_port():
 authorization = ""
 
 
+def authenticate_fixture(connection, database):
+    # The two generic binaries may use either layout. A rollback can leave both
+    # files behind, so existence alone cannot identify the active credential.
+    for layout, token_path in (("current", Path(str(database) + ".token")),
+                               ("legacy", database.with_suffix(".access-token"))):
+        try:
+            with token_path.open() as token_file:
+                token = token_file.read(75)
+        except FileNotFoundError:
+            continue
+        if len(token) != 74 or not token.startswith("jo_access_") or any(
+                character not in "0123456789abcdefABCDEF" for character in token[10:]):
+            continue
+        candidate = "Basic " + base64.b64encode(f"observer:{token}".encode()).decode()
+        connection.request("GET", "/api/health", headers={"Authorization": candidate})
+        response = connection.getresponse()
+        body = response.read()
+        if response.status == 200:
+            return json.loads(body), candidate, layout
+        if response.status != 401:
+            raise RuntimeError(f"Health probe returned HTTP {response.status}")
+        connection.close()
+    return None
+
+
 def exchange(connection, path):
     started = time.perf_counter_ns()
     connection.request("GET", path, headers={"Authorization": authorization})
@@ -181,7 +206,6 @@ def run_binary(name, binary, database, counts, options, directory):
               "started_at": now(), "filters": {}}
     payloads = {}
     log_path = directory / f"{name}.log"
-    token_path = database.with_suffix(".access-token")
     with log_path.open("wb") as log:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log, cwd=ROOT, env=environment)
         connection = http.client.HTTPConnection("127.0.0.1", port, timeout=options.timeout)
@@ -191,16 +215,15 @@ def run_binary(name, binary, database, counts, options, directory):
                 if process.poll() is not None:
                     raise RuntimeError(f"{name} exited at startup: {log_path.read_text(errors='replace')[-4000:]}")
                 try:
-                    if token_path.exists():
-                        token = token_path.read_text()
-                        authorization = "Basic " + base64.b64encode(f"observer:{token}".encode()).decode()
-                    health, _ = exchange(connection, "/api/health")
-                    break
+                    authenticated = authenticate_fixture(connection, database)
+                    if authenticated is not None:
+                        health, authorization, report["token_layout"] = authenticated
+                        break
                 except (OSError, http.client.HTTPException):
                     connection.close()
-                    if time.monotonic() >= deadline:
-                        raise RuntimeError(f"{name} startup timed out: {log_path.read_text(errors='replace')[-4000:]}")
-                    time.sleep(0.1)
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(f"{name} startup timed out: {log_path.read_text(errors='replace')[-4000:]}")
+                time.sleep(0.1)
             if not any(label == "all" for label, _ in options.filters):
                 response, elapsed = exchange(connection, "/api/dashboard?window=all")
                 payloads["all"], digest = canonical(response)

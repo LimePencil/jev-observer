@@ -148,7 +148,7 @@ def smoke_test(executable, directory, demo=False):
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     log_path = directory / "smoke.log"
-    token_path = directory / ("smoke.demo.access-token" if demo else "smoke.access-token")
+    token_path = directory / ("smoke.demo.sqlite.token" if demo else "smoke.sqlite.token")
     command = [str(executable), "--port", str(port), "--db", str(directory / "smoke.sqlite"),
                "--upstream", "http://127.0.0.1:9/v1/systemone"]
     if demo:

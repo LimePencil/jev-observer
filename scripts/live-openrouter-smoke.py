@@ -160,7 +160,7 @@ class Smoke:
         while time.monotonic() < deadline:
             self.check(self.process.poll() is None, "observer_stays_running", required=True)
             try:
-                self.access = (directory / "history.access-token").read_text().strip()
+                self.access = (directory / "history.sqlite.token").read_text().strip()
                 if self.access not in self.secrets:
                     self.secrets.append(self.access)
                 status, _, _ = self.request("/api/health")

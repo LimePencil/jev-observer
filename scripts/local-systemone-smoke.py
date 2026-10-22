@@ -90,7 +90,7 @@ def main():
                     time.sleep(.1)
                 if not origin:
                     raise RuntimeError('Observer startup deadline')
-                access = (directory / 'history.access-token').read_text().strip()
+                access = (directory / 'history.sqlite.token').read_text().strip()
                 body = {'model': args.model, 'state': 'A synthetic customer ticket: I was charged twice. Please refund the duplicate payment today.',
                         'questions': {'department': {'type': 'choice', 'instructions': 'Which team should handle this ticket?', 'criteria': {'billing': 'Payments', 'technical': 'Bugs', 'sales': 'Plans'}},
                                       'urgency': {'type': 'noul', 'instructions': 'Does this ticket request a response today?'},

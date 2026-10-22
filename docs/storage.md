@@ -26,6 +26,7 @@ Unknown usage, cost, confidence and outcomes remain unknown. Version comparisons
 |---|---|
 | Listener | `127.0.0.1:8765`; change the port with `--port` |
 | Database | `.jev-observer/observer.sqlite`; change with `--db` |
+| Dashboard token | Complete database filename plus `.token`, by default `.jev-observer/observer.sqlite.token` |
 | Retention | `--retention-days 7` |
 | Record cap | `--max-records 1000000` |
 | Captured bytes | `--capture-limit 262144` per request body and per response body |
@@ -34,6 +35,8 @@ Unknown usage, cost, confidence and outcomes remain unknown. Version comparisons
 | Input-state persistence | Off; opt in with `--capture-state` |
 
 Retention maintenance runs every 30 seconds, so the record cap is a soft limit. It is not a disk-byte limit; deleting records does not necessarily shrink SQLite's allocated files. A shorter history may result from the record cap: at a constant 500 requests/sec, one million records represents about 33 minutes. Unsupported database versions are rejected before schema, journal-mode or plaintext-encryption changes. Read-only preflight checks committed WAL state and preserves database and WAL content on rejection; SQLite may rebuild its transient SHM index while reading. Supported existing histories receive a transactional query-index upgrade. For a complete filesystem backup, stop Observer cleanly before copying its database and any remaining SQLite sidecar files. Keep its database key and dashboard token available separately. JSONL exports provide portable application records, not a full database or operating-system credential backup.
+
+The dashboard token is separate from the database encryption key and registered client tokens. A workspace with only the legacy `*.access-token` file receives a fresh token at its first upgraded startup; the old file is left untouched, and later startups reuse the new file. This changes local workspace authentication without changing saved history or provider credentials. See [token upgrade and rollback guidance](installation.md#history-backups-and-downgrades) before switching executables.
 
 Capture slots must cover concurrent calls plus queued writes, not just requests per second: for example, 500 requests/sec with a one-second upstream needs more than 500 slots. The default 1,024 slots allows headroom for this workload. Buffers grow on demand; the configured request/response body budget is capped at 512 MiB, excluding HTTP buffers and parsed-record overhead. Slower upstreams or larger payloads need their own capacity test.
 

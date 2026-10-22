@@ -73,9 +73,13 @@ jev-observer --demo
 | 항목 | 값 |
 |---|---|
 | 사용자 이름 | `observer` |
-| 비밀번호 | `.jev-observer/observer.demo.access-token` 파일에 있는 토큰 |
+| 비밀번호 | `.jev-observer/observer.demo.sqlite.token` 파일에 있는 토큰 |
 
 Observer는 시작할 때 정확한 토큰 파일 경로를 출력합니다. 데모는 별도의 `*.demo.sqlite` 데이터베이스를 사용하며, 요청을 모델로 전달하지 않고 오프라인으로 동작합니다. **Ctrl-C**로 종료할 수 있습니다.
+
+위 설치 명령은 공개된 0.3.1 버전을 설치합니다. 이 버전은 `.jev-observer/` 안의 데모용 `observer.demo.access-token`과 실제 요청 수집용 `observer.access-token`을 사용합니다. 현재 빌드는 이 문서에 표시된 `.sqlite.token` 이름을 사용하므로, 실행 파일이 출력하는 정확한 경로를 확인하세요.
+
+토큰 파일 이름은 데이터베이스의 전체 파일 이름 뒤에 `.token`을 붙입니다. 이전 `*.access-token` 파일만 있는 워크스페이스를 업그레이드하면 새 토큰을 만들고 안내를 출력합니다. 새 토큰으로 다시 로그인하세요. 자세한 내용은 [토큰 업그레이드 및 롤백 안내](docs/installation.md#history-backups-and-downgrades)를 참고하세요.
 
 macOS와 Windows 실행 파일은 서명되지 않았습니다. 운영체제의 실행 제한, 비공개 저장소 접근, 업그레이드, 삭제 방법은 [설치 안내](docs/installation.md)를 참고하세요. 릴리스에는 `SHA256SUMS`가 포함됩니다. 변경 사항은 [0.3.1 릴리스 노트](docs/releases/0.3.1.md)에 정리되어 있습니다.
 
@@ -128,7 +132,7 @@ jev-observer
 jev-observer --upstream https://openrouter.ai/api/v1/systemone
 ```
 
-대시보드에서 사용자 이름 `observer`와 `.jev-observer/observer.access-token` 파일의 토큰으로 로그인하세요. 이 파일은 실제 요청 수집용 로그인 토큰을 담고 있습니다.
+대시보드에서 사용자 이름 `observer`와 `.jev-observer/observer.sqlite.token` 파일의 토큰으로 로그인하세요. 이 파일은 실제 요청 수집용 로그인 토큰을 담고 있습니다.
 
 **Connect an application**에서 제공업체 키를 입력하고, 현재 세션에만 보관할지 운영체제의 자격 증명 저장소에 보관할지 선택하세요. 한 번 표시되는 **로컬 클라이언트 토큰**을 복사해 애플리케이션 환경의 `JEV_OBSERVER_CLIENT_TOKEN`으로 설정합니다. 세션에만 보관한 키는 Observer를 재시작하면 다시 등록해야 합니다.
 
@@ -180,7 +184,7 @@ jev-observer --upstream http://127.0.0.1:8000/v1/systemone \
   --upstream-auth none --provider laya
 ```
 
-`.jev-observer/observer.access-token`의 워크스페이스 토큰을 SDK 키로 사용하고, 요청 모델을 `english`로 지정하세요. Observer는 애플리케이션을 로컬에서 인증하며 Laya에는 인증 정보를 보내지 않습니다. CPU 추론은 SDK 타임아웃을 늘려야 할 수 있습니다. Laya 실행 방법, 키로 보호되는 서버, 호환성 제한은 [로컬 모델 설정](docs/connection.md#laya-and-other-local-system-one-models)을 참고하세요.
+`.jev-observer/observer.sqlite.token`의 워크스페이스 토큰을 SDK 키로 사용하고, 요청 모델을 `english`로 지정하세요. Observer는 애플리케이션을 로컬에서 인증하며 Laya에는 인증 정보를 보내지 않습니다. CPU 추론은 SDK 타임아웃을 늘려야 할 수 있습니다. Laya 실행 방법, 키로 보호되는 서버, 호환성 제한은 [로컬 모델 설정](docs/connection.md#laya-and-other-local-system-one-models)을 참고하세요.
 
 ## 저장 및 개인정보 보호
 
