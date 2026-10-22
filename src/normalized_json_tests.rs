@@ -22,7 +22,7 @@ fn capture(location: &str, depth: usize) -> Capture {
         _ => panic!("unknown fixture"),
     }
     Capture {
-        id: format!("historical-{location}-{depth}"),
+        id: format!("historical-{location}-{depth}").into(),
         timestamp: chrono::Utc::now().timestamp_millis(),
         source: "synthetic-depth".into(),
         status: 200,
