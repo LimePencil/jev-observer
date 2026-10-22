@@ -56,6 +56,16 @@ fn parse(s: String) -> rusqlite::Result<Value> {
     })
 }
 
+fn label_fields(annotation: &Value) -> Option<(&str, &str)> {
+    let key = annotation["key"]
+        .as_str()
+        .or(annotation["question_key"].as_str())?;
+    let label = annotation["label"].as_str()?;
+    ["correct", "incorrect", "unknown"]
+        .contains(&label)
+        .then_some((key, label))
+}
+
 fn serialize_without_field(
     fields: &serde_json::Map<String, Value>,
     excluded: &str,
@@ -654,11 +664,23 @@ impl Store {
             DROP INDEX IF EXISTS answer_group;
             CREATE TABLE IF NOT EXISTS labels(
               request_id TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,key TEXT NOT NULL,
-              label TEXT NOT NULL,timestamp INTEGER NOT NULL,source TEXT NOT NULL,
+              label TEXT NOT NULL,timestamp INTEGER NOT NULL,source TEXT NOT NULL,annotation TEXT,
               PRIMARY KEY(request_id,key));
             CREATE TABLE IF NOT EXISTS maintenance(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS credential_approval(
               id INTEGER PRIMARY KEY CHECK(id=1), token_hash TEXT NOT NULL);")?;
+        // Additive: older binaries use explicit column lists. Their local-review
+        // INSERT OR REPLACE also clears annotation, just like current writes.
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let has_annotation: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('labels') WHERE name='annotation')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_annotation {
+            tx.execute_batch("ALTER TABLE labels ADD COLUMN annotation TEXT")?;
+        }
+        tx.commit()?;
         // Upgrade the covering index once, transactionally, for transfer outcomes.
         let index_sql: String = conn.query_row(
             "SELECT sql FROM sqlite_schema WHERE name='request_dashboard'",
@@ -780,12 +802,8 @@ impl Store {
             }
             if let Some(labels) = record["labels"].as_array() {
                 for label in labels {
-                    let key = label["key"].as_str().or(label["question_key"].as_str());
-                    let value = label["label"].as_str();
-                    if let (Some(key), Some(value)) = (key, value)
-                        && ["correct", "incorrect", "unknown"].contains(&value)
-                    {
-                        tx.prepare_cached("INSERT OR REPLACE INTO labels(request_id,key,label,timestamp,source) VALUES(?,?,?,?,?)")?.execute(params![id,key,value,label["timestamp"].as_i64().unwrap_or_else(|| Utc::now().timestamp_millis()),label["source"].as_str().unwrap_or("import")])?;
+                    if let Some((key, value)) = label_fields(label) {
+                        tx.prepare_cached("INSERT OR REPLACE INTO labels(request_id,key,label,timestamp,source,annotation) VALUES(?,?,?,?,?,?)")?.execute(params![id,key,value,label["timestamp"].as_i64().unwrap_or_else(|| Utc::now().timestamp_millis()),label["source"].as_str().unwrap_or("import"),serde_json::to_string(label)?])?;
                     }
                 }
             }
@@ -2016,10 +2034,51 @@ impl Store {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         record["answers"] = Value::Array(answers);
+        // Legacy databases kept the original annotations only in the parent.
+        // Last valid annotation wins, matching write_batch's replacement order.
+        let imported_labels: HashMap<_, _> = record["labels"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|annotation| label_fields(annotation).map(|(key, _)| (key, annotation)))
+            .collect();
         let mut stmt = conn.prepare(
-            "SELECT key,label,timestamp,source FROM labels WHERE request_id=? ORDER BY key",
+            "SELECT key,label,timestamp,source,annotation FROM labels WHERE request_id=? ORDER BY key",
         )?;
-        let labels=stmt.query_map([id],|r|Ok(json!({"key":r.get::<_,String>(0)?,"label":r.get::<_,String>(1)?,"timestamp":r.get::<_,i64>(2)?,"source":r.get::<_,String>(3)?})))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let labels = stmt
+            .query_map([id], |row| {
+                let key: String = row.get(0)?;
+                let label: String = row.get(1)?;
+                let timestamp: i64 = row.get(2)?;
+                let source: String = row.get(3)?;
+                let saved: Option<String> = row.get(4)?;
+                let mut annotation = if let Some(saved) = saved {
+                    parse(saved)?
+                } else {
+                    // A local replacement must never inherit imported notes,
+                    // even if its value and millisecond timestamp happen to match.
+                    imported_labels
+                        .get(key.as_str())
+                        .filter(|original| {
+                            source != "local-reviewer"
+                                && original["label"].as_str() == Some(label.as_str())
+                                && original["timestamp"].as_i64() == Some(timestamp)
+                                && original["source"].as_str().unwrap_or("import") == source
+                        })
+                        .map(|original| (*original).clone())
+                        .unwrap_or_else(|| json!({}))
+                };
+                if !annotation.is_object() {
+                    annotation = json!({});
+                }
+                // The indexed columns remain authoritative for current review state.
+                annotation["key"] = json!(key);
+                annotation["label"] = json!(label);
+                annotation["timestamp"] = json!(timestamp);
+                annotation["source"] = json!(source);
+                Ok(annotation)
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         record["labels"] = Value::Array(labels);
         record["failed"] = json!(
             record["status"]
@@ -2365,6 +2424,10 @@ fn csv_cell(value: &Value) -> String {
     };
     format!("\"{}\"", safe.replace('"', "\"\""))
 }
+
+#[cfg(test)]
+#[path = "label_provenance_tests.rs"]
+mod label_provenance_tests;
 
 #[cfg(test)]
 mod tests {
