@@ -10,6 +10,7 @@ import type { Panel } from './Details';
 import { DetailBoundary, DetailFallback } from './DetailBoundary';
 import { useReviews } from './reviews';
 import { useImports } from './imports';
+import { useHistoryDeletion } from './deletion';
 
 const Details = lazy(() => import('./Details'));
 const defaults = defaultFilters;
@@ -39,6 +40,7 @@ export default function App() {
   const { snapshot, error, errorRequestOrder, slow, invalidate, reset, scope } = useDashboard(filters);
   const reviews = useReviews(panel?.type === 'request' ? panel.id : null, historyRevision, invalidate);
   const imports = useImports(historyChanged);
+  const deletion = useHistoryDeletion(historyChanged, notify);
   const liveHealth = useLiveHealth();
   const { data: settings } = useResource<Settings>('/api/settings');
   const frozen = paused || panel !== null;
@@ -200,7 +202,7 @@ export default function App() {
       </>}
       </main>
     </div>
-    {panel && <DetailBoundary close={() => setPanel(null)}><Suspense fallback={<DetailFallback close={() => setPanel(null)} />}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} reviews={reviews} imports={imports} historyChanged={historyChanged} historyRevision={historyRevision} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests'); }} notify={notify} /></Suspense></DetailBoundary>}
+    {panel && <DetailBoundary close={() => setPanel(null)}><Suspense fallback={<DetailFallback close={() => setPanel(null)} />}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} reviews={reviews} imports={imports} deletion={deletion} historyRevision={historyRevision} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests'); }} /></Suspense></DetailBoundary>}
     {toast && <div className="toast" role="status"><Info size={18} /><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast('')}><X size={15} /></button></div>}
   </div></Dialog.Root>;
 }

@@ -854,6 +854,117 @@ for (const unavailable of ['missing', 'denied'] as const) {
   });
 }
 
+for (const reopenBeforeCompletion of [false, true]) {
+  test(`closed deletion preserves failure when Settings reopens ${reopenBeforeCompletion ? 'before' : 'after'} completion`, async ({ page }) => {
+    const state = await harness(page);
+    let finish!: () => void, writes = 0;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    await page.route('**/api/data', async route => {
+      writes += 1;
+      await pending;
+      return route.fulfill({ status: 503, json: { error: 'History could not be deleted' } });
+    });
+    try {
+      await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+      await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+      await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+      await page.getByRole('button', { name: 'Permanently delete history' }).click();
+      await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+      await page.keyboard.press('Escape');
+      if (reopenBeforeCompletion) {
+        await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+        await expect(page.getByLabel('Type DELETE to confirm')).toHaveCount(0);
+      }
+      const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname === '/api/data');
+      finish(); await finished;
+      if (!reopenBeforeCompletion) await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+      await expect(page.getByRole('dialog').getByRole('alert')).toContainText('History could not be deleted');
+      await expect(page.getByRole('button', { name: 'Delete history', exact: true })).toBeEnabled();
+      expect(writes).toBe(1); expect(state.deleted).toBe(false);
+      await page.keyboard.press('Escape');
+      await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeVisible();
+    } finally { finish(); }
+  });
+}
+
+test('reopened pending deletion prevents another write and preserves the new Settings panel on success', async ({ page }) => {
+  const state = await harness(page);
+  let finish!: () => void, writes = 0;
+  state.deletePending = new Promise(resolve => { finish = resolve; });
+  await page.route('**/api/data', route => { writes += 1; return route.fallback(); });
+  try {
+    await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).click();
+    await expect.poll(() => writes).toBe(1);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    const pendingButton = page.getByRole('button', { name: 'Deleting…' });
+    await expect(pendingButton).toBeDisabled();
+    await pendingButton.evaluate(button => (button as HTMLButtonElement).click());
+    await expect(page.getByLabel('Type DELETE to confirm')).toHaveCount(0);
+    expect(writes).toBe(1);
+    finish();
+    await expect(page.locator('.toast')).toContainText('Local history deleted');
+    await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Delete history', exact: true })).toBeEnabled();
+    expect(writes).toBe(1);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { name: 'Your workspace is ready' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
+  } finally { finish(); }
+});
+
+test('deletion retry clears the previous failure and refreshes once after rapid confirmation', async ({ page }) => {
+  const state = await harness(page);
+  let finish!: () => void, writes = 0, detailReads = 0;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  await page.route('**/api/data', async route => {
+    writes += 1;
+    if (writes === 1) return route.fulfill({ status: 503, json: { error: 'History could not be deleted' } });
+    await pending;
+    return route.fallback();
+  });
+  await page.route('**/api/requests/request-one', route => {
+    detailReads += 1;
+    return state.deleted ? route.fulfill({ status: 404, json: { error: 'Record not found' } }) : route.fulfill({ json: state.record });
+  });
+  try {
+    await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).click();
+    await expect(page.getByRole('alert')).toContainText('History could not be deleted');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('History could not be deleted');
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Permanently delete history' })).toBeDisabled();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).evaluate(button => {
+      (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click();
+    });
+    await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect.poll(() => writes).toBe(2);
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    await expect(page.locator('.request-detail-id')).toBeVisible();
+    const initialReads = detailReads;
+    finish();
+    await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Record not found');
+    expect(detailReads).toBe(initialReads + 1); expect(writes).toBe(2);
+    await expect(page.locator('.toast')).toContainText('Local history deleted');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Inspect request request-one', { exact: true })).toHaveCount(0);
+  } finally { finish(); }
+});
+
 test('a completed deletion refreshes history without closing a newly opened panel', async ({ page }) => {
   const state = await harness(page);
   let finish!: () => void;
