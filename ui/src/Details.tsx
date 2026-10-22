@@ -3,31 +3,33 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, ArrowRight, Check, ClipboardText, Database, DownloadSimple, FileArrowUp, Fingerprint, GearSix, Info, ShieldCheck, Trash, WarningCircle, X } from '@phosphor-icons/react';
 import type { ChangeEvent, ReactNode } from 'react';
 import type { Answer, Filters, Group, GroupDetail, Health, Label, RequestRecord, Settings } from './types';
-import { api, query, useResource } from './api';
+import { query, useResource } from './api';
 import { connectionSnippet } from './connection';
 import { ModelCatalog } from './ModelCatalog';
 import type { ReviewController, ReviewState } from './reviews';
 import type { CredentialController } from './credentials';
-import { answerValue, bytes, costBasis, dateTime, money, ms, number, percent, shortId } from './format';
+import type { ImportController } from './imports';
+import type { HistoryDeletionController } from './deletion';
+import { answerValue, bytes, costBasis, dateTime, money, ms, number, percent, shortId, tokens } from './format';
 import { Definition, Distribution, Empty, ErrorNotice, KindBadge, LazyDetails, Loading, RequestTable, StatusBadge, Timeline } from './components';
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
 const DECISIONS_PER_PAGE = 50;
-const emptyReview: ReviewState = { pending: null, error: '', saved: false };
-type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; credentials: CredentialController; historyChanged: () => void; historyRevision: number; filterGroup: (id: string) => void; notify: (message: string) => void };
+const emptyReview: ReviewState = { pending: null, error: '', savedLabel: null };
+type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; credentials: CredentialController; imports: ImportController; deletion: HistoryDeletionController; historyRevision: number; filterGroup: (id: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
   return <div className="drawer-heading"><div className="eyebrow">{icon}{eyebrow}</div><Dialog.Title>{title}</Dialog.Title><Dialog.Description>{description}</Dialog.Description></div>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="detail-field"><dt>{label}</dt><dd>{children}</dd></div>; }
 
-export default function Details({ health, panel, setPanel, filters, reviews, credentials, historyChanged, historyRevision, filterGroup, notify }: Props) {
+export default function Details({ health, panel, setPanel, filters, reviews, credentials, imports, deletion, historyRevision, filterGroup }: Props) {
   return <Dialog.Root open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className={`drawer ${panel?.type === 'import' || panel?.type === 'connect' ? 'drawer-small' : ''}`}>
     <Dialog.Close className="icon-button drawer-close" aria-label="Close detail panel"><X size={20} weight="bold" /></Dialog.Close>
     {panel?.type === 'request' && <RequestDetails key={panel.id} id={panel.id} setPanel={setPanel} controller={reviews} historyRevision={historyRevision} />}
     {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} historyRevision={historyRevision} />}
-    {panel?.type === 'settings' && <SettingsDetails changed={historyChanged} notify={notify} close={() => setPanel(null)} />}
-    {panel?.type === 'import' && <ImportDetails changed={historyChanged} initialFormat={panel.format} />}
+    {panel?.type === 'settings' && <SettingsDetails controller={deletion} close={() => setPanel(null)} />}
+    {panel?.type === 'import' && <ImportDetails controller={imports} initialFormat={panel.format} />}
     {panel?.type === 'connect' && <ConnectDetails health={health} controller={credentials} importCaptures={() => setPanel({ type: 'import', format: 'systemone-capture' })} />}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
@@ -56,7 +58,7 @@ function RequestDetails({ id, setPanel, controller, historyRevision }: { id: str
       {!record.capture_complete && <div className="warning-notice"><WarningCircle size={18} />This capture is incomplete. Missing fields are unknown; the forwarded request was not truncated.</div>}
       {record.transport_error && <ErrorNotice message={record.transport_error} />}
       {typeof record.normalization_error === 'string' && record.normalization_error.trim() !== '' && <ErrorNotice message={record.normalization_error} />}
-      <dl className="detail-grid"><Field label={record.timestamp == null ? "Imported at" : "Recorded"}>{dateTime(record.timestamp ?? record.imported_at)}{record.timestamp == null && <span className="table-subline">Original event time unknown</span>}</Field><Field label="Latency">{ms(record.duration_ms)}</Field><Field label="Provider">{record.provider || 'Unknown'}</Field><Field label="Model">{record.model || 'Unknown'}</Field><Field label="Requested model">{record.requested_model ?? 'Unknown'}</Field><Field label="Input tokens">{number(record.input_tokens)}</Field><Field label="Output tokens">{number(record.output_tokens)}</Field><Field label="Request cost">{money(record.cost_usd)}</Field><Field label="Cost basis">{costBasis(record.cost_basis)}</Field></dl>
+      <dl className="detail-grid"><Field label={record.timestamp == null ? "Imported at" : "Recorded"}>{dateTime(record.timestamp ?? record.imported_at)}{record.timestamp == null && <span className="table-subline">Original event time unknown</span>}</Field><Field label="Latency">{ms(record.duration_ms)}</Field><Field label="Provider">{record.provider || 'Unknown'}</Field><Field label="Model">{record.model || 'Unknown'}</Field><Field label="Requested model">{record.requested_model ?? 'Unknown'}</Field><Field label="Input tokens">{tokens(record.input_tokens)}</Field><Field label="Output tokens">{tokens(record.output_tokens)}</Field><Field label="Request cost">{money(record.cost_usd)}</Field><Field label="Cost basis">{costBasis(record.cost_basis)}</Field></dl>
       <div className="detail-section-title"><h3>Decisions</h3><span className="count-badge">{record.answers.length}</span></div>
       <p className="caption">Usage and cost belong to this request, across all its answers.</p>
       {record.answers.length > DECISIONS_PER_PAGE && <nav className="history-pagination" aria-label="Decision pages"><button className="text-button" aria-disabled={page === 0 || pendingReviews} onClick={() => { if (page > 0 && !pendingReviews) setAnswerPage(page - 1); }}>Previous decisions</button><span role="status">Decisions {number(answerStart + 1)}–{number(Math.min(answerStart + DECISIONS_PER_PAGE, record.answers.length))} of {number(record.answers.length)}{pendingReviews && ' · Saving reviews…'}</span><button className="text-button" aria-disabled={answerStart + DECISIONS_PER_PAGE >= record.answers.length || pendingReviews} onClick={() => { if (answerStart + DECISIONS_PER_PAGE < record.answers.length && !pendingReviews) setAnswerPage(page + 1); }}>Next decisions</button></nav>}
@@ -68,8 +70,10 @@ function RequestDetails({ id, setPanel, controller, historyRevision }: { id: str
   </>;
 }
 
-function AnswerDetail({ answer, record, onGroup, review: { pending, error, saved }, onReview }: { answer: Answer; record: RequestRecord; onGroup: () => void; review: ReviewState; onReview: (label: Label) => void }) {
+function AnswerDetail({ answer, record, onGroup, review: { pending, error, savedLabel }, onReview }: { answer: Answer; record: RequestRecord; onGroup: () => void; review: ReviewState; onReview: (label: Label) => void }) {
   const currentLabel = [...(record.labels ?? [])].reverse().find(item => (item.key ?? item.answer_key) === answer.key)?.label;
+  // A successful response may belong to a row deleted before it arrived.
+  const saved = savedLabel !== null && savedLabel === currentLabel;
   const probabilities = Object.entries(answer.probabilities ?? {}).map(([key, value]) => ({
     key, value: typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null,
   })).sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
@@ -126,8 +130,8 @@ function VersionComparison({ current, other }: { current: Group; other: Group })
       <tr><th>Failed requests</th><td>{number(current.error_count)} / {number(current.request_count)}</td><td>{number(other.error_count)} / {number(other.request_count)}</td></tr>
       <tr><th>Mean request latency</th><td>{ms(current.mean_latency_ms)}</td><td>{ms(other.mean_latency_ms)}</td></tr>
       <tr><th>Known request cost</th><td>{money(current.cost_usd)}<span className="table-subline">{number(current.cost_known_requests)} / {number(current.request_count)} requests covered</span></td><td>{money(other.cost_usd)}<span className="table-subline">{number(other.cost_known_requests)} / {number(other.request_count)} requests covered</span></td></tr>
-      <tr><th>Reported input tokens</th><td>{current.input_tokens_overflow ? 'Total exceeds range' : number(current.input_tokens)}<span className="table-subline">{number(current.input_tokens_known_requests)} / {number(current.request_count)} requests covered</span></td><td>{other.input_tokens_overflow ? 'Total exceeds range' : number(other.input_tokens)}<span className="table-subline">{number(other.input_tokens_known_requests)} / {number(other.request_count)} requests covered</span></td></tr>
-      <tr><th>Reported output tokens</th><td>{current.output_tokens_overflow ? 'Total exceeds range' : number(current.output_tokens)}<span className="table-subline">{number(current.output_tokens_known_requests)} / {number(current.request_count)} requests covered</span></td><td>{other.output_tokens_overflow ? 'Total exceeds range' : number(other.output_tokens)}<span className="table-subline">{number(other.output_tokens_known_requests)} / {number(other.request_count)} requests covered</span></td></tr>
+      <tr><th>Reported input tokens</th><td>{current.input_tokens_overflow ? 'Total exceeds range' : tokens(current.input_tokens)}<span className="table-subline">{number(current.input_tokens_known_requests)} / {number(current.request_count)} requests covered</span></td><td>{other.input_tokens_overflow ? 'Total exceeds range' : tokens(other.input_tokens)}<span className="table-subline">{number(other.input_tokens_known_requests)} / {number(other.request_count)} requests covered</span></td></tr>
+      <tr><th>Reported output tokens</th><td>{current.output_tokens_overflow ? 'Total exceeds range' : tokens(current.output_tokens)}<span className="table-subline">{number(current.output_tokens_known_requests)} / {number(current.request_count)} requests covered</span></td><td>{other.output_tokens_overflow ? 'Total exceeds range' : tokens(other.output_tokens)}<span className="table-subline">{number(other.output_tokens_known_requests)} / {number(other.request_count)} requests covered</span></td></tr>
       {current.kind === other.kind && current.kind !== 'choice' && <tr><th>Mean {current.kind === 'noul' ? 'yes-probability' : 'score'}</th><td>{answerValue(current.mean_value, current.kind)}</td><td>{answerValue(other.mean_value, other.kind)}</td></tr>}
       <tr><th>Correct among judged answers</th><td>{reviewedAccuracy(current)}</td><td>{reviewedAccuracy(other)}</td></tr>
       <tr><th>Unknown reviews</th><td>{number(current.review_counts?.unknown)}</td><td>{number(other.review_counts?.unknown)}</td></tr>
@@ -140,34 +144,29 @@ function VersionComparison({ current, other }: { current: Group; other: Group })
   </section>;
 }
 
-function SettingsDetails({ changed, notify, close }: { changed: () => void; notify: Props['notify']; close: () => void }) {
+function SettingsDetails({ controller, close }: { controller: HistoryDeletionController; close: () => void }) {
   const { data, error, reload } = useResource<Settings>('/api/settings');
-  const [confirm, setConfirm] = useState(false), [typed, setTyped] = useState(''), [busy, setBusy] = useState(false), [deleteError, setDeleteError] = useState('');
+  const [confirm, setConfirm] = useState(false), [typed, setTyped] = useState('');
+  const { busy, error: deleteError, remove: deleteHistory } = controller;
   const active = useRef(false);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   async function remove() {
     if (busy || typed !== 'DELETE') return;
-    setBusy(true); setDeleteError('');
-    try {
-      await api('/api/data', { method: 'DELETE' });
-      changed(); notify(data?.demo ? 'Sample history deleted. It will be recreated on the next demo startup.' : 'Local history deleted. New incoming requests will still be recorded.');
-      // The user may have closed Settings and moved to another panel while
-      // storage was busy. Keep global history current without closing it.
-      if (active.current) close();
-    }
-    catch (error) { if (active.current) setDeleteError(error instanceof Error ? error.message : 'Could not delete history'); }
-    finally { if (active.current) setBusy(false); }
+    const deleted = await deleteHistory(data?.demo === true);
+    // Only close the Settings instance that submitted this operation.
+    if (deleted && active.current) close();
   }
   return <><DetailHeading eyebrow="Workspace settings" title="Local by design." description="Capture settings, storage limits and controls for your history." icon={<GearSix size={15} />} />{error ? <ErrorNotice message={error} retry={reload} /> : !data ? <Loading label="Loading settings" /> : <div className="drawer-body">
     <section className="settings-section"><div className="settings-section-icon"><ShieldCheck size={22} weight="duotone" /></div><div><h3>Input capture</h3><p>{data.capture_state ? 'Enabled with local opt-in. Retained input uses configured redaction.' : 'Raw input state is not retained. Question definitions and model answers are stored locally.'}</p><span className={`status-tag ${data.capture_state ? 'warning' : 'success'}`}>{data.capture_state ? 'Opt-in enabled' : 'Off by default'}</span></div></section>
     <section className="settings-section"><div className="settings-section-icon"><Database size={22} weight="duotone" /></div><div><h3>History and retention</h3><dl className="detail-grid"><Field label="Detailed history">{data.retention_days === 0 ? 'No age limit' : `${data.retention_days} days`}</Field><Field label="Record cap">{number(data.max_records)}</Field><Field label="Capture budget">{bytes(data.capture_limit)} per body</Field><Field label="Mode">{data.demo ? 'Isolated sample workspace' : 'Live collection'}</Field></dl><p className="caption">History can end earlier when the record cap is reached. Settings are configured when Observer starts.</p></div></section>
     <section className="detail-section"><h3>Connection</h3><dl className="detail-grid"><Field label="Upstream">{data.upstream}</Field><Field label="Observer version">{data.version}</Field></dl><p className="caption">Registered provider keys are never returned after setup. Live inference goes to the configured provider.</p></section>
-    <section className="danger-zone"><h3>Delete local history</h3><p>{data.demo ? 'Remove stored requests, answers and review labels from this sample workspace. Synthetic records will be recreated when you next start demo mode with an empty workspace.' : 'Remove stored requests, answers and review labels from this workspace. Forwarding and future collection will continue.'}</p>{!confirm ? <button className="button danger-button" onClick={() => setConfirm(true)}><Trash size={16} />Delete history</button> : <div className="delete-confirm"><label className="field-label">Type DELETE to confirm<input value={typed} onChange={event => setTyped(event.target.value)} placeholder="DELETE" autoComplete="off" /></label><div className="button-row"><button className="button" disabled={busy} onClick={() => { setConfirm(false); setTyped(''); }}>Cancel</button><button className="button danger-button" disabled={typed !== 'DELETE' || busy} onClick={() => void remove()}>{busy ? 'Deleting…' : 'Permanently delete history'}</button></div></div>}{deleteError && <ErrorNotice message={deleteError} />}</section>
+    <section className="danger-zone"><h3>Delete local history</h3><p>{data.demo ? 'Remove stored requests, answers and review labels from this sample workspace. Synthetic records will be recreated when you next start demo mode with an empty workspace.' : 'Remove stored requests, answers and review labels from this workspace. Forwarding and future collection will continue.'}</p>{!confirm ? <button className="button danger-button" disabled={busy} onClick={() => setConfirm(true)}>{busy ? 'Deleting…' : <><Trash size={16} />Delete history</>}</button> : <div className="delete-confirm"><label className="field-label">Type DELETE to confirm<input value={typed} onChange={event => setTyped(event.target.value)} placeholder="DELETE" autoComplete="off" /></label><div className="button-row"><button className="button" disabled={busy} onClick={() => { setConfirm(false); setTyped(''); }}>Cancel</button><button className="button danger-button" disabled={typed !== 'DELETE' || busy} onClick={() => void remove()}>{busy ? 'Deleting…' : 'Permanently delete history'}</button></div></div>}{deleteError && <ErrorNotice message={deleteError} />}</section>
   </div>}</>;
 }
 
-function ImportDetails({ changed, initialFormat }: { changed: () => void; initialFormat?: string }) {
-  const [format, setFormat] = useState(initialFormat ?? 'observer-jsonl'), [text, setText] = useState(''), [filename, setFilename] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false), [result, setResult] = useState<{ imported: number; duplicates: number } | null>(null);
+function ImportDetails({ controller, initialFormat }: { controller: ImportController; initialFormat?: string }) {
+  const { busy, result, error: importError, clear, submit: importRecords } = controller;
+  const [format, setFormat] = useState((busy ? controller.format : initialFormat ?? controller.format) ?? 'observer-jsonl'), [text, setText] = useState(''), [filename, setFilename] = useState(''), [error, setError] = useState('');
   const [reading, setReading] = useState(false);
   const inputRevision = useRef(0);
   useEffect(() => () => { inputRevision.current += 1; }, []);
@@ -177,7 +176,7 @@ function ImportDetails({ changed, initialFormat }: { changed: () => void; initia
     if (!file || busy) return;
     event.target.value = '';
     const revision = ++inputRevision.current;
-    setText(''); setFilename(file.name); setReading(false); setError(''); setResult(null);
+    setText(''); setFilename(file.name); setReading(false); setError(''); clear();
     if (file.size > maxBytes) { setError('Choose a file no larger than 8 MiB. Split larger histories into separate imports.'); return; }
     setReading(true);
     try {
@@ -191,20 +190,16 @@ function ImportDetails({ changed, initialFormat }: { changed: () => void; initia
   }
   async function submit() {
     if (busy || reading || !text.trim()) return;
-    setError(''); setBusy(true); setResult(null);
-    try {
-      if (new Blob([text]).size > maxBytes) throw new Error('Imports must not exceed 8 MiB.');
-      const result = await api<{ imported: number; duplicates: number }>('/api/import', { method: 'POST', body: JSON.stringify({ text, format }) });
-      setResult(result); changed();
-    } catch (error) { setError(error instanceof Error ? error.message : 'Import failed'); }
-    finally { setBusy(false); }
+    setError(''); clear();
+    if (new Blob([text]).size > maxBytes) { setError('Imports must not exceed 8 MiB.'); return; }
+    await importRecords(text, format);
   }
   return <><DetailHeading eyebrow="Local data" title="Bring your history." description="Import exported records into this workspace. Your file stays on this machine." icon={<FileArrowUp size={15} />} /><div className="drawer-body">
-    <label className="field-label">Source format<select value={format} disabled={busy} onChange={event => { setFormat(event.target.value); setError(''); setResult(null); }}><option value="observer-jsonl">Observer JSONL export</option><option value="jevrouter-receipt">JevRouter decision receipt</option><option value="systemone-capture">System One request/response capture</option></select></label>
+    <label className="field-label">Source format<select value={format} disabled={busy} onChange={event => { if (busy) return; setFormat(event.target.value); setError(''); clear(); }}><option value="observer-jsonl">Observer JSONL export</option><option value="jevrouter-receipt">JevRouter decision receipt</option><option value="systemone-capture">System One request/response capture</option></select></label>
     {format === 'systemone-capture' && <p className="caption">Keep original definitions and full reported distributions. Missing confidence stays unknown. Include id, timestamp (Unix milliseconds), source, provider, status, capture_complete, request and response in every line. Request questions and response answers use the System One shape.</p>}<label className="file-input"><FileArrowUp size={28} weight="duotone" /><strong>{filename || 'Choose a local file'}</strong><span>JSONL or JSON · up to 8 MiB</span><input type="file" disabled={busy} accept=".json,.jsonl,application/json,application/x-ndjson" onChange={event => void fileSelected(event)} aria-label="Choose import file" /></label>
-    <label className="field-label">Or paste records<textarea rows={9} disabled={busy} value={text} onChange={event => { inputRevision.current += 1; setReading(false); setText(event.target.value); setFilename(''); setError(''); setResult(null); }} placeholder={format === 'observer-jsonl' ? 'One exported Observer record per line' : format === 'systemone-capture' ? 'One call per line: id, timestamp, source, provider, status, capture_complete, request, response' : 'Paste a JevRouter decision receipt'} spellCheck={false} /></label>
+    <label className="field-label">Or paste records<textarea rows={9} disabled={busy} value={text} onChange={event => { if (busy) return; inputRevision.current += 1; setReading(false); setText(event.target.value); setFilename(''); setError(''); clear(); }} placeholder={format === 'observer-jsonl' ? 'One exported Observer record per line' : format === 'systemone-capture' ? 'One call per line: id, timestamp, source, provider, status, capture_complete, request, response' : 'Paste a JevRouter decision receipt'} spellCheck={false} /></label>
     <div className="inline-notice"><Fingerprint size={18} /><span>Explicit source event IDs prevent duplicate imports. Identical payloads from separate calls remain separate observations.</span></div>
-    {reading && <p className="caption" role="status">Reading {filename}…</p>}{error && <ErrorNotice message={error} />}{result && <div className="success-notice" role="status"><Check size={19} weight="bold" /><span><strong>{number(result.imported)} records imported.</strong> {number(result.duplicates)} duplicates skipped.</span></div>}
+    {reading && <p className="caption" role="status">Reading {filename}…</p>}{(error || importError) && <ErrorNotice message={error || importError} />}{result && <div className="success-notice" role="status"><Check size={19} weight="bold" /><span><strong>{number(result.imported)} records imported.</strong> {number(result.duplicates)} duplicates skipped.</span></div>}
     <button className="button primary full-width" disabled={!text.trim() || busy || reading} onClick={() => void submit()}><DownloadSimple size={17} />{busy ? 'Importing records…' : 'Import records'}</button>
   </div></>;
 }

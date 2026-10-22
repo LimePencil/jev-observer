@@ -10,6 +10,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { performance, monitorEventLoopDelay } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
+import { buildLockHelper } from './stress-cargo.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -162,8 +163,7 @@ function checkLoad(result) {
   assert(result.scheduling_lateness_ms.p99 <= 100, `${result.label}: generator missed the offered rate`);
 }
 
-async function lockWriter(database) {
-  const helper = path.join(repositoryRoot, 'target/release/examples/hold_db_lock');
+async function lockWriter(database, helper) {
   const child = spawn(helper, [database], { stdio: ['pipe', 'pipe', 'pipe'], env: cleanEnvironment });
   let stderr = '';
   child.stderr.on('data', data => { stderr += data; });
@@ -188,7 +188,7 @@ async function releaseLock(child) {
   assert.equal(code, 0, 'SQLite lock helper did not release cleanly');
 }
 
-async function runCase(spec, directory) {
+async function runCase(spec, directory, lockHelper) {
   dashboardAuthorization = '';
   observerAccess = '';
   const context = { name: spec.name, port: await freePort(), callAgent: new http.Agent({ keepAlive: true, maxSockets: 2048, maxFreeSockets: 128 }), readAgent: new http.Agent({ keepAlive: true, maxSockets: 2 }) };
@@ -213,7 +213,7 @@ async function runCase(spec, directory) {
     proxy.stderr.on('data', data => { proxyLog = (proxyLog + data).slice(-8000); });
     proxy.on('error', error => { proxyLog += error.message; });
     for (let attempt = 0; ; attempt++) {
-      try { const token = await fs.readFile(database.replace(/\.sqlite$/, '.access-token'), 'utf8'); observerAccess = token; dashboardAuthorization = `Basic ${Buffer.from(`observer:${token}`).toString('base64')}`; } catch { /* Startup has not created the token yet. */ }
+      try { const token = await fs.readFile(database + '.token', 'utf8'); observerAccess = token; dashboardAuthorization = `Basic ${Buffer.from(`observer:${token}`).toString('base64')}`; } catch { /* Startup has not created the token yet. */ }
       const response = dashboardAuthorization ? await exchange(context.port, '/api/health', context.readAgent) : { status: 0 };
       if (response.status === 200) break;
       assert(attempt < 100 && proxy.exitCode === null, `Proxy startup failed: ${proxyLog}`);
@@ -256,7 +256,7 @@ async function runCase(spec, directory) {
         await sleep(1000);
       }
     })();
-    if (spec.lock) lock = await lockWriter(database);
+    if (spec.lock) lock = await lockWriter(database, lockHelper);
     const started = performance.now();
     result.pressure = await load(context, { rate: spec.rate, seconds: spec.seconds, label: 'pressure' });
     // Preserve drained accounting and recovery evidence even when offered-rate
@@ -350,13 +350,18 @@ const report = { started_at: new Date().toISOString(), scope: 'Loopback failure 
   request_bytes: requestBytes.length, response_bytes: responseBytes.length, capture_state: false, rss_sampling_ms: 100, cases: [], passed: false,
   notes: ['Capture-budget and writer-lock losses are intentional and must be counted; burst losses are reported rather than assumed absent.', 'Client p99 < 1000 ms and generator p99 lateness <= 100 ms are stall-detection test bounds for this tiny local fixture, not production latency promises.', 'RSS is sampled for the proxy only and is null where Linux /proc sampling is unavailable.', 'This harness does not establish a throughput limit, high-cardinality query performance, or provider capacity.'] };
 try {
-  if (selected === 'all' || selected === 'locked-writer') execFileSync('cargo', ['build', '--release', '--locked', '--example', 'hold_db_lock'], { cwd: repositoryRoot, stdio: 'inherit' });
+  let lockHelper;
+  if (selected === 'all' || selected === 'locked-writer') {
+    lockHelper = buildLockHelper(repositoryRoot);
+    report.lock_helper_sha256 = hash(await fs.readFile(lockHelper));
+    report.lock_helper_build_script_sha256 = hash(await fs.readFile(new URL('./stress-cargo.mjs', import.meta.url)));
+  }
   for (const spec of [
     { name: 'capture-budget', delay: 100, rate: 500, seconds: 3, flags: ['--capture-slots', '4', '--queue-capacity', '4'], loss: true },
     { name: 'locked-writer', delay: 5, rate: 500, seconds: 3, flags: ['--capture-slots', '64', '--queue-capacity', '8'], loss: true, lock: true },
     { name: 'burst', delay: 5, rate: burstRate, seconds: burstSeconds, flags: [], loss: false },
   ]) if (selected === 'all' || selected === spec.name) {
-    const result = await runCase(spec, directory);
+    const result = await runCase(spec, directory, lockHelper);
     report.cases.push(result);
     console.log(JSON.stringify({ case: result.name, passed: result.passed, error: result.error, pressure_accounting: result.pressure_accounting }));
     if (!result.passed) break;

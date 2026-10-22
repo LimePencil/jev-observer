@@ -1,8 +1,8 @@
 {
   "generator": "cargo-about 0.9.2 and scripts/generate-license-notices.py",
   "inputs": {
-    "Cargo.lock": "7878b2fe5180007d89b15669fc19787e47a673670ae86d1d139d596ae116f883",
-    "ui/package-lock.json": "1a8a3a1293d000aaf4023a412572e005befa2129d57d03194ac9215da4ce551e",
+    "Cargo.lock": "81f595961e841d678df0986989b7b29bfab6492b9ae61e6a6a59da1cf8dc3c30",
+    "ui/package-lock.json": "d35eef6da89d0a57f2d1cb52f9add13a0d38824587b6ff7bd12422c39a2eeb19",
     "about.toml": "17417c2133d625da246e8d1f8fa07ae98308faf2064a2c9d0b59186441158f3b",
     "licenses/npm-supplemental.json": "68d7c7f848ae872d263dc85c3705ebc20698a09abe5a97a5e6b5e5844748a25b"
   },
@@ -719,7 +719,7 @@
     },
     {
       "name": "rustls-webpki",
-      "version": "0.103.15",
+      "version": "0.103.16",
       "declared_license": "ISC"
     },
     {
@@ -984,7 +984,7 @@
     },
     {
       "name": "webpki-roots",
-      "version": "1.0.9",
+      "version": "1.0.10",
       "declared_license": "CDLA-Permissive-2.0"
     },
     {
@@ -1609,7 +1609,7 @@
     }
   ],
   "outputs": {
-    "THIRD-PARTY-NOTICES.txt": "29a2e618b61510190074550fc19f1fa68c99cbd566816095a5b1e0bdfab8df55",
+    "THIRD-PARTY-NOTICES.txt": "05487a7cd0b28b50f7b46c95a87590cf1fb88a9e3e9bcea9626260b93fa1baa8",
     "rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
     "musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b"
   }

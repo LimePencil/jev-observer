@@ -92,8 +92,12 @@ class Upgrade:
     def api(self, route, method="GET", body=None, headers=None):
         return json.loads(self.request(route, method, body, headers))
 
-    def start(self, binary, extra=()):
+    def start(self, binary, extra=(), *, legacy_token=False):
         self.stop()
+        # Explicit phases matter after upgrade: both files exist, but rollback
+        # must authenticate with the old binary's legacy token.
+        self.token_path = (self.database.with_suffix(".access-token") if legacy_token
+                           else Path(str(self.database) + ".token"))
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             port = listener.getsockname()[1]
@@ -107,7 +111,7 @@ class Upgrade:
         for _ in range(300):
             self.check(self.process.poll() is None, self.phase + "_starts")
             try:
-                self.token = self.database.with_suffix(".access-token").read_text().strip()
+                self.token = self.token_path.read_text().strip()
                 self.api("/api/health")
                 return
             except (OSError, ValueError, urllib.error.URLError):
@@ -184,7 +188,10 @@ class Upgrade:
                 self.database = self.directory / "history.sqlite"
                 try:
                     self.phase = "baseline"
-                    self.start(self.args.baseline)
+                    self.start(self.args.baseline, legacy_token=True)
+                    baseline_token = self.token
+                    legacy_path = self.token_path
+                    legacy_bytes = legacy_path.read_bytes()
                     credential = self.api("/api/credentials", "PUT", {"api_key": KEY, "persist": False})
                     self.api("/v1/systemone", "POST", REQUEST, {"Authorization": "Bearer " + credential["client_token"], "X-Observer-Source": "upgrade-fixture"})
                     for _ in range(200):
@@ -202,9 +209,25 @@ class Upgrade:
                     self.check(not self.database.read_bytes().startswith(b"SQLite format 3"), "baseline_history_encrypted")
                     self.probe("seed-approval")
                     approval = self.probe("show")
-                    backup = {path.name: path.read_bytes() for path in self.directory.glob("history.sqlite*")}
+                    # Database backups exclude access tokens; the new token is
+                    # now a full-filename sidecar and must survive restore.
+                    database_files = [Path(str(self.database) + suffix)
+                                      for suffix in ("", "-wal", "-shm", "-journal")]
+                    backup = {path.name: path.read_bytes() for path in database_files if path.exists()}
                     self.phase = "candidate"
                     self.start(self.args.candidate)
+                    candidate_token = self.token
+                    self.check(self.token_path == Path(str(self.database) + ".token"), "candidate_uses_complete_filename_token")
+                    self.check(candidate_token != baseline_token, "upgrade_rotates_workspace_access_token")
+                    self.check(legacy_path.read_bytes() == legacy_bytes, "upgrade_leaves_legacy_token_unchanged")
+                    old_auth = "Basic " + base64.b64encode(("observer:" + baseline_token).encode()).decode()
+                    try:
+                        self.request("/api/health", headers={"Authorization": old_auth})
+                    except urllib.error.HTTPError as error:
+                        with error:
+                            self.check(error.code == 401, "candidate_rejects_legacy_workspace_token")
+                    else:
+                        self.check(False, "candidate_rejects_legacy_workspace_token")
                     self.check(self.snapshot() == before, "upgrade_preserves_history_labels_and_exports")
                     self.check(self.probe("show") == approval, "upgrade_preserves_credential_approval")
                     self.check(not self.api("/api/credentials")["configured"], "unavailable_system_credential_not_activated")
@@ -217,16 +240,18 @@ class Upgrade:
                     upgraded = self.snapshot()
                     self.stop()
                     self.phase = "rollback"
-                    self.start(self.args.baseline)
+                    self.start(self.args.baseline, legacy_token=True)
+                    self.check(self.token == baseline_token, "rollback_reuses_legacy_workspace_token")
                     self.check(self.snapshot() == upgraded, "baseline_can_read_candidate_database_and_new_record")
                     self.stop()
                     self.check(self.probe("show") == {**approval, "requests": 2}, "rollback_preserves_credential_approval")
                     self.phase = "backup_restore"
-                    for path in self.directory.glob("history.sqlite*"):
-                        path.unlink()
+                    for path in database_files:
+                        path.unlink(missing_ok=True)
                     for name, data in backup.items():
                         (self.directory / name).write_bytes(data)
                     self.start(self.args.candidate)
+                    self.check(self.token == candidate_token, "restored_backup_reuses_new_workspace_token")
                     self.check(self.snapshot() == before, "restored_backup_retains_history_labels_and_exports")
                     self.stop()
                     self.check(self.probe("show") == approval, "restored_backup_retains_credential_approval")

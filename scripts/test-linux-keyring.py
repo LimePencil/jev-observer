@@ -19,6 +19,57 @@ spec = importlib.util.spec_from_file_location("upgrade", Path(__file__).with_nam
 upgrade = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(upgrade)
 
+CONTROL_SOCKET_LIMIT = 107  # Linux sockaddr_un.sun_path includes a trailing NUL.
+DIAGNOSTIC_LOG_LIMIT = 16 * 1024
+
+
+def control_socket_bytes(control):
+    return len(os.fsencode(control.absolute() / "control"))
+
+
+def log_tail(path):
+    """Retain bounded synthetic service diagnostics before workspace cleanup."""
+    try:
+        with path.open("rb") as stream:
+            size = os.fstat(stream.fileno()).st_size
+            stream.seek(max(0, size - DIAGNOSTIC_LOG_LIMIT))
+            data = stream.read(DIAGNOSTIC_LOG_LIMIT)
+        return {"bytes": size, "truncated": size > DIAGNOSTIC_LOG_LIMIT,
+                "tail": data.decode("utf-8", errors="replace")}
+    except OSError as error:
+        return {"error_type": type(error).__name__}
+
+
+def retain_service_diagnostics(report, root, bus, daemon):
+    diagnostics = report["service_diagnostics"] = {}
+    for name, process in [("bus", bus), ("keyring", daemon)]:
+        diagnostics[name + "_exit_code"] = cleanup(
+            report, name + "_status", lambda: process.poll() if process is not None else None)
+        value = log_tail(root / ("bus.log" if name == "bus" else "keyring.log"))
+        diagnostics[name + "_log"] = value
+        if "error_type" in value:
+            report["passed"] = False
+            report.setdefault("diagnostic_failures", []).append({"stage": name + "_log", **value})
+
+
+def record_failure(report, phase, error):
+    report["passed"] = False
+    if "failure" not in report:
+        report["failure"] = {"phase": phase, "type": type(error).__name__}
+        if isinstance(error, AssertionError):
+            report["failure"]["check"] = str(error)
+            if str(error) == "private_control_socket_path_fits":
+                report["failure"]["hint"] = "Use a shorter TMPDIR for the private keyring control socket."
+
+
+def cleanup(report, stage, operation):
+    try:
+        return operation()
+    except Exception as error:
+        report["passed"] = False
+        report.setdefault("cleanup_failures", []).append({"stage": stage, "type": type(error).__name__})
+        return None
+
 
 def stop(process):
     if process is not None and process.poll() is None:
@@ -49,9 +100,8 @@ def main():
               "baseline_sha256": hashlib.sha256(args.baseline.read_bytes()).hexdigest(),
               "candidate_sha256": hashlib.sha256(args.candidate.read_bytes()).hexdigest(),
               "checks": app.report["checks"]}
-    server = ThreadingHTTPServer(("127.0.0.1", 0), upgrade.Mock)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    app.upstream = f"http://127.0.0.1:{server.server_port}/v1/systemone"
+    server = None
+    server_started = False
     bus = daemon = None
     try:
         with tempfile.TemporaryDirectory(prefix="observer-keyring-") as temporary:
@@ -69,7 +119,18 @@ def main():
                     app.environment.pop(key)
             control = root / "control"
             control.mkdir(mode=0o700)
+            report["control_socket_path_bytes"] = control_socket_bytes(control)
+            report["control_socket_path_limit"] = CONTROL_SOCKET_LIMIT
+            # GNOME Keyring truncates an oversized bind path, but unlinks the
+            # original path on shutdown. Reject it before creating any service
+            # so a restart cannot encounter an orphaned sibling socket.
+            app.check(report["control_socket_path_bytes"] <= CONTROL_SOCKET_LIMIT,
+                      "private_control_socket_path_fits")
             app.environment["GNOME_KEYRING_CONTROL"] = str(control)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), upgrade.Mock)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            server_started = True
+            app.upstream = f"http://127.0.0.1:{server.server_port}/v1/systemone"
             with (root / "bus.log").open("wb") as bus_log, (root / "keyring.log").open("ab") as daemon_log:
                 try:
                     bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--print-address=1"],
@@ -118,7 +179,7 @@ def main():
                                                     env=app.environment, stdout=log, stderr=subprocess.STDOUT, timeout=120)
                         app.check(result.returncode == 0, "upstream_backend_regressions")
                     app.phase = "old_write"
-                    app.start(args.baseline)
+                    app.start(args.baseline, legacy_token=True)
                     configured(False)
                     first = app.api("/api/credentials", "PUT", {"api_key": upgrade.KEY, "persist": True})
                     app.check(first["storage"] == "system", "old_saved_to_system")
@@ -138,7 +199,7 @@ def main():
                     stop(daemon)
                     start_daemon()
                     app.phase = "old_read_new_write_after_keyring_restart"
-                    app.start(args.baseline)
+                    app.start(args.baseline, legacy_token=True)
                     configured(True)
                     forward(second["client_token"])
                     app.stop()
@@ -149,7 +210,7 @@ def main():
                     forward(second["client_token"], False)
                     app.stop()
                     app.phase = "old_read_after_delete"
-                    app.start(args.baseline)
+                    app.start(args.baseline, legacy_token=True)
                     configured(False)
                     app.stop()
                     app.phase = "new_session_revocation"
@@ -159,30 +220,34 @@ def main():
                     app.check(session["storage"] == "session", "session_replaces_saved_entry")
                     app.stop()
                     app.phase = "old_read_after_session_revocation"
-                    app.start(args.baseline)
+                    app.start(args.baseline, legacy_token=True)
                     configured(False)
                     app.stop()
                     report["loopback_calls"] = upgrade.Mock.calls
                     app.check(upgrade.Mock.calls == 4, "only_four_loopback_provider_calls")
                     report["passed"] = True
+                except BaseException as error:
+                    record_failure(report, app.phase, error)
                 finally:
-                    try:
-                        app.stop()
-                    finally:
-                        try:
-                            stop(daemon)
-                        finally:
-                            stop(bus)
-                            if bus is not None and bus.stdout:
-                                bus.stdout.close()
-    except Exception as error:
-        report["passed"] = False
-        report["failure"] = {"phase": app.phase, "type": type(error).__name__}
-        if isinstance(error, AssertionError):
-            report["failure"]["check"] = str(error)
+                    cleanup(report, "observer_stop", app.stop)
+                    cleanup(report, "keyring_stop", lambda: stop(daemon))
+                    cleanup(report, "bus_stop", lambda: stop(bus))
+                    if bus is not None and bus.stdout:
+                        cleanup(report, "bus_stdout_close", bus.stdout.close)
+                    cleanup(report, "bus_log_flush", bus_log.flush)
+                    cleanup(report, "keyring_log_flush", daemon_log.flush)
+                    retain_service_diagnostics(report, root, bus, daemon)
+    except BaseException as error:
+        if "failure" in report:
+            report["passed"] = False
+            report.setdefault("cleanup_failures", []).append({"stage": "workspace_exit", "type": type(error).__name__})
+        else:
+            record_failure(report, app.phase, error)
     finally:
-        server.shutdown()
-        server.server_close()
+        if server is not None:
+            if server_started:
+                cleanup(report, "mock_server_shutdown", server.shutdown)
+            cleanup(report, "mock_server_close", server.server_close)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({"passed": report["passed"], "checks": len(report["checks"]), "failure": report.get("failure")}))
