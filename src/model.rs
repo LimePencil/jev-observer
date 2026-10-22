@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 const REDACTED: &str = "[REDACTED]";
+const INPUT_FIELDS: [&str; 5] = ["state", "images", "image", "audio", "video"];
 const MAX_IMPORT_RECORDS: usize = 10_000;
 const PROBABILITY_TOLERANCE: f64 = 0.0001;
 
@@ -877,7 +878,7 @@ fn redaction_limited_capture(capture: &Capture) -> Value {
 
 fn clear_input_fields(value: &mut Value) {
     if let Some(map) = value.as_object_mut() {
-        for field in ["state", "images", "image", "audio", "video"] {
+        for field in INPUT_FIELDS {
             if let Some(input) = map.get_mut(field) {
                 *input = Value::Null;
             }
@@ -1217,6 +1218,25 @@ fn imported_annotations(record: &Value, key: &str, source: &str, event_id: &str)
     Ok(json!(out))
 }
 
+fn remove_receipt_response_inputs(response: &mut Value) {
+    let Some(map) = response.as_object_mut() else {
+        return;
+    };
+    for field in INPUT_FIELDS {
+        map.remove(field);
+    }
+    // Older converters kept envelope inputs in this metadata wrapper. Only
+    // these known locations are inputs; answer semantics remain untouched.
+    if let Some(metadata) = map
+        .get_mut("original_metadata")
+        .and_then(Value::as_object_mut)
+    {
+        for field in INPUT_FIELDS {
+            metadata.remove(field);
+        }
+    }
+}
+
 fn remove_receipt_inputs(receipt: &mut Value) {
     let Some(map) = receipt.as_object_mut() else {
         return;
@@ -1234,13 +1254,13 @@ fn remove_receipt_inputs(receipt: &mut Value) {
     ] {
         map.remove(key);
     }
-    if let Some(raw) = map.get_mut("raw_jev").and_then(Value::as_object_mut) {
-        raw.remove("state");
+    if let Some(raw) = map.get_mut("raw_jev") {
+        remove_receipt_response_inputs(raw);
     }
     if let Some(stages) = map.get_mut("raw_jev_stages").and_then(Value::as_array_mut) {
         for stage in stages {
-            if let Some(response) = stage.get_mut("response").and_then(Value::as_object_mut) {
-                response.remove("state");
+            if let Some(response) = stage.get_mut("response") {
+                remove_receipt_response_inputs(response);
             }
         }
     }
@@ -3259,3 +3279,7 @@ mod redaction_tests;
 #[cfg(test)]
 #[path = "envelope_privacy_tests.rs"]
 mod envelope_privacy_tests;
+
+#[cfg(test)]
+#[path = "receipt_privacy_tests.rs"]
+mod receipt_privacy_tests;
