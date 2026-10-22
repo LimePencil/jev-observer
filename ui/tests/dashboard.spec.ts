@@ -207,6 +207,176 @@ test('registers a provider key and shows only the local client token', async ({ 
   await expect(page.getByRole('dialog')).not.toContainText('jo_local_');
 });
 
+for (const succeeds of [true, false]) {
+  for (const reopenBeforeCompletion of [true, false]) {
+    test(`credential registration ${succeeds ? 'success' : 'failure'} survives ${reopenBeforeCompletion ? 'reopening while pending' : 'completion while closed'}`, async ({ page }) => {
+      const state = await harness(page);
+      let release!: () => void;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      let writes = 0;
+      await page.route('**/api/credentials', async route => {
+        if (route.request().method() !== 'PUT') return route.fallback();
+        writes += 1;
+        await pending;
+        return succeeds ? route.fallback() : route.fulfill({ status: 503, json: { error: 'Credential store is locked' } });
+      });
+      try {
+        await page.getByRole('button', { name: 'Connect an application' }).click();
+        await page.getByLabel('TypeSafe API key').fill('provider-secret');
+        await page.getByRole('button', { name: 'Register key' }).click();
+        await expect.poll(() => writes).toBe(1);
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        if (reopenBeforeCompletion) {
+          await page.getByRole('button', { name: 'Connect an application' }).click();
+          await expect(page.getByLabel('TypeSafe API key')).toBeDisabled();
+          await expect(page.getByRole('button', { name: 'Working…' })).toBeDisabled();
+        }
+        const response = page.waitForResponse(value => value.url().endsWith('/api/credentials') && value.request().method() === 'PUT');
+        release();
+        await response;
+        if (!reopenBeforeCompletion) await page.getByRole('button', { name: 'Connect an application' }).click();
+        if (succeeds) {
+          await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+          await expect(page.getByRole('dialog')).toContainText(state.clientToken);
+          await expect(page.getByText('Registered key: this session only')).toBeVisible();
+          await expect(page.getByLabel('TypeSafe API key')).toHaveValue('');
+        } else {
+          await expect(page.getByText('Credential store is locked')).toBeVisible();
+          await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+          await expect(page.getByRole('dialog')).not.toContainText('jo_local_');
+        }
+        await expect(page.getByLabel('TypeSafe API key')).toBeEnabled();
+        expect(writes).toBe(1);
+        expect(await page.evaluate(() => [JSON.stringify(localStorage), JSON.stringify(sessionStorage)].join(' '))).not.toMatch(/provider-secret|jo_local_/);
+      } finally { release(); }
+    });
+  }
+}
+
+test('a failed replacement keeps the valid token and blocks overlapping mutations after reopening', async ({ page }) => {
+  const state = await harness(page);
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await page.getByLabel('TypeSafe API key').fill('original-key');
+  await page.getByRole('button', { name: 'Register key' }).click();
+  await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+  const originalToken = state.clientToken;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const writes: string[] = [];
+  await page.route('**/api/credentials', async route => {
+    if (route.request().method() === 'GET') return route.fallback();
+    writes.push(route.request().method());
+    await pending;
+    return route.fulfill({ status: 503, json: { error: 'Replacement could not be saved' } });
+  });
+  try {
+    await page.getByLabel('TypeSafe API key').fill('replacement-key');
+    await page.getByRole('button', { name: 'Replace registered key' }).click();
+    await expect.poll(() => writes).toEqual(['PUT']);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await expect(page.getByLabel('TypeSafe API key')).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Remove key' })).toBeDisabled();
+    await expect(page.getByRole('dialog')).toContainText(originalToken);
+    release();
+    await expect(page.getByText('Replacement could not be saved')).toBeVisible();
+    await expect(page.getByRole('dialog')).toContainText(originalToken);
+    await expect(page.getByRole('button', { name: 'Remove key' })).toBeEnabled();
+    expect(state.providerKey).toBe('original-key');
+    expect(writes).toEqual(['PUT']);
+  } finally { release(); }
+});
+
+test('a failed credential replacement keeps the original token until the page reloads', async ({ page }) => {
+  const state = await harness(page);
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await page.getByLabel('TypeSafe API key').fill('original-key');
+  await page.getByRole('button', { name: 'Register key' }).click();
+  await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+  const originalToken = state.clientToken;
+  await page.route('**/api/credentials', route => route.request().method() === 'PUT'
+    ? route.fulfill({ status: 503, json: { error: 'Replacement could not be saved' } }) : route.fallback());
+  await page.getByLabel('TypeSafe API key').fill('replacement-key');
+  await page.getByRole('button', { name: 'Replace registered key' }).click();
+  await expect(page.getByText('Replacement could not be saved')).toBeVisible();
+  await expect(page.locator('.credential-token .copy-field code')).toHaveText(originalToken);
+  expect(state.providerKey).toBe('original-key');
+  await page.reload();
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await expect(page.getByText('Registered key: this session only')).toBeVisible();
+  await expect(page.getByRole('dialog')).not.toContainText(originalToken);
+});
+
+for (const succeeds of [true, false]) {
+  test(`credential removal ${succeeds ? 'success' : 'failure'} survives reopening and preserves the correct token`, async ({ page }) => {
+    const state = await harness(page);
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await page.getByLabel('TypeSafe API key').fill('original-key');
+    await page.getByRole('button', { name: 'Register key' }).click();
+    await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+    const originalToken = state.clientToken;
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const writes: string[] = [];
+    await page.route('**/api/credentials', async route => {
+      if (route.request().method() === 'GET') return route.fallback();
+      writes.push(route.request().method());
+      await pending;
+      return succeeds ? route.fallback() : route.fulfill({ status: 503, json: { error: 'Removal could not be saved' } });
+    });
+    try {
+      await page.getByRole('button', { name: 'Remove key' }).click();
+      await page.getByRole('button', { name: 'Confirm removal' }).click();
+      await expect.poll(() => writes).toEqual(['DELETE']);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      await expect(page.getByLabel('TypeSafe API key')).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Remove key' })).toBeDisabled();
+      release();
+      if (succeeds) {
+        await expect(page.getByText('Registered provider key removed.')).toBeVisible();
+        await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+        await expect(page.getByRole('dialog')).not.toContainText(originalToken);
+      } else {
+        await expect(page.getByText('Removal could not be saved')).toBeVisible();
+        await expect(page.getByRole('dialog')).toContainText(originalToken);
+        await expect(page.getByRole('button', { name: 'Remove key' })).toBeEnabled();
+      }
+      await expect(page.getByLabel('TypeSafe API key')).toBeEnabled();
+      expect(writes).toEqual(['DELETE']);
+    } finally { release(); }
+  });
+}
+
+test('a credential status read started before registration cannot replace its successful result', async ({ page }) => {
+  const state = await harness(page);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let statusReads = 0;
+  await page.route('**/api/credentials', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    statusReads += 1;
+    await pending;
+    return route.fulfill({ json: { configured: false, storage: 'none' } });
+  });
+  try {
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await expect.poll(() => statusReads).toBe(1);
+    await page.getByLabel('TypeSafe API key').fill('provider-secret');
+    await page.getByLabel('Save in this computer’s credential store').check();
+    const cancelled = page.waitForEvent('requestfailed', request => request.url().endsWith('/api/credentials') && request.method() === 'GET');
+    await page.getByRole('button', { name: 'Register key' }).click();
+    await cancelled;
+    await expect(page.getByText('Registered key: saved in system credential store')).toBeVisible();
+    release();
+    await expect(page.getByRole('dialog')).toContainText(state.clientToken);
+    await expect(page.getByText('Registered key: saved in system credential store')).toBeVisible();
+    await expect(page.getByText('No key registered in Observer.')).toHaveCount(0);
+    await expect(page.getByLabel('Save in this computer’s credential store')).toBeChecked();
+  } finally { release(); }
+});
+
 for (const { storage, choice } of [
   { storage: 'system', choice: false },
   { storage: 'session', choice: true },
