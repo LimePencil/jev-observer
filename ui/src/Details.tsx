@@ -3,7 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, ArrowRight, Check, ClipboardText, Database, DownloadSimple, FileArrowUp, Fingerprint, GearSix, Info, ShieldCheck, Trash, WarningCircle, X } from '@phosphor-icons/react';
 import type { ChangeEvent, ReactNode } from 'react';
 import type { Answer, Filters, Group, GroupDetail, Health, Label, RequestRecord, Settings } from './types';
-import { api, query, useResource } from './api';
+import { query, useResource } from './api';
 import { connectionSnippet } from './connection';
 import { ModelCatalog } from './ModelCatalog';
 import type { ReviewController, ReviewState } from './reviews';
