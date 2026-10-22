@@ -1084,6 +1084,21 @@ struct ImportBody {
     format: String,
 }
 
+fn import_failure(status: StatusCode) -> LocalError {
+    LocalError(
+        status,
+        match status {
+            StatusCode::BAD_REQUEST => {
+                "Import could not be parsed; check the format and record structure"
+            }
+            StatusCode::PAYLOAD_TOO_LARGE => {
+                "Import exceeds a size or normalization limit. Use smaller records or batches."
+            }
+            _ => "The local import could not be saved",
+        },
+    )
+}
+
 async fn import(State(state): State<AppState>, request: Request) -> Response {
     let Ok(permit) = state.import_slots.clone().try_acquire_owned() else {
         return error(
@@ -1124,40 +1139,45 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
     let options = state.config.normalize_options();
     // Hold the permit inside the blocking task, even if its HTTP caller cancels.
     let result =
-        tokio::task::spawn_blocking(move || -> std::result::Result<(usize, usize), StatusCode> {
+        tokio::task::spawn_blocking(move || -> std::result::Result<(usize, usize), LocalError> {
             let _permit = permit;
-            let body: ImportBody =
-                serde_json::from_slice(&bytes).map_err(|_| StatusCode::BAD_REQUEST)?;
+            let body: ImportBody = serde_json::from_slice(&bytes)
+                .map_err(|_| import_failure(StatusCode::BAD_REQUEST))?;
             drop(bytes);
             if body.text.len() > MAX_IMPORT_BYTES {
-                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                return Err(import_failure(StatusCode::PAYLOAD_TOO_LARGE));
             }
             if !matches!(
                 body.format.as_str(),
                 "observer-jsonl" | "jevrouter-receipt" | "systemone-capture"
             ) {
-                return Err(StatusCode::BAD_REQUEST);
+                return Err(import_failure(StatusCode::BAD_REQUEST));
             }
             let records =
                 model::import_records(&body.text, &body.format, &options).map_err(|error| {
                     if error.is::<model::ImportLimitError>() {
-                        StatusCode::PAYLOAD_TOO_LARGE
+                        import_failure(StatusCode::PAYLOAD_TOO_LARGE)
+                    } else if error.is::<model::RedactionCollisionError>() {
+                        LocalError(
+                            StatusCode::BAD_REQUEST,
+                            model::IMPORT_REDACTION_COLLISION_MESSAGE,
+                        )
                     } else {
-                        StatusCode::BAD_REQUEST
+                        import_failure(StatusCode::BAD_REQUEST)
                     }
                 })?;
             if records.len() > 10_000 {
-                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+                return Err(import_failure(StatusCode::PAYLOAD_TOO_LARGE));
             }
             let total = records.len();
             let mut connection = state
                 .store
                 .writer_connection()
-                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+                .map_err(|_| import_failure(StatusCode::SERVICE_UNAVAILABLE))?;
             let imported = state
                 .store
                 .write_batch(&mut connection, &records)
-                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+                .map_err(|_| import_failure(StatusCode::SERVICE_UNAVAILABLE))?;
             Ok((imported, total.saturating_sub(imported)))
         })
         .await;
@@ -1165,18 +1185,8 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
         Ok(Ok((imported, duplicates))) => {
             Json(json!({"imported": imported, "duplicates": duplicates})).into_response()
         }
-        Ok(Err(StatusCode::BAD_REQUEST)) => error(
-            StatusCode::BAD_REQUEST,
-            "Import could not be parsed; check the format and record structure",
-        ),
-        Ok(Err(StatusCode::PAYLOAD_TOO_LARGE)) => error(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "Import exceeds a size or normalization limit. Use smaller records or batches.",
-        ),
-        _ => error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "The local import could not be saved",
-        ),
+        Ok(Err(failure)) => failure.into_response(),
+        Err(_) => import_failure(StatusCode::SERVICE_UNAVAILABLE).into_response(),
     }
 }
 
@@ -2832,6 +2842,149 @@ mod tests {
             }
         }
         fixture.state.collector.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn redacted_key_collisions_preserve_wire_bytes_and_report_live_gaps() {
+        let request_body = br#"{"questions":{"audit-X":{"type":"noul","instructions":"First"},"audit-Y":{"type":"noul","instructions":"Second"}},"credentials":["X","Y"]}"#;
+        let response_body = br#"{"answers":{"audit-Y":{"type":"noul","noul":0.8},"audit-X":{"type":"noul","noul":0.2}}}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(
+                    request.headers()[header::AUTHORIZATION],
+                    "Bearer test-secret"
+                );
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        for _ in 0..2 {
+            let response = router(fixture.state.clone())
+                .oneshot(native(request_body.as_slice()))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+                response_body
+            );
+        }
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted", "truncated"] {
+            assert_eq!(health[field], 2, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+        let output = fixture
+            .state
+            .store
+            .export(
+                &Filter {
+                    window: Some("all".into()),
+                    ..Default::default()
+                },
+                "jsonl",
+            )
+            .unwrap();
+        let records = output
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0]["id"], records[1]["id"]);
+        for record in records {
+            assert_eq!(record["capture_complete"], false);
+            assert_eq!(record["answers"], json!([]));
+            assert_eq!(
+                record["normalization_error"],
+                "Credential redaction caused an object key collision; request and response content were not retained"
+            );
+            assert!(!record.to_string().contains("audit-"));
+        }
+    }
+
+    #[tokio::test]
+    async fn redacted_key_collision_imports_are_atomic_and_release_the_slot() {
+        let raw = json!({"id":"good-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{}}, "response":{"answers":{}}});
+        let observer = model::import_records(
+            &raw.to_string(),
+            "systemone-capture",
+            &model::NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        let receipt: Value =
+            serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json")).unwrap();
+        for (format, good) in [
+            ("systemone-capture", raw),
+            ("observer-jsonl", observer),
+            ("jevrouter-receipt", receipt),
+        ] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 4096, true);
+            let mut bad = good.clone();
+            let extra = match format {
+                "systemone-capture" => &mut bad["request"],
+                "observer-jsonl" => {
+                    bad["request_extra"] = json!({});
+                    &mut bad["request_extra"]
+                }
+                _ => &mut bad["raw_jev"],
+            };
+            extra["credentials"] = json!(["X", "Y"]);
+            extra["extension"] = json!({"audit-X":1,"audit-Y":2});
+            let valid_text = good.to_string();
+            let text = format!("{good}\n{bad}\n{good}");
+            for (text, expected, counts) in [
+                (text, StatusCode::BAD_REQUEST, None),
+                (valid_text.clone(), StatusCode::OK, Some((1, 0))),
+                (valid_text, StatusCode::OK, Some((0, 1))),
+            ] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), expected, "{format}");
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if let Some((imported, duplicates)) = counts {
+                    assert_eq!(body, json!({"imported":imported,"duplicates":duplicates}));
+                } else {
+                    assert!(fixture.state.store.is_empty().unwrap());
+                    assert_eq!(
+                        body,
+                        json!({"error":"Import rejected because credential redaction makes distinct object keys identical."})
+                    );
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
     }
 
     #[tokio::test]

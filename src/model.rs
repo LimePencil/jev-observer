@@ -34,6 +34,20 @@ const REDACTION_LIMITS: RedactionLimits = RedactionLimits {
 
 const REDACTION_LIMIT_MESSAGE: &str =
     "Credential redaction exceeded its work limit; request and response content were not retained";
+const REDACTION_COLLISION_MESSAGE: &str = "Credential redaction caused an object key collision; request and response content were not retained";
+pub const IMPORT_REDACTION_COLLISION_MESSAGE: &str =
+    "Import rejected because credential redaction makes distinct object keys identical.";
+
+#[derive(Debug)]
+pub struct RedactionCollisionError;
+
+impl std::fmt::Display for RedactionCollisionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(IMPORT_REDACTION_COLLISION_MESSAGE)
+    }
+}
+
+impl std::error::Error for RedactionCollisionError {}
 
 #[derive(Debug)]
 pub struct ImportLimitError(&'static str);
@@ -501,7 +515,12 @@ fn scrub(
                 } else {
                     scrub(value, options, matcher)?
                 };
-                out.insert(scrub_string(key, matcher)?, value);
+                // Distinct original keys must not silently replace one another,
+                // even when one already contains a literal redaction marker.
+                ensure!(
+                    out.insert(scrub_string(key, matcher)?, value).is_none(),
+                    RedactionCollisionError
+                );
             }
             Value::Object(out)
         }
@@ -899,14 +918,21 @@ fn jgrep_family(
 pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
     match normalize_with_secrets(capture, options, &[]) {
         Ok(record) => record,
-        Err(_) => redaction_limited_capture(capture),
+        Err(error) => privacy_failed_capture(
+            capture,
+            if error.is::<RedactionCollisionError>() {
+                REDACTION_COLLISION_MESSAGE
+            } else {
+                REDACTION_LIMIT_MESSAGE
+            },
+        ),
     }
 }
 
-fn redaction_limited_capture(capture: &Capture) -> Value {
+fn privacy_failed_capture(capture: &Capture, reason: &'static str) -> Value {
     // Retain transport facts without cloning the captured bodies or copying
     // any original text into the fallback. A fresh identity cannot collapse
-    // unrelated limited captures, even when their original IDs contained a
+    // unrelated failed captures, even when their original IDs contained a
     // credential. Use the ordinary builder to keep its record schema intact.
     let safe_capture = Capture {
         id: format!("redacted_v1_{}", uuid::Uuid::new_v4().simple()).into(),
@@ -929,7 +955,7 @@ fn redaction_limited_capture(capture: &Capture) -> Value {
         ..Default::default()
     };
     let mut record = normalize_prepared(&safe_capture, &options, &request, &safe);
-    record["normalization_error"] = json!(REDACTION_LIMIT_MESSAGE);
+    record["normalization_error"] = json!(reason);
     record
 }
 
@@ -3333,3 +3359,7 @@ mod envelope_privacy_tests;
 #[cfg(test)]
 #[path = "generated_identity_tests.rs"]
 mod generated_identity_tests;
+
+#[cfg(test)]
+#[path = "redaction_collision_tests.rs"]
+mod redaction_collision_tests;

@@ -1,6 +1,65 @@
 use super::*;
 
 #[tokio::test]
+async fn redacted_key_collisions_keep_neighbors_and_count_each_incomplete_capture_once() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::open(&directory.path().join("collision-batch.sqlite"), 7, 100).unwrap();
+    let collector = Collector::start(store.clone(), NormalizeOptions::default(), 4096, 4, 4);
+    let mut collision = capture("collision", false);
+    collision.request =
+        br#"{"questions":{},"credentials":["X","Y"],"extension":{"X":1,"Y":2}}"#.to_vec();
+    let mut already_incomplete = collision.clone();
+    already_incomplete.capture_complete = false;
+    for item in [
+        capture("before", false),
+        collision,
+        already_incomplete,
+        capture("after", false),
+    ] {
+        collector.record_forwarded();
+        collector.submit(item, collector.reserve_capture().unwrap());
+    }
+    collector.shutdown().await;
+    let health = collector.health();
+    assert_eq!(health["persisted"], 4);
+    assert_eq!(health["truncated"], 2);
+    assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+    for field in [
+        "dropped",
+        "write_failures",
+        "queue_depth",
+        "queued_bytes",
+        "active_captures",
+    ] {
+        assert_eq!(health[field], 0, "{field}");
+    }
+    for id in ["before", "after"] {
+        let record = store.request(id).unwrap().unwrap();
+        assert_eq!(record["capture_complete"], true);
+        assert_eq!(record["answers"][0]["valid"], true);
+    }
+    let connection = store.writer_connection().unwrap();
+    let mut statement = connection
+        .prepare("SELECT id FROM requests WHERE capture_complete=0 ORDER BY seq")
+        .unwrap();
+    let ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+    for id in ids {
+        let record = store.request(&id).unwrap().unwrap();
+        assert_eq!(record["answers"], json!([]));
+        assert_eq!(
+            record["normalization_error"],
+            "Credential redaction caused an object key collision; request and response content were not retained"
+        );
+    }
+}
+
+#[tokio::test]
 async fn ignored_live_rows_are_counted_as_gaps_after_a_successful_write() {
     let directory = tempfile::tempdir().unwrap();
     let store = Store::open(&directory.path().join("ignored-live.sqlite"), 7, 100).unwrap();
