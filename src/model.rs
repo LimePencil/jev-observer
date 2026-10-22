@@ -35,9 +35,8 @@ const REDACTION_LIMITS: RedactionLimits = RedactionLimits {
 
 const REDACTION_LIMIT_MESSAGE: &str =
     "Credential redaction exceeded its work limit; request and response content were not retained";
-const REDACTION_COLLISION_MESSAGE: &str = "Credential redaction caused an object key collision; request and response content were not retained";
-pub const IMPORT_REDACTION_COLLISION_MESSAGE: &str =
-    "Import rejected because credential redaction makes distinct object keys identical.";
+const REDACTION_COLLISION_MESSAGE: &str = "Credential redaction caused an identifier or object key collision; request and response content were not retained";
+pub const IMPORT_REDACTION_COLLISION_MESSAGE: &str = "Import rejected because credential redaction makes distinct identifiers or object keys identical.";
 
 #[derive(Debug)]
 pub struct RedactionCollisionError;
@@ -523,6 +522,57 @@ fn scrub_string(value: &str, matcher: &mut SecretMatcher<'_>) -> Result<String> 
         .collect())
 }
 
+#[derive(Clone, Copy)]
+enum IdentifierNamespace<'a> {
+    Question,
+    Choice(&'a str),
+}
+
+#[derive(Default)]
+struct SemanticIdentifiers<'a> {
+    questions: BTreeMap<String, &'a str>,
+    choices: BTreeMap<&'a str, BTreeMap<String, &'a str>>,
+    count: usize,
+}
+
+impl<'a> SemanticIdentifiers<'a> {
+    fn observe(
+        &mut self,
+        namespace: IdentifierNamespace<'a>,
+        original: &'a str,
+        retained: &str,
+        matcher: &mut SecretMatcher<'_>,
+    ) -> Result<()> {
+        let question_bytes = match namespace {
+            IdentifierNamespace::Question => 0,
+            IdentifierNamespace::Choice(question) => question.len(),
+        };
+        // Bound both B-tree lookups/comparisons and retained-key storage before
+        // any owned allocation. Original identifiers borrow the input JSON;
+        // they never enter retained output or an error message.
+        let comparisons = (self.count.saturating_add(1).ilog2() as usize + 1) * 12;
+        let work = question_bytes
+            .saturating_add(retained.len())
+            .saturating_add(1)
+            .saturating_mul(comparisons)
+            .saturating_add(original.len())
+            .saturating_add(retained.len())
+            .saturating_add(128);
+        matcher.charge(work)?;
+        let identifiers = match namespace {
+            IdentifierNamespace::Question => &mut self.questions,
+            IdentifierNamespace::Choice(question) => self.choices.entry(question).or_default(),
+        };
+        if let Some(previous) = identifiers.get(retained) {
+            ensure!(*previous == original, RedactionCollisionError);
+        } else {
+            identifiers.insert(retained.to_owned(), original);
+            self.count += 1;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 enum PrivacyContext<'a> {
     #[default]
@@ -531,25 +581,44 @@ enum PrivacyContext<'a> {
     Response(&'a Profile),
     Questions(&'a Profile),
     Answers(&'a Profile),
-    Definition(&'a Profile),
-    Answer(&'a Profile),
+    Definition(&'a Profile, Option<&'a str>),
+    Answer(&'a Profile, Option<&'a str>),
     SemanticMap,
     Observer(&'a Profile),
     ObserverAnswers(&'a Profile),
-    ObserverAnswer(&'a Profile),
+    ObserverAnswer(&'a Profile, Option<&'a str>),
+    ChoiceCriteria(&'a Profile, &'a str),
+    ChoiceProbabilities(&'a str),
+    Identifier(IdentifierNamespace<'a>),
 }
 
 impl<'a> PrivacyContext<'a> {
-    fn field(self, object: &Value, key: &str) -> Self {
+    fn field(self, object: &Value, key: &'a str) -> Self {
         match (self, key) {
             (Self::Request(profile), "questions") => Self::Questions(profile),
             (Self::Response(profile), "answers") => Self::Answers(profile),
-            (Self::Questions(profile), _) => Self::Definition(profile),
-            (Self::Answers(profile), _) => Self::Answer(profile),
+            (Self::Questions(profile), _) => Self::Definition(profile, Some(key)),
+            (Self::Answers(profile), _) => Self::Answer(profile, Some(key)),
             (Self::Observer(profile), "answers") => Self::ObserverAnswers(profile),
-            (Self::ObserverAnswer(profile), "definition") => Self::Definition(profile),
-            (Self::ObserverAnswer(profile), "raw_answer") => Self::Answer(profile),
-            (Self::ObserverAnswer(_), "probabilities")
+            (Self::ObserverAnswer(profile, question), "definition") => {
+                Self::Definition(profile, question)
+            }
+            (Self::ObserverAnswer(profile, question), "raw_answer") => {
+                Self::Answer(profile, question)
+            }
+            (Self::ObserverAnswer(_, _), "key") => Self::Identifier(IdentifierNamespace::Question),
+            (Self::Definition(profile, Some(question)), "criteria")
+                if object["type"] == "choice" =>
+            {
+                Self::ChoiceCriteria(profile, question)
+            }
+            (Self::Answer(_, Some(question)), "choice") if object["type"] == "choice" => {
+                Self::Identifier(IdentifierNamespace::Choice(question))
+            }
+            (Self::Answer(_, Some(question)), "probabilities") if object["type"] == "choice" => {
+                Self::ChoiceProbabilities(question)
+            }
+            (Self::ObserverAnswer(_, _), "probabilities")
                 if matches!(
                     object["raw_answer"]["type"].as_str(),
                     Some("choice" | "score")
@@ -557,42 +626,52 @@ impl<'a> PrivacyContext<'a> {
             {
                 Self::SemanticMap
             }
-            (Self::Definition(_), "criteria")
+            (Self::Definition(_, _), "criteria")
                 if matches!(object["type"].as_str(), Some("noul" | "choice")) =>
             {
                 Self::SemanticMap
             }
-            (Self::Answer(_), "probabilities")
+            (Self::Answer(_, _), "probabilities")
                 if matches!(object["type"].as_str(), Some("choice" | "score")) =>
             {
                 Self::SemanticMap
             }
-            (Self::Answer(_), "legend") if object["type"] == "score" => Self::SemanticMap,
+            (Self::Answer(_, _), "legend") if object["type"] == "score" => Self::SemanticMap,
             _ => Self::Other,
         }
     }
 
     fn semantic_keys(self) -> bool {
-        matches!(
-            self,
-            Self::Questions(_) | Self::Answers(_) | Self::SemanticMap
-        )
+        self.identifier_keys().is_some() || matches!(self, Self::SemanticMap)
     }
 
-    fn item(self) -> Self {
+    fn item(self, item: &'a Value) -> Self {
         match self {
-            Self::ObserverAnswers(profile) => Self::ObserverAnswer(profile),
+            Self::ObserverAnswers(profile) => Self::ObserverAnswer(profile, item["key"].as_str()),
+            Self::ChoiceCriteria(profile, question) if profile.list_choice => {
+                Self::Identifier(IdentifierNamespace::Choice(question))
+            }
             _ => Self::Other,
+        }
+    }
+
+    fn identifier_keys(self) -> Option<IdentifierNamespace<'a>> {
+        match self {
+            Self::Questions(_) | Self::Answers(_) => Some(IdentifierNamespace::Question),
+            Self::ChoiceCriteria(_, question) | Self::ChoiceProbabilities(question) => {
+                Some(IdentifierNamespace::Choice(question))
+            }
+            _ => None,
         }
     }
 
     fn validates_optional_field(self, object: &Value, key: &str) -> bool {
         match self {
-            Self::Definition(profile) => {
+            Self::Definition(profile, _) => {
                 (key == "criteria" && object["type"] == "noul")
                     || (key == "instructions" && profile.optional_instructions)
             }
-            Self::Answer(profile) => {
+            Self::Answer(profile, _) => {
                 (key == "confidence"
                     && profile.optional_confidence
                     && matches!(object["type"].as_str(), Some("choice" | "score")))
@@ -608,21 +687,34 @@ fn scrub(
     options: &NormalizeOptions,
     matcher: &mut SecretMatcher<'_>,
 ) -> Result<Value> {
-    scrub_with_context(value, options, matcher, PrivacyContext::Other)
+    scrub_with_context(
+        value,
+        options,
+        matcher,
+        PrivacyContext::Other,
+        &mut SemanticIdentifiers::default(),
+    )
 }
 
-fn scrub_with_context(
-    value: &Value,
+fn scrub_with_context<'a>(
+    value: &'a Value,
     options: &NormalizeOptions,
     matcher: &mut SecretMatcher<'_>,
-    context: PrivacyContext<'_>,
+    context: PrivacyContext<'a>,
+    identifiers: &mut SemanticIdentifiers<'a>,
 ) -> Result<Value> {
     Ok(match value {
-        Value::String(s) => json!(scrub_string(s, matcher)?),
+        Value::String(original) => {
+            let retained = scrub_string(original, matcher)?;
+            if let PrivacyContext::Identifier(namespace) = context {
+                identifiers.observe(namespace, original, &retained, matcher)?;
+            }
+            json!(retained)
+        }
         Value::Array(values) => Value::Array(
             values
                 .iter()
-                .map(|v| scrub_with_context(v, options, matcher, context.item()))
+                .map(|v| scrub_with_context(v, options, matcher, context.item(v), identifiers))
                 .collect::<Result<_>>()?,
         ),
         Value::Object(values) => {
@@ -639,10 +731,17 @@ fn scrub_with_context(
                 {
                     continue;
                 }
+                let child = context.field(value, key);
                 let retained = if sensitive_key(key, options) {
+                    if let PrivacyContext::Identifier(namespace) = child {
+                        // Replacing an invalid non-string must not invent a
+                        // valid identifier equal to a literal marker elsewhere.
+                        let original = original.as_str().ok_or(RedactionValidationError)?;
+                        identifiers.observe(namespace, original, REDACTED, matcher)?;
+                    }
                     json!(REDACTED)
                 } else {
-                    scrub_with_context(original, options, matcher, context.field(value, key))?
+                    scrub_with_context(original, options, matcher, child, identifiers)?
                 };
                 let retained_key = scrub_string(key, matcher)?;
                 // Follow only exact original protocol paths. Optional fields
@@ -651,6 +750,9 @@ fn scrub_with_context(
                     retained_key == *key || !context.validates_optional_field(value, key),
                     RedactionValidationError
                 );
+                if let Some(namespace) = context.identifier_keys() {
+                    identifiers.observe(namespace, key, &retained_key, matcher)?;
+                }
                 // Distinct original keys must not silently replace one another,
                 // even when one already contains a literal redaction marker.
                 ensure!(
@@ -744,7 +846,13 @@ fn privacy_observer(
         if !options.capture_state {
             clear_observer_inputs(value);
         }
-        scrub_with_context(value, options, matcher, PrivacyContext::Observer(&profile))
+        scrub_with_context(
+            value,
+            options,
+            matcher,
+            PrivacyContext::Observer(&profile),
+            &mut SemanticIdentifiers::default(),
+        )
     })?;
     // Observer imports select their validator from this retained field. Privacy
     // must not silently substitute a different profile before revalidation.
@@ -772,6 +880,7 @@ fn privacy_capture_envelope(
             clear_response_input_fields(&mut envelope["response"]);
         }
         let mut out = Map::new();
+        let mut identifiers = SemanticIdentifiers::default();
         // These root names are generated structure, not captured data. Scrubbing
         // "id" into a different key would make an otherwise valid capture
         // unsaveable. Original body keys and all metadata values still pass
@@ -785,7 +894,7 @@ fn privacy_capture_envelope(
                     "response" => PrivacyContext::Response(&profile),
                     _ => PrivacyContext::Other,
                 };
-                scrub_with_context(value, options, matcher, context)?
+                scrub_with_context(value, options, matcher, context, &mut identifiers)?
             };
             out.insert(key.clone(), value);
         }
@@ -3715,3 +3824,7 @@ mod redaction_validation_tests;
 #[cfg(test)]
 #[path = "semantic_header_tests.rs"]
 mod semantic_header_tests;
+
+#[cfg(test)]
+#[path = "semantic_identifier_tests.rs"]
+mod semantic_identifier_tests;

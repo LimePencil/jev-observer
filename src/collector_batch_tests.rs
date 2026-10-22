@@ -54,7 +54,7 @@ async fn redacted_key_collisions_keep_neighbors_and_count_each_incomplete_captur
         assert_eq!(record["answers"], json!([]));
         assert_eq!(
             record["normalization_error"],
-            "Credential redaction caused an object key collision; request and response content were not retained"
+            "Credential redaction caused an identifier or object key collision; request and response content were not retained"
         );
     }
 }
