@@ -194,7 +194,7 @@ def main():
             directory = Path(temporary) / ".jev-observer"
             directory.mkdir()
             log_path = directory / "proxy.log"
-            access_path = directory / "history.access-token"
+            access_path = directory / "history.sqlite.token"
             with log_path.open("wb") as logfile:
                 process = subprocess.Popen([
                     str(binary), "--port", origin.rsplit(":", 1)[1], "--db", str(Path(directory) / "history.sqlite"),

@@ -73,9 +73,13 @@ Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** and sign in:
 | Field | Value |
 |---|---|
 | Username | `observer` |
-| Password | The token in `.jev-observer/observer.demo.access-token` |
+| Password | The token in `.jev-observer/observer.demo.sqlite.token` |
 
 Observer prints the exact token-file path at startup. Demo mode uses a separate `*.demo.sqlite` database, disables forwarding and works offline. Press **Ctrl-C** to stop it.
+
+The install commands above select published 0.3.1, which uses `observer.demo.access-token` for demo mode and `observer.access-token` for live mode in `.jev-observer/`. Current builds use the `.sqlite.token` names shown here. Use the exact path printed by your executable.
+
+Token files append `.token` to the complete database filename. Upgrading a workspace that has only the older `*.access-token` file creates a fresh token and prints a notice; sign in with the new token. See [token upgrade and rollback details](docs/installation.md#history-backups-and-downgrades).
 
 macOS and Windows executables are unsigned. For OS restrictions, private repository access, upgrades or uninstalling, see the [installation guide](docs/installation.md). Every release includes `SHA256SUMS`; see the [0.3.1 release notes](docs/releases/0.3.1.md) for changes.
 
@@ -128,7 +132,7 @@ The default upstream is `https://api.typesafe.ai/v1/systemone`. To use Jev throu
 jev-observer --upstream https://openrouter.ai/api/v1/systemone
 ```
 
-Open the dashboard and sign in as `observer` using the token in `.jev-observer/observer.access-token` (the live token file).
+Open the dashboard and sign in as `observer` using the token in `.jev-observer/observer.sqlite.token` (the live token file).
 
 In **Connect an application**, enter your provider key and choose session-only storage or your operating system's credential store. Copy the **local client token** and set it as `JEV_OBSERVER_CLIENT_TOKEN` in your application's environment. You can reopen the panel to copy it until the page reloads or closes, or the key is replaced or removed. Session-only keys need registration again after Observer restarts.
 
@@ -180,7 +184,7 @@ jev-observer --upstream http://127.0.0.1:8000/v1/systemone \
   --upstream-auth none --provider laya
 ```
 
-Use the workspace token from `.jev-observer/observer.access-token` as the SDK key and `english` as the request model. Observer authenticates your application locally and sends no authorization to Laya. CPU inference may need a longer SDK timeout. See [local-model setup](docs/connection.md#laya-and-other-local-system-one-models) for starting Laya, key-protected servers and compatibility limits.
+Use the workspace token from `.jev-observer/observer.sqlite.token` as the SDK key and `english` as the request model. Observer authenticates your application locally and sends no authorization to Laya. CPU inference may need a longer SDK timeout. See [local-model setup](docs/connection.md#laya-and-other-local-system-one-models) for starting Laya, key-protected servers and compatibility limits.
 
 For other decision models, use the dashboard’s source-reviewed model catalog. [Model connection paths and mapped capture imports](docs/models.md) cover closed alternatives, open families and custom APIs. [Research snapshot](research/models/README.md).
 

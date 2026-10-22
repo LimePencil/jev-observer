@@ -1,4 +1,4 @@
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use std::fs;
 #[cfg(any(unix, windows))]
 use std::io::{Read, Write};
@@ -11,6 +11,26 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 
 const PREFIX: &str = "jo_access_";
 const TOKEN_LENGTH: usize = PREFIX.len() + 64;
+
+#[cfg(any(unix, windows))]
+fn token_path(database_path: &Path) -> std::path::PathBuf {
+    // Preserve the complete OS filename: replacing an extension shares authority
+    // between distinct databases such as history.sqlite and history.db.
+    let mut path = database_path.as_os_str().to_os_string();
+    path.push(".token");
+    path.into()
+}
+
+#[cfg(any(unix, windows))]
+fn note_legacy_token(database_path: &Path) {
+    // Inspect only the old directory entry, never its token contents. Reusing an
+    // old token would preserve authority shared by same-stem databases.
+    if fs::symlink_metadata(database_path.with_extension("access-token")).is_ok() {
+        eprintln!(
+            "Created a fresh workspace access token; sign in again and update clients that use the workspace access token. The legacy access-token file was left unchanged for rollback."
+        );
+    }
+}
 
 #[cfg(any(unix, windows))]
 fn read_token(file: impl Read) -> Result<String> {
@@ -59,7 +79,7 @@ impl Access {
 
     #[cfg(windows)]
     pub fn open(database_path: &Path) -> Result<(Self, std::path::PathBuf)> {
-        let path = database_path.with_extension("access-token");
+        let path = token_path(database_path);
         let token = match crate::windows_private::create_private_file(&path) {
             Ok(mut file) => {
                 let token = format!(
@@ -69,6 +89,7 @@ impl Access {
                 );
                 file.write_all(token.as_bytes())?;
                 file.sync_all()?;
+                note_legacy_token(database_path);
                 token
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -81,7 +102,7 @@ impl Access {
 
     #[cfg(unix)]
     pub fn open(database_path: &Path) -> Result<(Self, std::path::PathBuf)> {
-        let path = database_path.with_extension("access-token");
+        let path = token_path(database_path);
         let token = match fs::symlink_metadata(&path) {
             Ok(_) => {
                 let mut options = fs::OpenOptions::new();
@@ -119,6 +140,7 @@ impl Access {
                     .context("Create dashboard access token")?;
                 file.write_all(token.as_bytes())?;
                 file.sync_all()?;
+                note_legacy_token(database_path);
                 token
             }
             Err(error) => return Err(error).context("Inspect dashboard access token"),
@@ -149,9 +171,128 @@ impl Access {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, any(unix, windows)))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_database_filenames_have_distinct_stable_tokens() {
+        let directory = tempfile::tempdir().unwrap();
+        let names = [
+            "history.sqlite",
+            "history.db",
+            "history",
+            ".history",
+            "history.part.sqlite",
+        ]
+        .map(std::ffi::OsString::from)
+        .to_vec();
+        #[cfg(unix)]
+        let names = {
+            use std::os::unix::ffi::OsStringExt;
+            let mut names = names;
+            names.push(std::ffi::OsString::from_vec(b"history.\xff".to_vec()));
+            names
+        };
+        let mut tokens: Vec<Access> = Vec::new();
+        for name in names {
+            let database = directory.path().join(&name);
+            let (access, path) = Access::open(&database).unwrap();
+            let mut expected_name = name;
+            expected_name.push(".token");
+            assert_eq!(path, directory.path().join(expected_name));
+            for previous in &tokens {
+                assert!(!access.allows_token(Some(previous.token())));
+                assert!(!access.allows_basic(Some(previous.basic_header())));
+            }
+            let (reopened, reopened_path) = Access::open(&database).unwrap();
+            assert_eq!(path, reopened_path);
+            assert!(reopened.allows_token(Some(access.token())));
+            tokens.push(access);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn legacy_token_is_ignored_and_unchanged() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("history.sqlite");
+        let legacy_path = database.with_extension("access-token");
+        let legacy = Access::test();
+        fs::write(&legacy_path, legacy.token()).unwrap();
+        fs::set_permissions(&legacy_path, fs::Permissions::from_mode(0o600)).unwrap();
+        let (current, path) = Access::open(&database).unwrap();
+        assert_ne!(path, legacy_path);
+        assert!(!current.allows_token(Some(legacy.token())));
+        assert!(!current.allows_basic(Some(legacy.basic_header())));
+        assert_eq!(fs::read(&legacy_path).unwrap(), legacy.token().as_bytes());
+        assert_eq!(
+            fs::metadata(&legacy_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        // An existing new token remains authoritative even if the unused old
+        // file later becomes malformed or has permissive permissions.
+        fs::write(&legacy_path, "unused legacy contents").unwrap();
+        fs::set_permissions(&legacy_path, fs::Permissions::from_mode(0o644)).unwrap();
+        let (reopened, _) = Access::open(&database).unwrap();
+        assert!(reopened.allows_token(Some(current.token())));
+        assert_eq!(
+            fs::read_to_string(&legacy_path).unwrap(),
+            "unused legacy contents"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn malformed_and_symlinked_legacy_files_are_not_opened() {
+        use std::os::unix::fs::symlink;
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("history.sqlite");
+        let legacy_path = database.with_extension("access-token");
+        fs::write(&legacy_path, "not a valid token").unwrap();
+        assert!(Access::open(&database).is_ok());
+        fs::remove_file(token_path(&database)).unwrap();
+        fs::remove_file(&legacy_path).unwrap();
+        let absent = directory.path().join("absent-target");
+        symlink(&absent, &legacy_path).unwrap();
+        assert!(Access::open(&database).is_ok());
+        assert_eq!(fs::read_link(&legacy_path).unwrap(), absent);
+        assert!(!absent.exists());
+    }
+
+    #[test]
+    fn legacy_rotation_notice_is_emitted_once_without_token_contents() {
+        const CHILD_PATH: &str = "JEV_OBSERVER_TOKEN_NOTICE_TEST_PATH";
+        if let Some(database) = std::env::var_os(CHILD_PATH) {
+            Access::open(Path::new(&database)).unwrap();
+            Access::open(Path::new(&database)).unwrap();
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("history.sqlite");
+        let marker = "legacy-token-content-must-not-be-logged";
+        fs::write(database.with_extension("access-token"), marker).unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "access::tests::legacy_rotation_notice_is_emitted_once_without_token_contents",
+                "--nocapture",
+            ])
+            .env(CHILD_PATH, &database)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert_eq!(
+            stderr
+                .matches("Created a fresh workspace access token;")
+                .count(),
+            1
+        );
+        assert!(!stderr.contains(marker));
+        assert!(!stderr.contains(&fs::read_to_string(token_path(&database)).unwrap()));
+    }
 
     #[cfg(unix)]
     #[test]
@@ -179,7 +320,7 @@ mod tests {
         let database = directory.path().join("observer.sqlite");
         let target = directory.path().join("other-token");
         fs::write(&target, format!("{PREFIX}{}", "a".repeat(64))).unwrap();
-        symlink(&target, database.with_extension("access-token")).unwrap();
+        symlink(&target, token_path(&database)).unwrap();
         assert!(Access::open(&database).is_err());
     }
 
@@ -201,6 +342,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn named_pipe_access_token_is_rejected_without_blocking() {
         const CHILD_PATH: &str = "JEV_OBSERVER_FIFO_TEST_PATH";
@@ -216,13 +358,7 @@ mod tests {
         };
         let directory = tempfile::tempdir().unwrap();
         let database = directory.path().join("observer.sqlite");
-        let path = CString::new(
-            database
-                .with_extension("access-token")
-                .as_os_str()
-                .as_bytes(),
-        )
-        .unwrap();
+        let path = CString::new(token_path(&database).as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         // Isolate the open in a child so a blocking regression cannot hang the
         // entire suite or leave a test thread waiting on the pipe forever.

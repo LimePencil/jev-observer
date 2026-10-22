@@ -34,7 +34,7 @@ test('packaged dashboard authenticates, saves reviews, imports, and exports real
       if (spawnError) throw spawnError;
       if (processHandle?.exitCode !== null) throw new Error('Observer exited during startup');
       try {
-        token = (await readFile(path.join(directory, 'history.demo.access-token'), 'utf8')).trim();
+        token = (await readFile(path.join(directory, 'history.demo.sqlite') + '.token', 'utf8')).trim();
         const response = await fetch(origin + '/api/health', { headers: { Authorization: `Basic ${Buffer.from(`observer:${token}`).toString('base64')}` } });
         return response.status;
       } catch { return 0; }

@@ -151,7 +151,7 @@ def main():
                 value['failure'] = report['failure']
             if phase == 'running':
                 value.update(origin=app.origin, pid=app.process.pid,
-                             token_path=str(app.database.with_suffix('.access-token')))
+                             token_path=str(app.token_path))
             args.active_state.parent.mkdir(parents=True, exist_ok=True)
             temporary = args.active_state.with_name(args.active_state.name + '.tmp')
             temporary.write_text(json.dumps(value) + '\n', encoding='utf-8')
