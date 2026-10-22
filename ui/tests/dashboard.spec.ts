@@ -2964,6 +2964,7 @@ test.describe('full dates at daylight-saving and legacy boundaries', () => {
       Object.assign(state.record, { timestamp, imported_at });
       state.dashboard.requests = [structuredClone(state.record)];
       await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      await expect(page.locator('.request-table tbody tr')).toHaveCount(1);
       await expect(page.locator('.request-table td > span[title]')).toHaveAttribute('title', expected);
       const opener = page.getByRole('button', { name: 'Inspect request request-one', exact: true });
       await opener.click();
