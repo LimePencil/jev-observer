@@ -196,6 +196,7 @@ node scripts/benchmark.mjs --seconds=300 --rate=500 --baseline-seconds=5 \
   --dashboard-search=urgency --output=reports/benchmarks/large-history-live-load.json
 # In another terminal, after history reaches approximately 100,000 requests:
 node scripts/watch-dashboard.mjs --origin=http://127.0.0.1:PORT --seconds=90 \
+  --access-token-file=/exact/token/path/printed/by/benchmark \
   --output=reports/benchmarks/large-history-browser.json
 ```
 
@@ -245,11 +246,14 @@ node scripts/benchmark.mjs --seconds=60 --rate=500 --upstream-ms=1000 --no-burst
 
 The harness creates temporary ports and a database on the project filesystem, then removes its database on completion. `--keep-db` retains it for inspection; `--work-dir=/path` selects a filesystem. `--baseline-seconds=N` overrides the positive duration of the direct mock control phase. `--dashboard-search=TEXT` exercises search during load; final accounting still checks the entire retained history. Reports identify hardware, binary hash, limits, capture health and counts. New runs also sample whole-host CPU, load average, available memory and swap each second to expose shared-machine contention; unsupported measurements remain null. A nonzero exit indicates a failed check.
 
-To add a real browser, install the UI's Playwright Chromium and, in another terminal, use the `observer_origin` printed by the running benchmark:
+To add a real browser, install the UI's Playwright Chromium and, in another terminal, use the `observer_origin` and `access_token_file` printed by the running benchmark:
 
 ```bash
-node scripts/watch-dashboard.mjs --origin=http://127.0.0.1:PORT --seconds=90
+node scripts/watch-dashboard.mjs --origin=http://127.0.0.1:PORT --seconds=90 \
+  --access-token-file=/exact/token/path/printed/by/benchmark
 ```
+
+The companion reads the token from that file and authenticates only to the selected loopback origin. It does not print or save the token in its report. Quote paths containing spaces; do not put token contents in command arguments.
 
 Choose a browser duration that ends before the benchmark stops its proxy, or stop the companion with Ctrl-C while the proxy still runs so it can save its report. This adds a dashboard reader to the harness's existing polling. The original byte/status, streaming, overflow, SQLite-lock/recovery, cancellation, retention, export and shutdown cases are covered by `cargo test --locked`.
 
