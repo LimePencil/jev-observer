@@ -128,6 +128,46 @@ test('valid numeric probabilities keep their sorted bars and percentages', async
   await expect(card.getByText('Inspect raw answer', { exact: true })).toHaveCount(0);
 });
 
+test('JSON disclosures release closed content and retain keyboard focus across reviews', async ({ page }) => {
+  const state = await harness(page);
+  state.record.state_retained = true;
+  state.record.state = { message: 'Synthetic retained input', nested: [null, { value: '한글' }] };
+  state.record.answers[0] = { ...state.record.answers[0], valid: false, error: 'Synthetic invalid choice', raw_answer: { type: 'choice', choice: 'outside', evidence: [false, { value: '한글' }] } };
+  const opener = page.getByLabel('Inspect request request-one', { exact: true });
+  await opener.click();
+  const drawer = page.getByRole('dialog');
+  const definition = drawer.locator('.definition-details');
+  const raw = drawer.locator('.raw-answer-details');
+  const input = drawer.locator('details').filter({ has: page.getByText('Inspect retained input', { exact: true }) });
+  for (const [disclosure, value] of [[definition, state.record.answers[0].definition], [raw, state.record.answers[0].raw_answer], [input, state.record.state]] as const) {
+    const summary = disclosure.locator('summary');
+    await expect(disclosure.locator('.json-view')).toHaveCount(0);
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(disclosure.locator('.json-view')).toHaveText(JSON.stringify(value, null, 2));
+    await expect(summary).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(disclosure.locator('.json-view')).toHaveCount(0);
+    await expect(summary).toBeFocused();
+  }
+  const review = page.getByLabel('Review department');
+  await review.focus();
+  await review.selectOption('correct');
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
+  await expect(review).toBeFocused();
+  await expect(drawer.locator('details .json-view')).toHaveCount(0);
+  await raw.locator('summary').click();
+  await review.focus();
+  await review.selectOption('incorrect');
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
+  await expect(review).toBeFocused();
+  await expect(raw).toHaveAttribute('open', '');
+  await expect(raw.locator('.json-view')).toHaveText(JSON.stringify(state.record.answers[0].raw_answer, null, 2));
+  await expect(definition.locator('.json-view')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(opener).toBeFocused();
+});
+
 test('token totals disclose independently missing usage and preserve known zero values', async ({ page }) => {
   const state = await harness(page);
   // Request A reports only input tokens; request B reports only output tokens.
@@ -206,6 +246,236 @@ test('registers a provider key and shows only the local client token', async ({ 
   await page.getByRole('button', { name: 'Confirm removal' }).click();
   await expect(page.getByText('No key registered in Observer.')).toBeVisible();
   await expect(page.getByRole('dialog')).not.toContainText('jo_local_');
+});
+
+for (const succeeds of [true, false]) {
+  for (const reopenBeforeCompletion of [true, false]) {
+    test(`credential registration ${succeeds ? 'success' : 'failure'} survives ${reopenBeforeCompletion ? 'reopening while pending' : 'completion while closed'}`, async ({ page }) => {
+      const state = await harness(page);
+      let release!: () => void;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      let writes = 0;
+      await page.route('**/api/credentials', async route => {
+        if (route.request().method() !== 'PUT') return route.fallback();
+        writes += 1;
+        await pending;
+        return succeeds ? route.fallback() : route.fulfill({ status: 503, json: { error: 'Credential store is locked' } });
+      });
+      try {
+        await page.getByRole('button', { name: 'Connect an application' }).click();
+        await page.getByLabel('TypeSafe API key').fill('provider-secret');
+        await page.getByRole('button', { name: 'Register key' }).click();
+        await expect.poll(() => writes).toBe(1);
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        if (reopenBeforeCompletion) {
+          await page.getByRole('button', { name: 'Connect an application' }).click();
+          await expect(page.getByLabel('TypeSafe API key')).toBeDisabled();
+          await expect(page.getByRole('button', { name: 'Working…' })).toBeDisabled();
+        }
+        const response = page.waitForResponse(value => value.url().endsWith('/api/credentials') && value.request().method() === 'PUT');
+        release();
+        await response;
+        if (!reopenBeforeCompletion) await page.getByRole('button', { name: 'Connect an application' }).click();
+        if (succeeds) {
+          await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+          await expect(page.getByRole('dialog')).toContainText(state.clientToken);
+          await expect(page.getByText('Registered key: this session only')).toBeVisible();
+          await expect(page.getByLabel('TypeSafe API key')).toHaveValue('');
+        } else {
+          await expect(page.getByText('Credential store is locked')).toBeVisible();
+          await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+          await expect(page.getByRole('dialog')).not.toContainText('jo_local_');
+        }
+        await expect(page.getByLabel('TypeSafe API key')).toBeEnabled();
+        expect(writes).toBe(1);
+        expect(await page.evaluate(() => [JSON.stringify(localStorage), JSON.stringify(sessionStorage)].join(' '))).not.toMatch(/provider-secret|jo_local_/);
+      } finally { release(); }
+    });
+  }
+}
+
+for (const status of ['absent', 'configured', 'failed'] as const) {
+  test(`credential status after reopening reconciles ${status} status with the remembered token`, async ({ page }, testInfo) => {
+    const state = await harness(page);
+    let reads = 0, writes = 0, laterReads = 0, delivered = 0, reopening = false;
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/credentials', async route => {
+      if (route.request().method() !== 'GET') { writes += 1; return route.fallback(); }
+      reads += 1;
+      if (!reopening) return route.fallback();
+      laterReads += 1;
+      await pending;
+      delivered += 1;
+      if (status === 'failed') return route.fulfill({ status: 503, json: { error: 'Credential status temporarily unavailable' } });
+      return route.fallback();
+    });
+    try {
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+      await page.getByLabel('TypeSafe API key').fill('synthetic-status-key');
+      await page.getByRole('button', { name: 'Register key', exact: true }).click();
+      await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+      await expect(page.locator('.credential-token .copy-field code')).toHaveText(state.clientToken);
+      await expect(page.getByText('Key available until Observer stops.', { exact: true })).toBeVisible();
+      const originalToken = state.clientToken;
+      expect(originalToken).not.toBe('');
+      expect(writes).toBe(1);
+      expect(reads).toBe(1);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      // Models another dashboard removing the registration, or a session-only
+      // credential disappearing on restart while this browser remains loaded.
+      if (status === 'absent') {
+        state.credentials = { configured: false, storage: 'none' };
+        state.providerKey = ''; state.clientToken = '';
+      }
+      reopening = true;
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      await expect.poll(() => laterReads).toBe(1);
+      await expect(page.locator('.credential-token .copy-field code')).toHaveText(originalToken);
+      release();
+      if (status === 'absent') await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+      else if (status === 'failed') await expect(page.getByRole('alert')).toContainText('Credential status temporarily unavailable');
+      else await expect(page.getByText('Registered key: this session only')).toBeVisible();
+      await expect.poll(() => delivered).toBe(1);
+      expect(reads).toBe(2);
+      expect(writes).toBe(1);
+      const observation = { status, reads, writes, laterReads,
+        rememberedTokenVisible: await page.locator('.credential-token').count() === 1,
+        priorSuccessVisible: await page.getByText('Key available until Observer stops.', { exact: true }).count() === 1,
+      };
+      await testInfo.attach('credential-status-reconciliation.json', { body: JSON.stringify(observation, null, 2), contentType: 'application/json' });
+      if (status === 'absent') {
+        await expect(page.locator('.credential-token')).toHaveCount(0);
+        await expect(page.getByText('Key available until Observer stops.', { exact: true })).toHaveCount(0);
+      } else await expect(page.locator('.credential-token .copy-field code')).toHaveText(originalToken);
+    } finally { release(); }
+  });
+}
+
+test('a failed replacement keeps the valid token and blocks overlapping mutations after reopening', async ({ page }) => {
+  const state = await harness(page);
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await page.getByLabel('TypeSafe API key').fill('original-key');
+  await page.getByRole('button', { name: 'Register key' }).click();
+  await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+  const originalToken = state.clientToken;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const writes: string[] = [];
+  await page.route('**/api/credentials', async route => {
+    if (route.request().method() === 'GET') return route.fallback();
+    writes.push(route.request().method());
+    await pending;
+    return route.fulfill({ status: 503, json: { error: 'Replacement could not be saved' } });
+  });
+  try {
+    await page.getByLabel('TypeSafe API key').fill('replacement-key');
+    await page.getByRole('button', { name: 'Replace registered key' }).click();
+    await expect.poll(() => writes).toEqual(['PUT']);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await expect(page.getByLabel('TypeSafe API key')).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Remove key' })).toBeDisabled();
+    await expect(page.getByRole('dialog')).toContainText(originalToken);
+    release();
+    await expect(page.getByText('Replacement could not be saved')).toBeVisible();
+    await expect(page.getByRole('dialog')).toContainText(originalToken);
+    await expect(page.getByRole('button', { name: 'Remove key' })).toBeEnabled();
+    expect(state.providerKey).toBe('original-key');
+    expect(writes).toEqual(['PUT']);
+  } finally { release(); }
+});
+
+test('a failed credential replacement keeps the original token until the page reloads', async ({ page }) => {
+  const state = await harness(page);
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await page.getByLabel('TypeSafe API key').fill('original-key');
+  await page.getByRole('button', { name: 'Register key' }).click();
+  await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+  const originalToken = state.clientToken;
+  await page.route('**/api/credentials', route => route.request().method() === 'PUT'
+    ? route.fulfill({ status: 503, json: { error: 'Replacement could not be saved' } }) : route.fallback());
+  await page.getByLabel('TypeSafe API key').fill('replacement-key');
+  await page.getByRole('button', { name: 'Replace registered key' }).click();
+  await expect(page.getByText('Replacement could not be saved')).toBeVisible();
+  await expect(page.locator('.credential-token .copy-field code')).toHaveText(originalToken);
+  expect(state.providerKey).toBe('original-key');
+  await page.reload();
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await expect(page.getByText('Registered key: this session only')).toBeVisible();
+  await expect(page.getByRole('dialog')).not.toContainText(originalToken);
+});
+
+for (const succeeds of [true, false]) {
+  test(`credential removal ${succeeds ? 'success' : 'failure'} survives reopening and preserves the correct token`, async ({ page }) => {
+    const state = await harness(page);
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await page.getByLabel('TypeSafe API key').fill('original-key');
+    await page.getByRole('button', { name: 'Register key' }).click();
+    await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+    const originalToken = state.clientToken;
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const writes: string[] = [];
+    await page.route('**/api/credentials', async route => {
+      if (route.request().method() === 'GET') return route.fallback();
+      writes.push(route.request().method());
+      await pending;
+      return succeeds ? route.fallback() : route.fulfill({ status: 503, json: { error: 'Removal could not be saved' } });
+    });
+    try {
+      await page.getByRole('button', { name: 'Remove key' }).click();
+      await page.getByRole('button', { name: 'Confirm removal' }).click();
+      await expect.poll(() => writes).toEqual(['DELETE']);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      await expect(page.getByLabel('TypeSafe API key')).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Remove key' })).toBeDisabled();
+      release();
+      if (succeeds) {
+        await expect(page.getByText('Registered provider key removed.')).toBeVisible();
+        await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+        await expect(page.getByRole('dialog')).not.toContainText(originalToken);
+      } else {
+        await expect(page.getByText('Removal could not be saved')).toBeVisible();
+        await expect(page.getByRole('dialog')).toContainText(originalToken);
+        await expect(page.getByRole('button', { name: 'Remove key' })).toBeEnabled();
+      }
+      await expect(page.getByLabel('TypeSafe API key')).toBeEnabled();
+      expect(writes).toEqual(['DELETE']);
+    } finally { release(); }
+  });
+}
+
+test('a credential status read started before registration cannot replace its successful result', async ({ page }) => {
+  const state = await harness(page);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let statusReads = 0;
+  await page.route('**/api/credentials', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    statusReads += 1;
+    await pending;
+    return route.fulfill({ json: { configured: false, storage: 'none' } });
+  });
+  try {
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await expect.poll(() => statusReads).toBe(1);
+    await page.getByLabel('TypeSafe API key').fill('provider-secret');
+    await page.getByLabel('Save in this computer’s credential store').check();
+    const cancelled = page.waitForEvent('requestfailed', request => request.url().endsWith('/api/credentials') && request.method() === 'GET');
+    await page.getByRole('button', { name: 'Register key' }).click();
+    await cancelled;
+    await expect(page.getByText('Registered key: saved in system credential store')).toBeVisible();
+    release();
+    await expect(page.getByRole('dialog')).toContainText(state.clientToken);
+    await expect(page.getByText('Registered key: saved in system credential store')).toBeVisible();
+    await expect(page.getByText('No key registered in Observer.')).toHaveCount(0);
+    await expect(page.getByLabel('Save in this computer’s credential store')).toBeChecked();
+  } finally { release(); }
 });
 
 for (const { storage, choice } of [
@@ -563,10 +833,24 @@ test('request labels persist through API and versions remain separate', async ({
   expect(state.labelHeaders?.['x-observer-request']).toBe('1');
   await expect(page.getByText('Not collected. An API response')).toBeVisible();
   await page.getByRole('button', { name: 'View recurring group' }).click();
+  const definition = page.getByRole('dialog').locator('details').filter({ has: page.getByText('Inspect definition', { exact: true }) });
+  await expect(definition.locator('.json-view')).toHaveCount(0);
+  await definition.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(definition.locator('.json-view')).toHaveText(JSON.stringify(group.definition, null, 2));
+  await page.keyboard.press('Space');
+  await expect(definition.locator('.json-view')).toHaveCount(0);
+  await expect(definition.locator('summary')).toBeFocused();
   await page.getByLabel('Compare with').selectOption('group_v1_2222222222');
+  const comparison = page.locator('.version-comparison details');
+  await expect(comparison.locator('.json-view')).toHaveCount(0);
   await page.getByText('Compare definitions and context', { exact: true }).click();
+  await expect(comparison.locator('.json-view')).toHaveText([JSON.stringify(group.definition, null, 2), JSON.stringify({ instructions: 'Changed department rules' }, null, 2)]);
   await expect(page.getByText('Changed department rules')).toBeVisible();
   await expect(page.getByText('Presentation: 2222222222')).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(comparison.locator('.json-view')).toHaveCount(0);
+  await expect(comparison.locator('summary')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
@@ -2148,6 +2432,57 @@ test('committing a group search preserves request pagination history', async ({ 
   await expect(page.locator('.group-row')).toContainText('department first');
 });
 
+for (const section of ['requests', 'groups'] as const) {
+  for (const direction of ['Older', 'Newer'] as const) {
+    test(`group search during pending ${direction} ${section} preserves request history and resets groups`, async ({ page }) => {
+      await page.clock.install({ time: new Date(now) });
+      await page.clock.pauseAt(new Date(now + 1000));
+      await paginatedSearchHarness(page);
+      for (const current of ['requests', 'groups'] as const) {
+        await page.getByRole('button', { name: `Older ${current}`, exact: true }).click();
+        await expectHistoryPage(page, current, 'second');
+        if (current !== section || direction === 'Newer') {
+          await page.getByRole('button', { name: `Older ${current}`, exact: true }).click();
+          await expectHistoryPage(page, current, 'third');
+        }
+      }
+      const target = direction === 'Older' ? 'third' : 'second';
+      let release!: () => void, started = false;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      await page.route('**/api/dashboard?**', async route => {
+        const params = new URL(route.request().url()).searchParams;
+        if (!started && !params.has('group_search') && params.get(section === 'requests' ? 'request_cursor' : 'group_cursor') === target) {
+          started = true;
+          await pending;
+        }
+        return route.fallback();
+      });
+      try {
+        await page.getByRole('button', { name: `${direction} ${section}`, exact: true }).click();
+        await expect.poll(() => started).toBe(true);
+        await page.getByLabel('Find a question group').fill('department');
+        await page.clock.runFor(300);
+        await expectHistoryPage(page, 'requests', section === 'requests' ? target : 'third');
+        await expectHistoryPage(page, 'groups', 'first');
+        await expect(page.getByRole('button', { name: 'Newer groups', exact: true })).toBeDisabled();
+        release();
+        await page.clock.runFor(100);
+        // The superseded response cannot restore the old group page or cursor stack.
+        const previousRequests = section === 'requests' && direction === 'Newer' ? ['first'] : ['second', 'first'];
+        for (const cursor of previousRequests) {
+          await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+          await expectHistoryPage(page, 'requests', cursor);
+        }
+        await page.getByRole('button', { name: 'Older groups', exact: true }).click();
+        await expectHistoryPage(page, 'groups', 'second');
+        await page.getByRole('button', { name: 'Newer groups', exact: true }).click();
+        await expectHistoryPage(page, 'groups', 'first');
+        await expect(page.getByRole('alert')).toHaveCount(0);
+      } finally { release(); }
+    });
+  }
+}
+
 async function failingPageHarness(page: Page) {
   await page.clock.install({ time: new Date(now) });
   await page.clock.pauseAt(new Date(now + 1000));
@@ -2174,6 +2509,56 @@ async function expectHistoryPage(page: Page, section: 'requests' | 'groups', cur
   if (section === 'requests') await expect(page.getByLabel(`Inspect request request-${cursor}`, { exact: true })).toBeVisible();
   else await expect(page.locator('.group-row')).toContainText(`department ${cursor}`);
   await expect.poll(() => new URL(page.url()).searchParams.get(section === 'requests' ? 'request_cursor' : 'group_cursor') || 'first').toBe(cursor);
+}
+
+for (const direction of ['Older', 'Newer'] as const) {
+  test(`failed pending ${direction} requests after group search rolls back and retries in the new group scope`, async ({ page }) => {
+    const { failures } = await failingPageHarness(page);
+    await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+    await expectHistoryPage(page, 'requests', 'second');
+    if (direction === 'Newer') {
+      await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+      await expectHistoryPage(page, 'requests', 'third');
+    }
+    await openThirdPage(page, 'groups');
+    const target = direction === 'Older' ? 'third' : 'second';
+    const previous = direction === 'Older' ? 'second' : 'third';
+    let release!: () => void, started = false;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/dashboard?**', async route => {
+      const params = new URL(route.request().url()).searchParams;
+      if (!started && !params.has('group_search') && params.get('request_cursor') === target) {
+        started = true;
+        await pending;
+      }
+      return route.fallback();
+    });
+    try {
+      failures.add(`requests:${target}`);
+      await page.getByRole('button', { name: `${direction} requests`, exact: true }).click();
+      await expect.poll(() => started).toBe(true);
+      await page.getByLabel('Find a question group').fill('department');
+      await page.clock.runFor(300);
+      await expect(page.getByRole('alert')).toContainText('Showing the last successfully loaded page');
+      await expectHistoryPage(page, 'requests', previous);
+      await expectHistoryPage(page, 'groups', 'first');
+      await expect(page.getByRole('status').filter({ hasText: 'Loading history…' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Newer groups', exact: true })).toBeDisabled();
+      release();
+      await page.clock.runFor(1000);
+      await expect(page.getByRole('alert')).toContainText('Showing the last successfully loaded page');
+      failures.clear();
+      await page.getByRole('button', { name: 'Retry', exact: true }).click();
+      await expectHistoryPage(page, 'requests', target);
+      await expectHistoryPage(page, 'groups', 'first');
+      expect(new URL(page.url()).searchParams.get('group_search')).toBe('department');
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      for (const cursor of direction === 'Older' ? ['second', 'first'] : ['first']) {
+        await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+        await expectHistoryPage(page, 'requests', cursor);
+      }
+    } finally { release(); }
+  });
 }
 
 for (const section of ['requests', 'groups'] as const) {

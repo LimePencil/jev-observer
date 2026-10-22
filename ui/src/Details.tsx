@@ -2,34 +2,35 @@ import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, ArrowRight, Check, ClipboardText, Database, DownloadSimple, FileArrowUp, Fingerprint, GearSix, Info, ShieldCheck, Trash, WarningCircle, X } from '@phosphor-icons/react';
 import type { ChangeEvent, ReactNode } from 'react';
-import type { Answer, CredentialStatus, Filters, Group, GroupDetail, Health, Label, RequestRecord, Settings } from './types';
+import type { Answer, Filters, Group, GroupDetail, Health, Label, RequestRecord, Settings } from './types';
 import { api, query, useResource } from './api';
 import { connectionSnippet } from './connection';
 import { ModelCatalog } from './ModelCatalog';
 import type { ReviewController, ReviewState } from './reviews';
+import type { CredentialController } from './credentials';
 import type { ImportController } from './imports';
 import type { HistoryDeletionController } from './deletion';
 import { answerValue, bytes, costBasis, dateTime, money, ms, number, percent, shortId } from './format';
-import { Definition, Distribution, Empty, ErrorNotice, KindBadge, Loading, RequestTable, StatusBadge, Timeline } from './components';
+import { Definition, Distribution, Empty, ErrorNotice, KindBadge, LazyDetails, Loading, RequestTable, StatusBadge, Timeline } from './components';
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
 const DECISIONS_PER_PAGE = 50;
 const emptyReview: ReviewState = { pending: null, error: '', savedLabel: null };
-type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; imports: ImportController; deletion: HistoryDeletionController; historyRevision: number; filterGroup: (id: string) => void };
+type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; credentials: CredentialController; imports: ImportController; deletion: HistoryDeletionController; historyRevision: number; filterGroup: (id: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
   return <div className="drawer-heading"><div className="eyebrow">{icon}{eyebrow}</div><Dialog.Title>{title}</Dialog.Title><Dialog.Description>{description}</Dialog.Description></div>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="detail-field"><dt>{label}</dt><dd>{children}</dd></div>; }
 
-export default function Details({ health, panel, setPanel, filters, reviews, imports, deletion, historyRevision, filterGroup }: Props) {
+export default function Details({ health, panel, setPanel, filters, reviews, credentials, imports, deletion, historyRevision, filterGroup }: Props) {
   return <Dialog.Root open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className={`drawer ${panel?.type === 'import' || panel?.type === 'connect' ? 'drawer-small' : ''}`}>
     <Dialog.Close className="icon-button drawer-close" aria-label="Close detail panel"><X size={20} weight="bold" /></Dialog.Close>
     {panel?.type === 'request' && <RequestDetails key={panel.id} id={panel.id} setPanel={setPanel} controller={reviews} historyRevision={historyRevision} />}
     {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} historyRevision={historyRevision} />}
     {panel?.type === 'settings' && <SettingsDetails controller={deletion} close={() => setPanel(null)} />}
     {panel?.type === 'import' && <ImportDetails controller={imports} initialFormat={panel.format} />}
-    {panel?.type === 'connect' && <ConnectDetails health={health} importCaptures={() => setPanel({ type: 'import', format: 'systemone-capture' })} />}
+    {panel?.type === 'connect' && <ConnectDetails health={health} controller={credentials} importCaptures={() => setPanel({ type: 'import', format: 'systemone-capture' })} />}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
 
@@ -56,12 +57,13 @@ function RequestDetails({ id, setPanel, controller, historyRevision }: { id: str
       {record.sample && <div className="inline-notice"><Info size={16} />Synthetic sample. No provider was called.</div>}
       {!record.capture_complete && <div className="warning-notice"><WarningCircle size={18} />This capture is incomplete. Missing fields are unknown; the forwarded request was not truncated.</div>}
       {record.transport_error && <ErrorNotice message={record.transport_error} />}
+      {typeof record.normalization_error === 'string' && record.normalization_error.trim() !== '' && <ErrorNotice message={record.normalization_error} />}
       <dl className="detail-grid"><Field label={record.timestamp == null ? "Imported at" : "Recorded"}>{dateTime(record.timestamp ?? record.imported_at)}{record.timestamp == null && <span className="table-subline">Original event time unknown</span>}</Field><Field label="Latency">{ms(record.duration_ms)}</Field><Field label="Provider">{record.provider || 'Unknown'}</Field><Field label="Model">{record.model || 'Unknown'}</Field><Field label="Requested model">{record.requested_model ?? 'Unknown'}</Field><Field label="Input tokens">{number(record.input_tokens)}</Field><Field label="Output tokens">{number(record.output_tokens)}</Field><Field label="Request cost">{money(record.cost_usd)}</Field><Field label="Cost basis">{costBasis(record.cost_basis)}</Field></dl>
       <div className="detail-section-title"><h3>Decisions</h3><span className="count-badge">{record.answers.length}</span></div>
       <p className="caption">Usage and cost belong to this request, across all its answers.</p>
       {record.answers.length > DECISIONS_PER_PAGE && <nav className="history-pagination" aria-label="Decision pages"><button className="text-button" aria-disabled={page === 0 || pendingReviews} onClick={() => { if (page > 0 && !pendingReviews) setAnswerPage(page - 1); }}>Previous decisions</button><span role="status">Decisions {number(answerStart + 1)}–{number(Math.min(answerStart + DECISIONS_PER_PAGE, record.answers.length))} of {number(record.answers.length)}{pendingReviews && ' · Saving reviews…'}</span><button className="text-button" aria-disabled={answerStart + DECISIONS_PER_PAGE >= record.answers.length || pendingReviews} onClick={() => { if (answerStart + DECISIONS_PER_PAGE < record.answers.length && !pendingReviews) setAnswerPage(page + 1); }}>Next decisions</button></nav>}
       {!record.answers.length ? <Empty title="No captured answers">The provider response did not include a supported answer, or the capture was incomplete.</Empty> : record.answers.slice(answerStart, answerStart + DECISIONS_PER_PAGE).map(answer => <AnswerDetail key={`${record.id}-${answer.key}`} answer={answer} record={record} onGroup={() => setPanel({ type: 'group', id: answer.group_id })} review={reviews?.get(answer.key) ?? emptyReview} onReview={label => void controller.save(id, answer.key, label)} />)}
-      <section className="detail-section"><h3>Request input state</h3><div className="inline-notice"><ShieldCheck size={18} weight="bold" />{record.state_retained ? 'Captured with local opt-in and configured redaction.' : 'This record has no retained request state.'}</div>{record.import_format && !!record.actions?.length && <p className="caption">Imported application data is shown under Application outcome.</p>}{record.state_retained && <details><summary>Inspect retained input</summary><Definition value={record.state} /></details>}</section>
+      <section className="detail-section"><h3>Request input state</h3><div className="inline-notice"><ShieldCheck size={18} weight="bold" />{record.state_retained ? 'Captured with local opt-in and configured redaction.' : 'This record has no retained request state.'}</div>{record.import_format && !!record.actions?.length && <p className="caption">Imported application data is shown under Application outcome.</p>}{record.state_retained && <LazyDetails summary="Inspect retained input"><Definition value={record.state} /></LazyDetails>}</section>
       <section className="detail-section"><h3>Application outcome</h3>{record.actions?.length ? <Definition value={record.actions} /> : <p className="muted">Not collected. An API response does not establish whether an application action ran or succeeded.</p>}</section>
       {(record.source_event_id || record.import_format) && <section className="detail-section"><h3>Import provenance</h3><dl className="detail-grid"><Field label="Source event">{record.source_event_id ?? 'Not supplied'}</Field><Field label="Format">{record.import_format ?? 'Native capture'}</Field></dl></section>}
     </div>}
@@ -82,10 +84,10 @@ function AnswerDetail({ answer, record, onGroup, review: { pending, error, saved
     {answer.warnings?.map(warning => <div className="warning-notice" key={warning}><WarningCircle size={17} /><span>{warning}</span></div>)}
     {answer.confidence != null && <p className="caption">Reported confidence {percent(answer.confidence)} · not measured accuracy</p>}
     {probabilities.length > 0 && <div className="probability-list" aria-label="Reported probabilities">{probabilities.map(({ key, value }) => <div key={key} className="probability-row"><span title={key}>{key}</span><div className="probability-track">{value !== null && <span style={{ width: `${value * 100}%` }} />}</div><span className="mono">{value === null ? 'Invalid' : percent(value)}</span></div>)}</div>}
-    {invalidProbabilities && <details className="raw-answer-details"><summary>Inspect raw answer</summary><Definition value={answer.raw_answer} /></details>}
+    {(!answer.valid || invalidProbabilities) && <LazyDetails className="raw-answer-details" summary="Inspect raw answer"><Definition value={answer.raw_answer} /></LazyDetails>}
     <div className="answer-actions"><button className="text-button" onClick={onGroup}>View recurring group <ArrowRight size={14} /></button><div className="review-control"><span className="review-status" role="status">{pending ? 'Saving…' : saved ? 'Saved' : ''}</span><label className="label-control"><span>Review</span><select aria-label={`Review ${answer.key}`} value={pending ?? currentLabel ?? ''} aria-disabled={pending !== null} onPointerDown={event => { if (pending) event.preventDefault(); }} onKeyDown={event => { if (pending && ['ArrowUp', 'ArrowDown', 'Home', 'End', ' ', 'Enter'].includes(event.key)) event.preventDefault(); }} onChange={event => { if (event.target.value && !pending) onReview(event.target.value as Label); }}><option value="" disabled>Not labeled</option><option value="correct">Correct</option><option value="incorrect">Incorrect</option><option value="unknown">Unknown</option></select></label></div></div>
     {error && <ErrorNotice message={error} />}
-    <details className="definition-details"><summary>Definition and context</summary><dl className="detail-grid compact-fields"><Field label="Definition">{shortId(answer.definition_id)}</Field><Field label="Presentation">{shortId(answer.presentation_id)}</Field><Field label="Task version">{answer.task_version ?? 'Unverified'}</Field><Field label="Candidate set">{shortId(answer.candidate_id)}</Field></dl><Definition value={answer.definition} />{answer.family_id && <div className="family-note"><strong>{answer.family_name ?? answer.family_id}</strong><p>{answer.mapping_reason ?? 'Adapter-defined family mapping'}</p><span>Adapter {answer.adapter ?? 'Unknown'} · instance {answer.instance_ref ?? 'Unknown'}</span></div>}</details>
+    <LazyDetails className="definition-details" summary="Definition and context"><dl className="detail-grid compact-fields"><Field label="Definition">{shortId(answer.definition_id)}</Field><Field label="Presentation">{shortId(answer.presentation_id)}</Field><Field label="Task version">{answer.task_version ?? 'Unverified'}</Field><Field label="Candidate set">{shortId(answer.candidate_id)}</Field></dl><Definition value={answer.definition} />{answer.family_id && <div className="family-note"><strong>{answer.family_name ?? answer.family_id}</strong><p>{answer.mapping_reason ?? 'Adapter-defined family mapping'}</p><span>Adapter {answer.adapter ?? 'Unknown'} · instance {answer.instance_ref ?? 'Unknown'}</span></div>}</LazyDetails>
   </section>;
 }
 
@@ -102,7 +104,7 @@ function GroupDetails({ id, filters, setPanel, filterGroup, historyRevision }: {
       <section className="detail-section"><h3>{group.is_family ? 'Original definitions' : 'Definition versions'} <span className="count-badge">{data.versions.length}</span></h3><p className="caption">{group.is_family ? 'This adapter links original instance definitions. Instance differences do not imply a changed rule.' : 'Different definitions and presentations keep separate statistics.'} Showing {data.versions.length} of {number(group.version_count)} {group.is_family ? 'original definitions' : 'versions'}.</p><div className="version-list">{data.versions.map((version, index) => <button key={version.id} className={`version-item ${version.id === group.id ? 'selected' : ''}`} onClick={() => { setCompare(''); setPanel({ type: 'group', id: version.id }); }}><span><strong>Definition {shortId(version.definition_id)}</strong><small>Presentation {shortId(version.presentation_id)} · {version.task_version ?? 'Unverified task context'}</small></span><span>{number(version.answer_count)} answers {version.id === group.id ? <Check size={15} /> : <ArrowRight size={14} />}</span><span className="sr-only">Version {index + 1}</span></button>)}</div>
         {data.versions.length > 1 && <label className="field-label comparison-select">Compare with<select value={compare} onChange={event => setCompare(event.target.value)}><option value="">Choose a separate version</option>{data.versions.filter(version => version.id !== group.id).map(version => <option value={version.id} key={version.id}>{shortId(version.definition_id)} / {shortId(version.presentation_id)} · {version.task_version ?? 'unverified'}</option>)}</select></label>}
         {other && <VersionComparison current={group} other={other} />}
-        {!other && <details><summary>Inspect definition</summary><Definition value={group.definition} /></details>}
+        {!other && <LazyDetails summary="Inspect definition"><Definition value={group.definition} /></LazyDetails>}
       </section>
       {group.family_id && <section className="detail-section"><h3>Indexed family</h3><div className="family-note"><strong>{group.family_name ?? group.family_id}</strong><p>Mapped by {group.adapter ?? 'a local adapter'}. Original definitions and individual instances remain distinct.</p></div></section>}
       <section className="detail-section"><div className="detail-section-title"><h3>Contributing requests</h3><button className="text-button" onClick={() => filterGroup(group.id)}>Filter overview <ArrowRight size={14} /></button></div><p className="caption">Latest {data.requests.length} requests in the selected window.</p><RequestTable requests={data.requests} compact open={requestId => setPanel({ type: 'request', id: requestId })} /></section>
@@ -138,7 +140,7 @@ function VersionComparison({ current, other }: { current: Group; other: Group })
     <p className="caption">Requests may contribute to both versions. Usage and cost must not be added across columns. Known costs can include provider-reported charges and configured estimates; inspect requests for their basis.</p>
     {current.kind === 'score' && <p className="caption">Score means use each definition’s own rubric; changed rubrics are not directly comparable.</p>}
     <div className="comparison"><div><h4>Current outcomes</h4><Distribution group={current} /></div><div><h4>Selected outcomes</h4><Distribution group={other} /></div></div>
-    <details><summary>Compare definitions and context</summary><div className="comparison"><div><h4>Current definition</h4><Definition value={current.definition} /><p className="caption">Task: {current.task_version ?? 'Unverified'} · Presentation: {shortId(current.presentation_id)}</p></div><div><h4>Selected version</h4><Definition value={other.definition} /><p className="caption">Task: {other.task_version ?? 'Unverified'} · Presentation: {shortId(other.presentation_id)}</p></div></div></details>
+    <LazyDetails summary="Compare definitions and context"><div className="comparison"><div><h4>Current definition</h4><Definition value={current.definition} /><p className="caption">Task: {current.task_version ?? 'Unverified'} · Presentation: {shortId(current.presentation_id)}</p></div><div><h4>Selected version</h4><Definition value={other.definition} /><p className="caption">Task: {other.task_version ?? 'Unverified'} · Presentation: {shortId(other.presentation_id)}</p></div></div></LazyDetails>
   </section>;
 }
 
@@ -202,20 +204,17 @@ function ImportDetails({ controller, initialFormat }: { controller: ImportContro
   </div></>;
 }
 
-function ConnectDetails({ health, importCaptures }: { health?: Health; importCaptures: () => void }) {
+function ConnectDetails({ health, controller, importCaptures }: { health?: Health; controller: CredentialController; importCaptures: () => void }) {
   const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:8765' : window.location.origin;
   const [copyStatus, setCopyStatus] = useState('');
   const [language, setLanguage] = useState<'python' | 'javascript'>('python');
   const [model, setModel] = useState('');
-  const { data: credential, error: credentialError, reload } = useResource<CredentialStatus>('/api/credentials');
+  const { credential, error: credentialError, reload, busy, message: credentialMessage, clientToken, mutate } = controller;
   const { data: settings, error: settingsError, reload: reloadSettings } = useResource<Settings>('/api/settings');
   const [providerKey, setProviderKey] = useState('');
   const [persist, setPersist] = useState(false);
   const persistEdited = useRef(false);
-  const [clientToken, setClientToken] = useState('');
-  const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const [credentialMessage, setCredentialMessage] = useState('');
   const local = settings?.upstream_auth === 'none';
   const configuredEntry = settings?.model_catalog?.models.find(entry => entry.id === settings.provider);
   const localModel = local || settings?.upstream.startsWith('http://127.0.0.1:') || settings?.provider?.toLowerCase() === 'laya';
@@ -228,28 +227,16 @@ function ConnectDetails({ health, importCaptures }: { health?: Health; importCap
     catch { setCopyStatus('Could not copy. Select the URL to copy it manually.'); }
   }
   async function copyToken() {
-    try { await navigator.clipboard.writeText(clientToken); setCredentialMessage('Local client token copied.'); }
-    catch { setCredentialMessage('Could not copy. Select the token to copy it manually.'); }
+    try { await navigator.clipboard.writeText(clientToken); setCopyStatus('Local client token copied.'); }
+    catch { setCopyStatus('Could not copy. Select the token to copy it manually.'); }
   }
   async function registerKey() {
     if (!keyValid || busy) return;
-    setBusy(true); setCredentialMessage(''); setClientToken('');
-    try {
-      const result = await api<{ client_token: string; storage: 'session' | 'system' }>('/api/credentials', { method: 'PUT', body: JSON.stringify({ api_key: providerKey, persist }) });
-      setProviderKey(''); setClientToken(result.client_token);
-      setCredentialMessage(result.storage === 'system' ? 'Key saved in your system credential store.' : 'Key available until Observer stops.');
-      reload();
-    } catch (error) { setCredentialMessage(error instanceof Error ? error.message : 'Could not register provider key.'); }
-    finally { setBusy(false); }
+    if (await mutate(providerKey, persist)) setProviderKey('');
   }
   async function removeKey() {
     if (busy) return;
-    setBusy(true); setCredentialMessage('');
-    try {
-      await api('/api/credentials', { method: 'DELETE' });
-      setClientToken(''); setProviderKey(''); setConfirmRemove(false); setCredentialMessage('Registered provider key removed.'); reload();
-    } catch (error) { setCredentialMessage(error instanceof Error ? error.message : 'Could not remove provider key.'); }
-    finally { setBusy(false); }
+    if (await mutate(null)) { setProviderKey(''); setConfirmRemove(false); }
   }
   return <><DetailHeading eyebrow="Connect an application" title={settings?.demo ? 'Start live collection.' : 'Your next request, visible.'} description={settings?.demo ? 'This sample workspace cannot forward requests. Restart Observer in live mode to connect an application.' : 'Point a compatible TypeSafe client at this local Observer instance.'} icon={<ArrowRight size={15} />} /><div className="drawer-body">
     {settingsError && <ErrorNotice message={settingsError} retry={reloadSettings} />}
@@ -270,7 +257,7 @@ function ConnectDetails({ health, importCaptures }: { health?: Health; importCap
         <p className="caption">Leave unchecked to keep the key only until Observer stops. System saving needs an unlocked desktop credential store. Replacing a key rotates its local token, so connected applications need the new token.</p>
         <div className="button-row"><button className="button primary" disabled={!keyValid || busy} onClick={() => void registerKey()}>{busy ? 'Working…' : credential?.configured ? 'Replace registered key' : 'Register key'}</button>{credential?.configured && (!confirmRemove ? <button className="button" disabled={busy} onClick={() => setConfirmRemove(true)}>Remove key</button> : <><button className="button" disabled={busy} onClick={() => setConfirmRemove(false)}>Keep key</button><button className="button danger-button" disabled={busy} onClick={() => void removeKey()}>Confirm removal</button></>)}</div>
       {credentialMessage && <p className="caption" role="status">{credentialMessage}</p>}
-      {clientToken && <div className="credential-token" role="status"><strong>Copy this local client token now.</strong><p>Set your SDK’s <code>api_key</code> or <code>apiKey</code> to this token. It is shown once and is required to use the registered provider key.</p><div className="copy-field"><code>{clientToken}</code><button className="icon-button" aria-label="Copy local client token" onClick={() => void copyToken()}><ClipboardText size={18} /></button></div></div>}
+      {clientToken && <div className="credential-token" role="status"><strong>Copy this local client token now.</strong><p>Set your SDK’s <code>api_key</code> or <code>apiKey</code> to this token. It stays available when you reopen this panel until the page reloads or closes, or the key is replaced or removed.</p><div className="copy-field"><code>{clientToken}</code><button className="icon-button" aria-label="Copy local client token" onClick={() => void copyToken()}><ClipboardText size={18} /></button></div></div>}
     </section>}
     <section className="detail-section"><h3>Connect your SDK</h3><p className="caption">Use the model name served by your configured upstream. This example sends one request when you run it; remote inference may incur charges.</p><label className="field-label">Model name<input value={model} onChange={event => setModel(event.target.value)} placeholder="Your upstream’s model name" list="configured-model-names" /><datalist id="configured-model-names">{configuredEntry?.model_names.map(name => <option key={name} value={name} />)}</datalist></label><div className="snippet-actions"><div className="segmented" aria-label="SDK language"><button className={language === 'python' ? 'selected' : ''} aria-pressed={language === 'python'} onClick={() => setLanguage('python')}>Python</button><button className={language === 'javascript' ? 'selected' : ''} aria-pressed={language === 'javascript'} onClick={() => setLanguage('javascript')}>JavaScript</button></div><button className="text-button" onClick={async () => { try { await navigator.clipboard.writeText(snippet); setCopyStatus('SDK example copied.'); } catch { setCopyStatus('Could not copy. Select the example to copy it manually.'); } }}>Copy example<ClipboardText size={15} /></button></div><pre className="json-view sdk-snippet" tabIndex={0} aria-label="SDK connection example">{snippet}</pre><p className="caption">{language === 'python' ? 'typesafe-sdk 0.7.1' : '@typesafe-ai/sdk 0.6.0'} · <code>Accept-Encoding: identity</code> keeps typed answers inspectable. {local ? 'Use the saved workspace access token.' : 'Set JEV_OBSERVER_CLIENT_TOKEN to the local client token shown after registration.'}{localModel && ' Local model examples allow 180 seconds for startup and inference. Adjust timeout in the example for your hardware (Python: seconds; JavaScript: milliseconds).'}</p></section>
     <section className="detail-section" aria-label="Connection verification"><h3>First request check</h3><p role="status">{!health ? 'Waiting for collection health…' : health.persisted > 0 ? `${number(health.persisted)} captures saved in this Observer session.` : health.forwarded > 0 ? 'A request reached Observer. Waiting for its capture to be saved…' : 'Waiting for your application’s first request.'}</p>{Boolean(health?.truncated) && <p className="error-text">{number(health?.truncated)} captures are incomplete. Check identity encoding and capture limits.</p>}<p className="caption">After running your application, inspect its request in the workspace to confirm the model, answers and any capture warnings.</p></section>
