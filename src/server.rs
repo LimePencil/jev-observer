@@ -1343,6 +1343,11 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
                 model::import_records(&body.text, &body.format, &options).map_err(|error| {
                     if error.is::<model::ImportLimitError>() {
                         import_failure(StatusCode::PAYLOAD_TOO_LARGE)
+                    } else if error.is::<model::ImportIdentityError>() {
+                        LocalError(
+                            StatusCode::BAD_REQUEST,
+                            model::IMPORT_IDENTITY_ERROR_MESSAGE,
+                        )
                     } else if error.is::<model::RedactionCollisionError>() {
                         LocalError(
                             StatusCode::BAD_REQUEST,
@@ -3600,6 +3605,72 @@ mod tests {
                         body,
                         json!({"error":"Import rejected because credential redaction makes distinct identifiers or object keys identical."})
                     );
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn import_identity_redaction_is_atomic_and_releases_the_import_slot() {
+        for format in ["observer-jsonl", "jevrouter-receipt"] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+            let first = if format == "observer-jsonl" {
+                model::sample_records().remove(0)
+            } else {
+                serde_json::from_str(include_str!("../fixtures/model/jevrouter-receipt.json"))
+                    .unwrap()
+            };
+            let mut affected = first.clone();
+            let key = if format == "observer-jsonl" {
+                "id"
+            } else {
+                "decision_id"
+            };
+            affected[key] = json!("private-identity-X");
+            affected["credentials"] = json!("X");
+            let batch = format!("{}\n{}", first, affected);
+            for (text, counts) in [
+                (batch.clone(), None),
+                (batch, None),
+                (first.to_string(), Some((1, 0))),
+                (first.to_string(), Some((0, 1))),
+            ] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"format": format, "text": text}).to_string(),
+                    ))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                let expected_status = if counts.is_some() {
+                    StatusCode::OK
+                } else {
+                    StatusCode::BAD_REQUEST
+                };
+                assert_eq!(response.status(), expected_status, "{format}");
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if let Some((imported, duplicates)) = counts {
+                    assert_eq!(
+                        body,
+                        json!({"imported": imported, "duplicates": duplicates})
+                    );
+                } else {
+                    assert_eq!(
+                        body,
+                        json!({"error": "Import rejected because privacy filtering changes an event identity. Use stable, non-sensitive IDs and source names."})
+                    );
+                    assert!(fixture.state.store.is_empty().unwrap());
                 }
                 assert_eq!(fixture.state.import_slots.available_permits(), 1);
             }
