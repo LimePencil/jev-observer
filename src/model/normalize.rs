@@ -7,9 +7,8 @@ use super::privacy::{
     REDACTION_VALIDATION_MESSAGE, RedactionCollisionError, RedactionValidationError,
     privacy_capture_envelope,
 };
-use super::types::{Capture, NormalizeOptions};
+use super::types::{Capture, NormalizeOptions, Protocol};
 use super::validation::{finite, kind, probability, token_count, validate_answer};
-use crate::catalog;
 use anyhow::Result;
 use serde_json::Value;
 use serde_json::json;
@@ -32,7 +31,9 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
         Ok(record) => record,
         Err(error) => privacy_failed_capture(
             capture,
-            if error.is::<RedactionCollisionError>() {
+            if error.is::<super::decisions::ProtocolShapeError>() {
+                "Decisions requires ordered question and answer arrays"
+            } else if error.is::<RedactionCollisionError>() {
                 REDACTION_COLLISION_MESSAGE
             } else if error.is::<RedactionValidationError>() {
                 REDACTION_VALIDATION_MESSAGE
@@ -91,7 +92,18 @@ fn prepare_capture(
     import_secrets: &[String],
     remaining: &mut usize,
 ) -> Result<(Value, Value)> {
-    let (raw_request, response) = decoded_values(capture, options.capture_state)?;
+    let (mut raw_request, mut response) = decoded_values(capture, options.capture_state)?;
+    if options.protocol == Protocol::OpenaiDecisions {
+        anyhow::ensure!(
+            super::decisions::valid_wire_shape(
+                &raw_request,
+                &response,
+                (200..300).contains(&capture.status)
+            ),
+            super::decisions::ProtocolShapeError
+        );
+        super::decisions::ordinal_maps(&mut raw_request, &mut response);
+    }
     prepare_values(
         capture,
         options,
@@ -125,6 +137,9 @@ pub(super) fn prepare_values(
             "source": capture.source, "task_version": capture.task_version,
             "transport_error": capture.transport_error
         });
+        if let Some(profile) = &options.model_profile {
+            envelope["model_profile"] = json!(profile);
+        }
         envelope["response"] = response;
         if capture.id.generated {
             // A local UUID or computed fingerprint is structure, not captured
@@ -137,6 +152,12 @@ pub(super) fn prepare_values(
         }
         let mut safe =
             privacy_capture_envelope(&mut envelope, options, &explicit_secrets, remaining)?;
+        if let Some(profile) = &options.model_profile {
+            anyhow::ensure!(
+                safe["model_profile"].as_str() == Some(profile.as_str()),
+                RedactionValidationError
+            );
+        }
         if capture.id.generated {
             // Restore before grouping: redacted definitions use this identity
             // to keep unrelated observations in separate groups.
@@ -178,13 +199,18 @@ pub(super) fn normalize_prepared(
     safe: &Value,
 ) -> Value {
     let request = &safe["request"];
-    let response = &safe["response"];
+    let response = if options.protocol == Protocol::CloudflareSystemone {
+        &safe["response"]["result"]
+    } else {
+        &safe["response"]
+    };
     let source = safe["source"].as_str().unwrap_or("default");
     let task = &safe["task_version"];
     let context_redacted = context_redacted(capture, safe);
     let questions = request["questions"].as_object();
     let raw_answers = response["answers"].as_object();
-    let profile = catalog::profile(options.provider.as_deref().unwrap_or("typesafe"));
+    let profile = options.validation_profile();
+    let semantic_assets = super::identity::semantic_asset_questions(raw_request);
     let mut keys: Vec<String> = questions
         .map(|q| q.keys().cloned().collect())
         .unwrap_or_default();
@@ -199,26 +225,37 @@ pub(super) fn normalize_prepared(
     let answers: Vec<Value> = keys.iter().map(|key| {
         let definition = questions.and_then(|q| q.get(key)).unwrap_or(&Value::Null);
         let raw = raw_answers.and_then(|a| a.get(key)).unwrap_or(&Value::Null);
-        let kind = kind(definition, raw);
+        let kind = if options.protocol == Protocol::OpenaiDecisions && definition["type"] == "predicate" { "noul" } else { kind(definition, raw) };
         let definition_id = fingerprint("def_v1", definition);
         let presentation_id = fingerprint("presentation_v1", &json!(serde_json::to_string(definition).expect("JSON value")));
-        let definition_redacted = definition_redacted(raw_request, safe, key, context_redacted);
+        let definition_redacted = definition_redacted(raw_request, safe, key, context_redacted) || semantic_assets.contains(key);
         // Hidden semantic differences must not collapse into one series.
         // Request isolation remains recomputable after redacted export.
-        let isolation = if definition_redacted { safe["id"].clone() } else { Value::Null };
+        let isolation = super::identity::group_context(options, &safe["id"], definition_redacted);
         let group_id = group_fingerprint(&json!(source), &json!(key), &json!(definition_id), &json!(presentation_id), task, &isolation);
-        let candidate_id = if matches!(kind, "choice" | "score") && !definition["criteria"].is_null() {
-            json!(fingerprint("candidates_v1", &definition["criteria"]))
+        let candidates = if options.protocol == Protocol::OpenaiDecisions { if kind == "choice" { &definition["choices"] } else { &definition["levels"] } } else { &definition["criteria"] };
+        let candidate_id = if matches!(kind, "choice" | "score") && !candidates.is_null() {
+            json!(fingerprint("candidates_v1", candidates))
         } else { Value::Null };
         let mut warnings = Vec::new();
-        let mut errors = validate_answer(definition, raw, kind, &profile, &mut warnings);
+        let mut errors = if options.protocol == Protocol::OpenaiDecisions { super::decisions::validate(definition, raw, &mut warnings) } else { validate_answer(definition, raw, kind, &profile, &mut warnings) };
+        if options.protocol == Protocol::OpenaiDecisions && questions.map_or(0, |items| items.len()) != raw_answers.map_or(0, |items| items.len()) {
+            errors.push("Decision answer count differs from its ordered questions".into());
+        }
+        if options.protocol == Protocol::OpenaiDecisions && questions.is_some_and(|items| !(1..=400).contains(&items.len())) {
+            errors.push("Decisions requires one to 400 ordered questions".into());
+        }
+        if options.protocol == Protocol::CloudflareSystemone && safe["response"]["success"] != true {
+            errors.push("Cloudflare did not report a successful result envelope".into());
+        }
         if !(200..300).contains(&capture.status) { errors.push("Request did not complete with a successful HTTP status".into()); }
         if capture.transport_error.is_some() { errors.push("Request had a transport error".into()); }
         if !capture.capture_complete { errors.push("Capture is incomplete".into()); }
         let value = match kind {
-            "choice" => raw.get("choice").filter(|v| v.is_string()).cloned(),
+            "choice" => raw.get("choice").filter(|v| v.is_string() || (options.protocol == Protocol::OpenaiDecisions && v.is_boolean())).cloned(),
             "score" => raw.get("score").filter(|v| v.is_number()).cloned(),
-            "noul" => raw.get("noul").filter(|v| v.is_number()).cloned(),
+            "noul" => raw.get(if options.protocol == Protocol::OpenaiDecisions { "probability" } else { "noul" }).filter(|v| v.is_number()).cloned(),
+            "box" => raw.get("box").filter(|v| v.is_object()).map(|value| json!({"top":value["top"],"bottom":value["bottom"],"left":value["left"],"right":value["right"]})),
             _ => None,
         }.unwrap_or(Value::Null);
         let family = if definition_redacted { Value::Null } else { jgrep_family(source, key, definition, task, capture.adapter.as_deref()).unwrap_or(Value::Null) };
@@ -227,13 +264,16 @@ pub(super) fn normalize_prepared(
             "definition_id": definition_id, "presentation_id": presentation_id,
             "candidate_id": candidate_id, "task_version": task,
             "definition": definition, "definition_redacted": definition_redacted, "value": value,
-            "probabilities": raw.get("probabilities").filter(|v| v.is_object()),
-            "confidence": if matches!(kind, "choice" | "score") { probability(&raw["confidence"]) } else { None },
+            "choice_key": if options.protocol == Protocol::OpenaiDecisions && kind == "choice" { super::decisions::choice_key(&value) } else { None },
+            "probabilities": if kind == "box" { Value::Null } else if options.protocol == Protocol::OpenaiDecisions && matches!(kind,"choice"|"score") { super::decisions::probabilities(raw,kind) } else { raw.get("probabilities").filter(|v| v.is_object()).cloned().unwrap_or(Value::Null) },
+            "confidence": if matches!(kind, "choice" | "score" | "box") { probability(&raw["confidence"]) } else { None },
+            "box_found": if kind == "box" && profile.box_presence { raw["found"].as_bool() } else { None },
+            "box_present": if kind == "box" && profile.box_presence { probability(&raw["present"]) } else { None },
             "valid": errors.is_empty(), "warnings": warnings, "error": if errors.is_empty() { None } else { Some(errors.join("; ")) },
             "family_id": family["id"], "family_name": family["name"],
-            "adapter": if family.is_null() { Value::Null } else { json!("jgrep-v1") },
+            "adapter": if options.protocol == Protocol::OpenaiDecisions { json!("openai-decisions-v1") } else if family.is_null() { Value::Null } else { json!("jgrep-v1") },
             "instance_ref": family["instance_ref"],
-            "mapping_reason": if definition_redacted { json!("Definition or grouping context was redacted; equivalence cannot be established, so this observation is isolated and family pooling is disabled") } else { family["reason"].clone() },
+            "mapping_reason": if semantic_assets.contains(key) { json!("Question references external media; its semantic content is not in the retained definition, so this observation is isolated without hashing private input") } else if definition_redacted { json!("Definition or grouping context was redacted; equivalence cannot be established, so this observation is isolated and family pooling is disabled") } else { family["reason"].clone() },
             "raw_answer": raw
         })
     }).collect();
@@ -264,10 +304,19 @@ pub(super) fn normalize_prepared(
     } else {
         estimated_cost.map(|_| "configured_estimate")
     };
+    let input_field = if options.protocol == Protocol::OpenaiDecisions {
+        "input"
+    } else {
+        "state"
+    };
     let normalization_error = if !request.is_object() {
         Some("Request body is not a complete JSON object")
     } else if !request["questions"].is_object() {
         Some("Request questions is not an object")
+    } else if options.protocol == Protocol::OpenaiDecisions
+        && questions.is_some_and(|items| items.is_empty() || items.len() > 400)
+    {
+        Some("Decisions requires one to 400 ordered questions")
     } else if !response.is_object() {
         Some("Response body is not a complete JSON object")
     } else if (200..300).contains(&capture.status) && !response["answers"].is_object() {
@@ -278,6 +327,7 @@ pub(super) fn normalize_prepared(
     let mut record = json!({
         "schema_version": 1, "event_kind": "request", "id": safe["id"], "timestamp": capture.timestamp,
         "source": source, "provider": options.provider.as_deref().unwrap_or("typesafe"),
+        "model_profile": options.model_profile, "protocol": options.protocol,
         "model": response.get("model").filter(|v| v.is_string()),
         "requested_model": request.get("model").filter(|v| v.is_string()),
         "status": if capture.status == 0 { None } else { Some(capture.status) },
@@ -287,13 +337,14 @@ pub(super) fn normalize_prepared(
         "price": if cost_basis == Some("configured_estimate") { json!({"input_per_million": options.input_price_per_million, "output_per_million": options.output_price_per_million}) } else { Value::Null },
         "source_event_id": Value::Null, "import_format": Value::Null,
         "capture_complete": capture.capture_complete,
-        "state_retained": options.capture_state && request.get("state").is_some_and(|v| !v.is_null()),
-        "state": if options.capture_state { request.get("state").cloned().unwrap_or(Value::Null) } else { Value::Null },
+        "state_retained": options.capture_state && request.get(input_field).is_some_and(|v| !v.is_null()),
+        "state": if options.capture_state { request.get(input_field).cloned().unwrap_or(Value::Null) } else { Value::Null },
         "transport_error": safe["transport_error"], "sample": false,
         "answers": [], "actions": [], "labels": [],
         "normalization_error": normalization_error,
-        "request_extra": extras(request, &["model", "state", "questions"]),
+        "request_extra": extras(request, &["model", input_field, "questions"]),
         "response_extra": extras(response, &["model", "answers", "usage"]),
+        "protocol_metadata": if options.protocol == Protocol::CloudflareSystemone { extras(&safe["response"], &["result"]) } else { Value::Null },
         "usage_extra": extras(&response["usage"], &["input_tokens", "output_tokens"])
     });
     record["answers"] = Value::Array(answers);

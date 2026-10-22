@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-03",
+  "checked_at": "2026-10-23",
   "models": [
     {
       "id": "typesafe",
@@ -7,15 +7,34 @@
       "access": "closed",
       "integration": "proxy",
       "model_names": [
+        "jev-1.14.0",
         "jev-1.13.0",
         "jev-latest",
         "jev-preview"
       ],
       "upstream": "https://api.typesafe.ai/v1/systemone",
       "source_url": "https://docs.typesafe.ai/models",
-      "note": "Jev 1.13 and its current aliases; text only.",
-      "profile": {},
-      "verification": "source-reviewed"
+      "note": "Jev 1.14.0 adds experimental images and Box. At review, latest resolves to 1.13.0 and preview to 1.14.0; aliases can change.",
+      "profile": {
+        "box_answers": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "typesafe",
+      "model_profile": "typesafe",
+      "source_pins": [
+        {
+          "url": "https://docs.typesafe.ai/models.md",
+          "revision": null,
+          "sha256": "d78f8db1fa611344cb7bb84f0e1431f704689eaa2f888da7db1f42eb4e192b04"
+        },
+        {
+          "url": "https://docs.typesafe.ai/primitives/box.md",
+          "revision": null,
+          "sha256": "146447926f0cd5a16bdd3938f924bb58df58faf2a19bb07fb2d8c433d28dbcde"
+        }
+      ]
     },
     {
       "id": "milliseconds",
@@ -31,7 +50,11 @@
       "profile": {
         "probability_decimals": 3
       },
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "milliseconds",
+      "model_profile": "milliseconds"
     },
     {
       "id": "openrouter",
@@ -46,7 +69,11 @@
       "source_url": "https://openrouter.ai/typesafe/jev-1.13",
       "note": "OpenRouter-reported USD cost is supported.",
       "profile": {},
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "openrouter",
+      "model_profile": "openrouter"
     },
     {
       "id": "vercel",
@@ -60,7 +87,11 @@
       "source_url": "https://vercel.com/changelog/ai-gateway-now-supports-typesafe-clients-and-http-api-for-jev",
       "note": "Use the /typesafe-compatible endpoint with TypeSafe model naming. The gateway /v1/evaluate surface has a separate contract.",
       "profile": {},
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "vercel",
+      "model_profile": "vercel"
     },
     {
       "id": "laya",
@@ -82,7 +113,11 @@
         "score_max": 32
       },
       "verification": "source-reviewed",
-      "stars": 30286
+      "stars": 30286,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "laya",
+      "model_profile": "laya"
     },
     {
       "id": "kev",
@@ -107,7 +142,11 @@
         "optional_instructions": true
       },
       "verification": "source-reviewed",
-      "stars": 8339
+      "stars": 8339,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "kev",
+      "model_profile": "kev"
     },
     {
       "id": "decider",
@@ -124,7 +163,11 @@
         "optional_instructions": true
       },
       "verification": "source-reviewed",
-      "stars": 1047
+      "stars": 1047,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "decider",
+      "model_profile": "decider"
     },
     {
       "id": "nimble",
@@ -141,7 +184,11 @@
         "score_max": 26
       },
       "verification": "source-reviewed",
-      "stars": 2032
+      "stars": 2032,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "nimble",
+      "model_profile": "nimble"
     },
     {
       "id": "von",
@@ -159,7 +206,11 @@
       "note": "Inspect truncation metadata retained in response extensions.",
       "profile": {},
       "verification": "source-reviewed",
-      "stars": 821
+      "stars": 821,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "von",
+      "model_profile": "von"
     },
     {
       "id": "openjev",
@@ -178,7 +229,11 @@
         "structured_legend": true
       },
       "verification": "source-reviewed",
-      "stars": 591
+      "stars": 591,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "openjev",
+      "model_profile": "openjev"
     },
     {
       "id": "codiv",
@@ -200,7 +255,11 @@
         "structured_legend": true
       },
       "verification": "source-reviewed",
-      "stars": 591
+      "stars": 591,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "codiv",
+      "model_profile": "codiv"
     },
     {
       "id": "open-jev",
@@ -215,7 +274,11 @@
         "structured_legend": true
       },
       "verification": "source-reviewed",
-      "stars": 389
+      "stars": 389,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "open-jev",
+      "model_profile": "open-jev"
     },
     {
       "id": "reflex",
@@ -228,7 +291,11 @@
       "note": "Single-pass typed decisions, including optional vision inputs.",
       "profile": {},
       "verification": "source-reviewed",
-      "stars": 161
+      "stars": 161,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "reflex",
+      "model_profile": "reflex"
     },
     {
       "id": "jevk5",
@@ -246,7 +313,11 @@
         "structured_legend": true
       },
       "verification": "source-reviewed",
-      "stars": 131
+      "stars": 131,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "jevk5",
+      "model_profile": "jevk5"
     },
     {
       "id": "openthai",
@@ -261,7 +332,11 @@
       "note": "Thai and English checkpoint.",
       "profile": {},
       "verification": "source-reviewed",
-      "stars": 65
+      "stars": 65,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "openthai",
+      "model_profile": "openthai"
     },
     {
       "id": "jeff",
@@ -280,7 +355,11 @@
         "structured_legend": true
       },
       "verification": "source-reviewed",
-      "stars": 284
+      "stars": 284,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "jeff",
+      "model_profile": "jeff"
     },
     {
       "id": "rizzo",
@@ -295,7 +374,11 @@
       "note": "Use its System One route; /v1/decisions is separate.",
       "profile": {},
       "verification": "source-reviewed",
-      "stars": 798
+      "stars": 798,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "rizzo",
+      "model_profile": "rizzo"
     },
     {
       "id": "ollaya",
@@ -311,7 +394,11 @@
         "probability_decimals": 4
       },
       "verification": "source-reviewed",
-      "stars": 1138
+      "stars": 1138,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "ollaya",
+      "model_profile": "ollaya"
     },
     {
       "id": "edgejev",
@@ -324,7 +411,11 @@
       "note": "ONNX runtime; use the model name configured on the server.",
       "profile": {},
       "verification": "source-reviewed",
-      "stars": 15
+      "stars": 15,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "edgejev",
+      "model_profile": "edgejev"
     },
     {
       "id": "openjev-sglang",
@@ -342,7 +433,11 @@
         "optional_instructions": true
       },
       "verification": "source-reviewed",
-      "stars": 337
+      "stars": 337,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "openjev-sglang",
+      "model_profile": "openjev-sglang"
     },
     {
       "id": "semif",
@@ -360,7 +455,11 @@
         "score_max": 255
       },
       "verification": "source-reviewed",
-      "stars": 4663
+      "stars": 4663,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "semif",
+      "model_profile": "semif"
     },
     {
       "id": "tev1",
@@ -378,7 +477,11 @@
         "score_max": 255
       },
       "verification": "source-reviewed",
-      "stars": 205
+      "stars": 205,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "tev1",
+      "model_profile": "tev1"
     },
     {
       "id": "nanojev",
@@ -396,7 +499,11 @@
         "score_max": 255
       },
       "verification": "source-reviewed",
-      "stars": 2478
+      "stars": 2478,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "nanojev",
+      "model_profile": "nanojev"
     },
     {
       "id": "agentjev",
@@ -414,7 +521,11 @@
         "score_max": 255
       },
       "verification": "source-reviewed",
-      "stars": 335
+      "stars": 335,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "agentjev",
+      "model_profile": "agentjev"
     },
     {
       "id": "anyjev",
@@ -432,7 +543,11 @@
         "score_max": 255
       },
       "verification": "source-reviewed",
-      "stars": 1018
+      "stars": 1018,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "anyjev",
+      "model_profile": "anyjev"
     },
     {
       "id": "verdict",
@@ -450,7 +565,11 @@
         "score_max": 255
       },
       "verification": "source-reviewed",
-      "stars": 293
+      "stars": 293,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "verdict",
+      "model_profile": "verdict"
     },
     {
       "id": "valen",
@@ -468,7 +587,11 @@
         "score_max": 255
       },
       "verification": "source-reviewed",
-      "stars": 574
+      "stars": 574,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "valen",
+      "model_profile": "valen"
     },
     {
       "id": "eikos",
@@ -486,7 +609,11 @@
         "modal_score": true
       },
       "verification": "source-reviewed",
-      "stars": 40
+      "stars": 40,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "eikos",
+      "model_profile": "eikos"
     },
     {
       "id": "dev",
@@ -504,7 +631,11 @@
         "score_max": 255
       },
       "verification": "source-reviewed",
-      "stars": 44
+      "stars": 44,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "dev",
+      "model_profile": "dev"
     },
     {
       "id": "blink",
@@ -522,24 +653,42 @@
         "score_max": 255
       },
       "verification": "source-reviewed",
-      "stars": 19
+      "stars": 19,
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "blink",
+      "model_profile": "blink"
     },
     {
       "id": "jev-omni",
       "name": "Jev-Omni",
       "access": "open",
       "integration": "capture",
-      "model_names": [],
+      "model_names": [
+        "akhilaaa3/Jev-Omni"
+      ],
       "upstream": null,
-      "source_url": "https://huggingface.co/akhilaaa3/Jev-Omni/blob/5addda86ddee081a68fb067477ea100c221b8917/README.md",
-      "note": "Use model-card runtime outputs in mapped captures; weights alone do not establish HTTP compatibility.",
+      "source_url": "https://huggingface.co/akhilaaa3/Jev-Omni/blob/fee89b076e2263bfa8bce8d34142caa4ca733a48/README.md",
+      "note": "Single-question Python classifier, distinct from both OmniJev projects. Offline --dialect jev-omni requires exact ordered option IDs. Observer inspects 2–255 options; native 256 is explicitly rejected by the converter.",
       "profile": {
         "optional_confidence": true,
         "optional_legend": true,
         "score_min": 1,
-        "score_max": 255
+        "score_max": 255,
+        "choice_min": 2
       },
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "jev-omni",
+      "model_profile": "jev-omni",
+      "source_pins": [
+        {
+          "url": "https://huggingface.co/akhilaaa3/Jev-Omni/resolve/fee89b076e2263bfa8bce8d34142caa4ca733a48/jev_omni.py",
+          "revision": "fee89b076e2263bfa8bce8d34142caa4ca733a48",
+          "sha256": "11d761b0b6cefc8aac29757f43af4b2b02af8f9b6c6dad19834c0b14538180f0"
+        }
+      ]
     },
     {
       "id": "autotrust",
@@ -560,7 +709,11 @@
         "score_min": 1,
         "score_max": 255
       },
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "autotrust",
+      "model_profile": "autotrust"
     },
     {
       "id": "neohorse",
@@ -579,7 +732,11 @@
         "score_min": 1,
         "score_max": 255
       },
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "neohorse",
+      "model_profile": "neohorse"
     },
     {
       "id": "matilda",
@@ -593,7 +750,11 @@
       "source_url": "https://huggingface.co/Maincode/matilda-jev-v1/blob/c87f57504300588ff4270ff5ac17c38d1c7996b9/README.md",
       "note": "Bundled System One runtime supports optional images.",
       "profile": {},
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "matilda",
+      "model_profile": "matilda"
     },
     {
       "id": "jev-style",
@@ -610,7 +771,11 @@
         "score_min": 1,
         "score_max": 255
       },
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "jev-style",
+      "model_profile": "jev-style"
     },
     {
       "id": "intern-decision",
@@ -631,7 +796,11 @@
         "score_min": 1,
         "score_max": 255
       },
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "intern-decision",
+      "model_profile": "intern-decision"
     },
     {
       "id": "frida",
@@ -650,7 +819,11 @@
         "score_min": 1,
         "score_max": 255
       },
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "frida",
+      "model_profile": "frida"
     },
     {
       "id": "vllm-sr",
@@ -667,7 +840,911 @@
         "score_min": 1,
         "score_max": 255
       },
-      "verification": "source-reviewed"
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-03",
+      "protocol": "systemone",
+      "provider": "vllm-sr",
+      "model_profile": "vllm-sr"
+    },
+    {
+      "id": "onejev",
+      "name": "OneJev 1.6 (OmniJev organization)",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "OmniJev/OneJev1.6-0.8B",
+        "OmniJev/OneJev1.6-4B",
+        "OmniJev/OneJev1.6-9B",
+        "OmniJev/OneJev1.6-27B"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/README.md",
+      "note": "qev server; choose the port and loaded checkpoint you started. Six-decimal results and one-level Scores. New TypeSafe SDK clients need compression disabled for the reviewed qev JSON parser.",
+      "profile": {
+        "probability_decimals": 6,
+        "score_min": 1,
+        "optional_instructions": true,
+        "structured_legend": true,
+        "json_legend": true,
+        "nullable_noul_criteria": true,
+        "nullable_score_levels": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "onejev",
+      "model_profile": "onejev",
+      "source_pins": [
+        {
+          "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/schema.py",
+          "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+          "git_blob": "9c79cf9a86262b3394cfa1aecfdcea8ea8a09f30"
+        },
+        {
+          "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/answers.py",
+          "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+          "git_blob": "e01e9a388e94b422586e8874d84ed4a647ecba49"
+        },
+        {
+          "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/server.py",
+          "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+          "git_blob": "607a63d9b28a129498247da878a70acb8d930dcd"
+        },
+        {
+          "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/client.py",
+          "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+          "git_blob": "c107174b71d75d1adf4740cb1f4e9839d7398614"
+        },
+        {
+          "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/media.py",
+          "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+          "git_blob": "b402e493f5e143c49bf20375098df02fd0432c88"
+        }
+      ]
+    },
+    {
+      "id": "omnijev",
+      "name": "OmniJev v1.1 (older MSO library)",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [],
+      "upstream": null,
+      "source_url": "https://github.com/tinnel123666888/OmniJev/blob/14dbec4f71e194852c8d7b88ab36ef639493f400/mso/infer.py",
+      "note": "Distinct from OneJev. Offline --dialect omnijev preserves abstention and modal Score. Abstaining/invalid results remain invalid; no mass renormalization. 255 levels is an Observer inspection bound, not an upstream limit.",
+      "profile": {
+        "probability_decimals": 4,
+        "score_min": 1,
+        "score_max": 255,
+        "modal_score": true,
+        "optional_legend": true,
+        "reported_abstention": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "omnijev",
+      "model_profile": "omnijev",
+      "source_pins": [
+        {
+          "url": "https://raw.githubusercontent.com/tinnel123666888/OmniJev/14dbec4f71e194852c8d7b88ab36ef639493f400/mso/infer.py",
+          "revision": "14dbec4f71e194852c8d7b88ab36ef639493f400",
+          "sha256": "03d047b7ffa73ba5c3f142ba7a5881c20d07f73c4f0b3ccacc7ac10554b209bf"
+        }
+      ]
+    },
+    {
+      "id": "clef",
+      "name": "Cloudflare Clef native helpers",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [
+        "Cloudflare/clef",
+        "Cloudflare/clef-flash",
+        "Cloudflare/clef-omni"
+      ],
+      "upstream": null,
+      "source_url": "https://huggingface.co/Cloudflare/clef-omni/resolve/df2d7c9505e62ba8a527b147513a4fa66a77dc5d/README.md",
+      "note": "Saved native helper results use System One capture import. Four-decimal output; 255 choices/levels is the Observer inspection bound, not a documented native maximum. Runtime wrappers have separate profiles.",
+      "profile": {
+        "probability_decimals": 4,
+        "score_min": 1,
+        "score_max": 255,
+        "optional_instructions": true,
+        "json_text": true,
+        "json_legend": true,
+        "structured_legend": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "clef",
+      "model_profile": "clef",
+      "source_pins": [
+        {
+          "url": "https://huggingface.co/Cloudflare/clef-omni/resolve/df2d7c9505e62ba8a527b147513a4fa66a77dc5d/README.md",
+          "revision": "df2d7c9505e62ba8a527b147513a4fa66a77dc5d",
+          "sha256": "f85fa4cb9d7e2df8f25568faa9527b9657620c4da8098cd2ad24005780640bda"
+        },
+        {
+          "url": "https://huggingface.co/Cloudflare/clef-omni/resolve/df2d7c9505e62ba8a527b147513a4fa66a77dc5d/joint_schema_model.py",
+          "revision": "df2d7c9505e62ba8a527b147513a4fa66a77dc5d",
+          "sha256": "21d05ebb8cbea26a26af65eca3d16cf4b69bf80a320e2d5b203e86f0d632a670"
+        },
+        {
+          "url": "https://huggingface.co/Cloudflare/clef/resolve/a30162b99d68a481d8bd75d38df069a0cf83df40/joint_schema_model.py",
+          "revision": "a30162b99d68a481d8bd75d38df069a0cf83df40",
+          "sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
+        },
+        {
+          "url": "https://huggingface.co/Cloudflare/clef-flash/resolve/f0b7d3cd65296abfe459e6c228b618f5d8b26d2f/joint_schema_model.py",
+          "revision": "f0b7d3cd65296abfe459e6c228b618f5d8b26d2f",
+          "sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
+        },
+        {
+          "url": "https://developers.cloudflare.com/workers-ai/models/clef-omni/",
+          "revision": null,
+          "sha256": "ad22984caa711008c028c24f87193268073c5bcfff464a4c0a2695dbbf0c28b7"
+        },
+        {
+          "url": "https://developers.cloudflare.com/workers-ai/get-started/rest-api/",
+          "revision": null,
+          "sha256": "ac66316dfebe0046a02deb7f59694a33392cf31d26ccff2f3bfc3041cb5915ea"
+        },
+        {
+          "url": "https://blog.cloudflare.com/clef-faster-cheaper-multimodal/",
+          "revision": null,
+          "sha256": "cf6c739bdf30c5d66336898ac9b00052856e5989a79a6a4d760860ee53aff461"
+        }
+      ]
+    },
+    {
+      "id": "cloudflare-clef",
+      "name": "Clef through Cloudflare Workers AI",
+      "access": "closed",
+      "integration": "proxy",
+      "model_names": [
+        "@cf/cloudflare/clef-omni"
+      ],
+      "upstream": "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/run/@cf/cloudflare/clef-omni",
+      "source_url": "https://huggingface.co/Cloudflare/clef-omni/resolve/df2d7c9505e62ba8a527b147513a4fa66a77dc5d/README.md",
+      "note": "Replace ACCOUNT_ID. Bearer API token; select cloudflare-systemone to unwrap REST result/success. Worker bindings return a different outer envelope. Native helper precision is reviewed; no authenticated REST inference was performed.",
+      "profile": {
+        "probability_decimals": 4,
+        "score_min": 1,
+        "score_max": 255,
+        "optional_instructions": true,
+        "json_text": true,
+        "json_legend": true,
+        "structured_legend": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "cloudflare-systemone",
+      "provider": "cloudflare",
+      "model_profile": "cloudflare-clef",
+      "source_pins": [
+        {
+          "url": "https://huggingface.co/Cloudflare/clef-omni/resolve/df2d7c9505e62ba8a527b147513a4fa66a77dc5d/README.md",
+          "revision": "df2d7c9505e62ba8a527b147513a4fa66a77dc5d",
+          "sha256": "f85fa4cb9d7e2df8f25568faa9527b9657620c4da8098cd2ad24005780640bda"
+        },
+        {
+          "url": "https://huggingface.co/Cloudflare/clef-omni/resolve/df2d7c9505e62ba8a527b147513a4fa66a77dc5d/joint_schema_model.py",
+          "revision": "df2d7c9505e62ba8a527b147513a4fa66a77dc5d",
+          "sha256": "21d05ebb8cbea26a26af65eca3d16cf4b69bf80a320e2d5b203e86f0d632a670"
+        },
+        {
+          "url": "https://huggingface.co/Cloudflare/clef/resolve/a30162b99d68a481d8bd75d38df069a0cf83df40/joint_schema_model.py",
+          "revision": "a30162b99d68a481d8bd75d38df069a0cf83df40",
+          "sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
+        },
+        {
+          "url": "https://huggingface.co/Cloudflare/clef-flash/resolve/f0b7d3cd65296abfe459e6c228b618f5d8b26d2f/joint_schema_model.py",
+          "revision": "f0b7d3cd65296abfe459e6c228b618f5d8b26d2f",
+          "sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
+        },
+        {
+          "url": "https://developers.cloudflare.com/workers-ai/models/clef-omni/",
+          "revision": null,
+          "sha256": "ad22984caa711008c028c24f87193268073c5bcfff464a4c0a2695dbbf0c28b7"
+        },
+        {
+          "url": "https://developers.cloudflare.com/workers-ai/get-started/rest-api/",
+          "revision": null,
+          "sha256": "ac66316dfebe0046a02deb7f59694a33392cf31d26ccff2f3bfc3041cb5915ea"
+        },
+        {
+          "url": "https://blog.cloudflare.com/clef-faster-cheaper-multimodal/",
+          "revision": null,
+          "sha256": "cf6c739bdf30c5d66336898ac9b00052856e5989a79a6a4d760860ee53aff461"
+        }
+      ]
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama System One runtime",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [],
+      "upstream": "http://127.0.0.1:11434/v1/systemone",
+      "source_url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/capabilities/decision.mdx",
+      "note": "Use the model actually pulled. Reviewed local generic renderer: 2–26 choices and 2–10 Score levels; no four-decimal rounding imposed. Model-specific runtime entries differ. Requires Ollama 0.35.0 or later.",
+      "profile": {
+        "choice_min": 2,
+        "choice_max": 26
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "ollama",
+      "model_profile": "ollama",
+      "source_pins": [
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/capabilities/decision.mdx",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "853c2b824c067644d81fe2dbd7eee912c02e5767e90b15d6e3df7bf5a53bad8e"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/systemone.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "c99f198e3307f16b5696db9d75c075af8572498801510970e7ce45adcfaea347"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/types.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "0609772af3f929f0923f93677b5dbdc1455874f7fe2848cb39aa83722effb5f5"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/clef.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "8e67f6ceb822929fb9cd0f299ad95c1a12e02dbb6978fbb7cb0ec549f87042ba"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/kev.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "f4d5d1d88fe4b39a9743594ffdd6a7f44cfe20474119ca791171b271c2466642"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/pplx.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "c1ef998b383f7fe5fe7bb1125c53b312998a46bad4f923bafb45bfc34e40b5f3"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/strands.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "e972b34c7bb6800c9cc1b51f2139f60f8f97f43193bd3514791f46a6b63b0eef"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/server/routes.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "b8528f189140afc0e4c9389e0c5a220a0dc535ab2b54f8f1ee146fd3974065e6"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/openapi.yaml",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "e94c8f02969c6807f431b7d0643eb0f8368f1d1baa719a4edaf07989b758f257"
+        },
+        {
+          "url": "https://ollama.com/library/clef",
+          "revision": null,
+          "sha256": "022ce603b2e122bbde95edbdeaf91da7585f40c6eaed35a84e3b89aaac3f3e91"
+        },
+        {
+          "url": "https://ollama.com/library/nimble-v3",
+          "revision": null,
+          "sha256": "9118c6132141c00e2cbb7b8f5fc56420223ba4f78d4ad9ab6f04de610b9d6bc0"
+        }
+      ]
+    },
+    {
+      "id": "ollama-clef",
+      "name": "Clef through local Ollama",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "clef"
+      ],
+      "upstream": "http://127.0.0.1:11434/v1/systemone",
+      "source_url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/capabilities/decision.mdx",
+      "note": "Local Clef renderer allows 2–26 choices / 2–10 Scores and preserves float precision. Cloud Clef has a different limit. Requires 0.35.1 or later; not a claim about every GGUF serializer.",
+      "profile": {
+        "choice_min": 2,
+        "choice_max": 26,
+        "optional_instructions": true,
+        "json_text": true,
+        "structured_legend": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "ollama",
+      "model_profile": "ollama-clef",
+      "source_pins": [
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/capabilities/decision.mdx",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "853c2b824c067644d81fe2dbd7eee912c02e5767e90b15d6e3df7bf5a53bad8e"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/systemone.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "c99f198e3307f16b5696db9d75c075af8572498801510970e7ce45adcfaea347"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/types.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "0609772af3f929f0923f93677b5dbdc1455874f7fe2848cb39aa83722effb5f5"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/clef.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "8e67f6ceb822929fb9cd0f299ad95c1a12e02dbb6978fbb7cb0ec549f87042ba"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/kev.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "f4d5d1d88fe4b39a9743594ffdd6a7f44cfe20474119ca791171b271c2466642"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/pplx.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "c1ef998b383f7fe5fe7bb1125c53b312998a46bad4f923bafb45bfc34e40b5f3"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/strands.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "e972b34c7bb6800c9cc1b51f2139f60f8f97f43193bd3514791f46a6b63b0eef"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/server/routes.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "b8528f189140afc0e4c9389e0c5a220a0dc535ab2b54f8f1ee146fd3974065e6"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/openapi.yaml",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "e94c8f02969c6807f431b7d0643eb0f8368f1d1baa719a4edaf07989b758f257"
+        },
+        {
+          "url": "https://ollama.com/library/clef",
+          "revision": null,
+          "sha256": "022ce603b2e122bbde95edbdeaf91da7585f40c6eaed35a84e3b89aaac3f3e91"
+        },
+        {
+          "url": "https://ollama.com/library/nimble-v3",
+          "revision": null,
+          "sha256": "9118c6132141c00e2cbb7b8f5fc56420223ba4f78d4ad9ab6f04de610b9d6bc0"
+        }
+      ]
+    },
+    {
+      "id": "ollama-kev",
+      "name": "Kev through Ollama",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "kev"
+      ],
+      "upstream": "http://127.0.0.1:11434/v1/systemone",
+      "source_url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/capabilities/decision.mdx",
+      "note": "Reviewed Kev renderer uses one to 255 options/levels, optional instructions and four-decimal output; choose a loaded Kev checkpoint.",
+      "profile": {
+        "score_min": 1,
+        "score_max": 255,
+        "optional_instructions": true,
+        "json_text": true,
+        "probability_decimals": 4
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "ollama",
+      "model_profile": "ollama-kev",
+      "source_pins": [
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/capabilities/decision.mdx",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "853c2b824c067644d81fe2dbd7eee912c02e5767e90b15d6e3df7bf5a53bad8e"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/systemone.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "c99f198e3307f16b5696db9d75c075af8572498801510970e7ce45adcfaea347"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/types.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "0609772af3f929f0923f93677b5dbdc1455874f7fe2848cb39aa83722effb5f5"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/clef.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "8e67f6ceb822929fb9cd0f299ad95c1a12e02dbb6978fbb7cb0ec549f87042ba"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/kev.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "f4d5d1d88fe4b39a9743594ffdd6a7f44cfe20474119ca791171b271c2466642"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/pplx.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "c1ef998b383f7fe5fe7bb1125c53b312998a46bad4f923bafb45bfc34e40b5f3"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/strands.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "e972b34c7bb6800c9cc1b51f2139f60f8f97f43193bd3514791f46a6b63b0eef"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/server/routes.go",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "b8528f189140afc0e4c9389e0c5a220a0dc535ab2b54f8f1ee146fd3974065e6"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/openapi.yaml",
+          "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+          "sha256": "e94c8f02969c6807f431b7d0643eb0f8368f1d1baa719a4edaf07989b758f257"
+        },
+        {
+          "url": "https://ollama.com/library/clef",
+          "revision": null,
+          "sha256": "022ce603b2e122bbde95edbdeaf91da7585f40c6eaed35a84e3b89aaac3f3e91"
+        },
+        {
+          "url": "https://ollama.com/library/nimble-v3",
+          "revision": null,
+          "sha256": "9118c6132141c00e2cbb7b8f5fc56420223ba4f78d4ad9ab6f04de610b9d6bc0"
+        }
+      ]
+    },
+    {
+      "id": "liquid-d1",
+      "name": "Liquid d1 / d1-ultra hosted",
+      "access": "closed",
+      "integration": "proxy",
+      "model_names": [
+        "d1",
+        "d1-ultra"
+      ],
+      "upstream": "https://api.liquid.ai/decisions/v1/systemone",
+      "source_url": "https://docs.liquid.ai/lfm/models/decision-models",
+      "note": "Bearer Liquid API key. SDK compression must be disabled for this documented endpoint. Undocumented cardinality/serialization details retain strict Observer defaults; image HTTP extensions differ from SDK inputs.",
+      "profile": {},
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "liquid",
+      "model_profile": "liquid-d1",
+      "source_pins": [
+        {
+          "url": "https://docs.liquid.ai/lfm/models/decision-models",
+          "revision": null,
+          "sha256": "e9f70d528378bf1178582fffeb50e16121278b612247ed1b786a87d31f1f6669"
+        },
+        {
+          "url": "https://docs.liquid.ai/lfm/models/d1",
+          "revision": null,
+          "sha256": "2dd5bcbd45c5128de7b1292f6c230939ce2aa34756748fd42a78c64d5ee91403"
+        }
+      ]
+    },
+    {
+      "id": "liquid-d1-open",
+      "name": "Liquid d1-3B library",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [
+        "LiquidAI/d1-3B"
+      ],
+      "upstream": null,
+      "source_url": "https://www.liquid.ai/blog/d1-open",
+      "note": "Save the original system_one request and answers/usage result; its library response has no model field. Preserve caller request model and batch identity. Other serving wrappers are separate contracts.",
+      "profile": {
+        "nullable_noul_criteria": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "liquid",
+      "model_profile": "liquid-d1-open",
+      "source_pins": [
+        {
+          "url": "https://www.liquid.ai/blog/d1-open",
+          "revision": null,
+          "sha256": "f510993a64476bab940d3b081d9267922e8615d160dcfbe9aa83df26b4b2dd33"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-3B/resolve/051bcc464b01b9f92942b364d9586b0ef5912432/README.md",
+          "revision": "051bcc464b01b9f92942b364d9586b0ef5912432",
+          "sha256": "175b0bd5f0b4272a67723e16d5e1994e7a8c2d162e7797c9f1c24c01fed83f1d"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-3B/resolve/051bcc464b01b9f92942b364d9586b0ef5912432/api.py",
+          "revision": "051bcc464b01b9f92942b364d9586b0ef5912432",
+          "sha256": "94e9f82eabfdf92c4abe1153e9a6dc4dd9821f9cc2fec3221e79e70723d8ada0"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-3B/resolve/051bcc464b01b9f92942b364d9586b0ef5912432/prompt.py",
+          "revision": "051bcc464b01b9f92942b364d9586b0ef5912432",
+          "sha256": "a20b5f52e41a6d29e694bb8c861a5a4803ce3eb69364edad79511ccf8edb5c31"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-omni-600M/resolve/02b55d7076f15129e59ab3f94783f32c4b088674/README.md",
+          "revision": "02b55d7076f15129e59ab3f94783f32c4b088674",
+          "sha256": "6577bee7b8cb23b595a90e99aa82007f57214d447f0ebcdfb2e812a7123d57bf"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-omni-600M/resolve/02b55d7076f15129e59ab3f94783f32c4b088674/modeling_d1.py",
+          "revision": "02b55d7076f15129e59ab3f94783f32c4b088674",
+          "sha256": "2b71a5c909ec5d3aa6307378a41a0fd24af1e17d5c1c1f8d510582147051a686"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-omni-600M/resolve/02b55d7076f15129e59ab3f94783f32c4b088674/prompt.py",
+          "revision": "02b55d7076f15129e59ab3f94783f32c4b088674",
+          "sha256": "a6b29a55ec8345f1fc1fdbfcc4b64d80d473dc4316f095a62c51cb6cce1194cf"
+        }
+      ]
+    },
+    {
+      "id": "liquid-d1-omni",
+      "name": "Liquid d1-omni-600M library",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [
+        "LiquidAI/d1-omni-600M"
+      ],
+      "upstream": null,
+      "source_url": "https://www.liquid.ai/blog/d1-open",
+      "note": "Saved Python invocation: text/images or audio, not images and audio together. Stringified legends and full probabilities; no native HTTP server inferred from model weights.",
+      "profile": {
+        "choice_min": 2,
+        "json_text": true,
+        "nullable_noul_criteria": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "liquid",
+      "model_profile": "liquid-d1-omni",
+      "source_pins": [
+        {
+          "url": "https://www.liquid.ai/blog/d1-open",
+          "revision": null,
+          "sha256": "f510993a64476bab940d3b081d9267922e8615d160dcfbe9aa83df26b4b2dd33"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-3B/resolve/051bcc464b01b9f92942b364d9586b0ef5912432/README.md",
+          "revision": "051bcc464b01b9f92942b364d9586b0ef5912432",
+          "sha256": "175b0bd5f0b4272a67723e16d5e1994e7a8c2d162e7797c9f1c24c01fed83f1d"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-3B/resolve/051bcc464b01b9f92942b364d9586b0ef5912432/api.py",
+          "revision": "051bcc464b01b9f92942b364d9586b0ef5912432",
+          "sha256": "94e9f82eabfdf92c4abe1153e9a6dc4dd9821f9cc2fec3221e79e70723d8ada0"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-3B/resolve/051bcc464b01b9f92942b364d9586b0ef5912432/prompt.py",
+          "revision": "051bcc464b01b9f92942b364d9586b0ef5912432",
+          "sha256": "a20b5f52e41a6d29e694bb8c861a5a4803ce3eb69364edad79511ccf8edb5c31"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-omni-600M/resolve/02b55d7076f15129e59ab3f94783f32c4b088674/README.md",
+          "revision": "02b55d7076f15129e59ab3f94783f32c4b088674",
+          "sha256": "6577bee7b8cb23b595a90e99aa82007f57214d447f0ebcdfb2e812a7123d57bf"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-omni-600M/resolve/02b55d7076f15129e59ab3f94783f32c4b088674/modeling_d1.py",
+          "revision": "02b55d7076f15129e59ab3f94783f32c4b088674",
+          "sha256": "2b71a5c909ec5d3aa6307378a41a0fd24af1e17d5c1c1f8d510582147051a686"
+        },
+        {
+          "url": "https://huggingface.co/LiquidAI/d1-omni-600M/resolve/02b55d7076f15129e59ab3f94783f32c4b088674/prompt.py",
+          "revision": "02b55d7076f15129e59ab3f94783f32c4b088674",
+          "sha256": "a6b29a55ec8345f1fc1fdbfcc4b64d80d473dc4316f095a62c51cb6cce1194cf"
+        }
+      ]
+    },
+    {
+      "id": "microsoft-decision",
+      "name": "Microsoft Decision1 on Foundry",
+      "access": "closed",
+      "integration": "proxy",
+      "model_names": [
+        "YOUR_DEPLOYMENT_NAME"
+      ],
+      "upstream": "https://YOUR_RESOURCE.services.ai.azure.com/providers/microsoft/v1/systemone",
+      "source_url": "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision",
+      "note": "Replace resource and deployment. Use an Entra Bearer token with the proxy; native api-key authentication is a separate header path. Request deployment and returned underlying model names differ. No undocumented Score cap or precision inferred.",
+      "profile": {},
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "microsoft",
+      "model_profile": "microsoft-decision",
+      "source_pins": [
+        {
+          "url": "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision",
+          "revision": null,
+          "sha256": "d240d1453506d1fa186a1f12f8a2152ba7f45e9e4abbffdccb12b32922726903"
+        },
+        {
+          "url": "https://commandline.microsoft.com/microsoft-decision-1-model-foundry/",
+          "revision": null,
+          "sha256": "474b61bc54eab173a105d51731fe4d70530d73f212faf6446e3be7b28add8f60"
+        }
+      ]
+    },
+    {
+      "id": "h2o-lightning",
+      "name": "H2O Lightning 4B",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "h2oai/h2o-lightning-4b"
+      ],
+      "upstream": "http://127.0.0.1:8741/v1/systemone",
+      "source_url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/README.md",
+      "note": "Reviewed 1.3.1 shim supports 1–255 levels and Box. No localization returns full-frame/confidence 0/found:false; this alone does not prove target absence. Preserve found/present. This is distinct from its OpenAI-style /v1/decisions adapter and GGUF runtime.",
+      "profile": {
+        "score_min": 1,
+        "score_max": 255,
+        "optional_instructions": true,
+        "json_text": true,
+        "box_answers": true,
+        "box_presence": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "h2o-lightning",
+      "model_profile": "h2o-lightning",
+      "source_pins": [
+        {
+          "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/README.md",
+          "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+          "sha256": "50ffa0b65c225e7a8fe74909c2b9454765a48a10011cda8e1bb926b2f78ff610"
+        },
+        {
+          "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/h2o_lightning_shim.py",
+          "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+          "sha256": "2f42ea6d3aeb057559c27d1aaa0b35ea582f33691ed342a76869f3547a0cb074"
+        },
+        {
+          "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/serve_config.json",
+          "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+          "sha256": "1157d869d84ec5560cb3760c6697bc2e31d503a699d4c24cf45d932f7a9e8a8c"
+        },
+        {
+          "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/box.py",
+          "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+          "sha256": "044d98014e28a03b3903488b2a1c89976f5c6730a15dbfe04d30dae8480fe791"
+        },
+        {
+          "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/assets.py",
+          "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+          "sha256": "e30ff2efd7628ade3cdc548c936751db9c433e6ad3a143f4d122b0baddcdc94c"
+        },
+        {
+          "url": "https://h2o.ai/company/press-media/2026/h2o-lightning-4b-ranks-first-on-jevbench",
+          "revision": null,
+          "sha256": "031fb0c8eefbcd6aabea9625b748ba38f09836c8d2d8692381f47d494d3bc3c4"
+        }
+      ]
+    },
+    {
+      "id": "strands-decider",
+      "name": "Strands Decider",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "StrandsAgents/strands-decider-2B-hobson-v19"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/README.md",
+      "note": "Start the reviewed server separately. 2–255 choices / 2–10 Score levels; four-decimal output and nullable Noul criteria. Default checkpoint is text-only; vision engines require separate setup.",
+      "profile": {
+        "choice_min": 2,
+        "probability_decimals": 4,
+        "nullable_noul_criteria": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "strands-decider",
+      "model_profile": "strands-decider",
+      "source_pins": [
+        {
+          "url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/README.md",
+          "revision": "d942e5515db750f80a51032629ec312455a87976",
+          "sha256": "37bfc4d0ab6c8f787739ac257bb6e6331ba501f4960d2f3afb7356d38d29b202"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/src/strands_decider/server.py",
+          "revision": "d942e5515db750f80a51032629ec312455a87976",
+          "sha256": "dfe2cbd5616fa5ee6068f54819c19b5b8194f864ea64b0f0956cf86ad89a2252"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/src/strands_decider/schema.py",
+          "revision": "d942e5515db750f80a51032629ec312455a87976",
+          "sha256": "a8ff32aa6bde8ce0dacb07aafe79264af5dbd47e7c147f4543ee8b758b662afc"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/src/strands_decider/infer.py",
+          "revision": "d942e5515db750f80a51032629ec312455a87976",
+          "sha256": "a29fbee918e4e67be1d5f302785e39cd16d7eb1d7b96d8074d2a205602c24e7a"
+        },
+        {
+          "url": "https://huggingface.co/api/models/StrandsAgents/strands-decider-2B-hobson-v19",
+          "revision": null,
+          "sha256": "a5800ca31bf664ec2e1194b963de13f51f49ddbdcfc6770659a1be32dab242f4"
+        }
+      ]
+    },
+    {
+      "id": "pplx-decider-v11",
+      "name": "Perplexity Decider v1.1",
+      "access": "open",
+      "integration": "proxy",
+      "model_names": [
+        "perplexity-ai/pplx-decider-v1.1-27b"
+      ],
+      "upstream": "http://127.0.0.1:8000/v1/systemone",
+      "source_url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/README.md",
+      "note": "Reviewed v1.1 server: 1–255 choices / 2–10 Score levels, optional instructions and at most 4 image inputs. Its serialization precision was not inferred from v1.2 or an Ollama wrapper.",
+      "profile": {
+        "optional_instructions": true,
+        "structured_legend": true,
+        "nullable_noul_criteria": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "perplexity",
+      "model_profile": "pplx-decider-v11",
+      "source_pins": [
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/README.md",
+          "revision": "14c9d90137962d300f3de95633f7b6535e80c5ce",
+          "sha256": "1cc6f24b69b187db2d8de8e5a39e8193afbfa0356afcd02c820cf1240d428c0a"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/source/src/autojev/server.py",
+          "revision": "14c9d90137962d300f3de95633f7b6535e80c5ce",
+          "sha256": "840088936dbcd19c9c1a0503f348fdc3e5aa07b7b58c690eaccc9dda314691c1"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/source/src/autojev/types.py",
+          "revision": "14c9d90137962d300f3de95633f7b6535e80c5ce",
+          "sha256": "250ba2eea1cd9bc5501bc76ba76b2f4a1d6c692a7fb1bba4b01affff38cb81ca"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/README.md",
+          "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+          "sha256": "978562adfa1e70609e0f1ca1376182ff4f7dfba4271ba81ab83a55da40633a9b"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/source/src/pplx_decider/protocol.py",
+          "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+          "sha256": "b29d7a50d7214bd42397f8d3ddd5b5706cb8da2b257e175bf89b5a8da455d6a0"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/source/src/pplx_decider/types.py",
+          "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+          "sha256": "3de3e545d81692346f65c0f4ff9843952696a12f7b357cf6a5d0e8545badff8a"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/source/src/pplx_decider/model.py",
+          "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+          "sha256": "ab5f42bd051d9e04cb9266e378d96dd72684c7a7f074efd9fc5117508e3dee91"
+        },
+        {
+          "url": "https://huggingface.co/api/models/perplexity-ai/pplx-decider-v1.2",
+          "revision": null,
+          "sha256": "cac131b3c13ac0bec668ba9aeed7bae008965d013b49d91089a9b2d18c905931"
+        }
+      ]
+    },
+    {
+      "id": "pplx-decider-v12",
+      "name": "Perplexity Decider v1.2 library",
+      "access": "open",
+      "integration": "capture",
+      "model_names": [
+        "perplexity-ai/pplx-decider-v1.2"
+      ],
+      "upstream": null,
+      "source_url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/README.md",
+      "note": "Joint-context Decider.decide library has 1–255 choices / 2–255 Scores; preserve the complete original request and sequence usage. No native HTTP server claimed; v1.1/Ollama rendering is not interchangeable.",
+      "profile": {
+        "score_max": 255,
+        "optional_instructions": true,
+        "structured_legend": true,
+        "nullable_noul_criteria": true
+      },
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "systemone",
+      "provider": "perplexity",
+      "model_profile": "pplx-decider-v12",
+      "source_pins": [
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/README.md",
+          "revision": "14c9d90137962d300f3de95633f7b6535e80c5ce",
+          "sha256": "1cc6f24b69b187db2d8de8e5a39e8193afbfa0356afcd02c820cf1240d428c0a"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/source/src/autojev/server.py",
+          "revision": "14c9d90137962d300f3de95633f7b6535e80c5ce",
+          "sha256": "840088936dbcd19c9c1a0503f348fdc3e5aa07b7b58c690eaccc9dda314691c1"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/source/src/autojev/types.py",
+          "revision": "14c9d90137962d300f3de95633f7b6535e80c5ce",
+          "sha256": "250ba2eea1cd9bc5501bc76ba76b2f4a1d6c692a7fb1bba4b01affff38cb81ca"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/README.md",
+          "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+          "sha256": "978562adfa1e70609e0f1ca1376182ff4f7dfba4271ba81ab83a55da40633a9b"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/source/src/pplx_decider/protocol.py",
+          "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+          "sha256": "b29d7a50d7214bd42397f8d3ddd5b5706cb8da2b257e175bf89b5a8da455d6a0"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/source/src/pplx_decider/types.py",
+          "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+          "sha256": "3de3e545d81692346f65c0f4ff9843952696a12f7b357cf6a5d0e8545badff8a"
+        },
+        {
+          "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/source/src/pplx_decider/model.py",
+          "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+          "sha256": "ab5f42bd051d9e04cb9266e378d96dd72684c7a7f074efd9fc5117508e3dee91"
+        },
+        {
+          "url": "https://huggingface.co/api/models/perplexity-ai/pplx-decider-v1.2",
+          "revision": null,
+          "sha256": "cac131b3c13ac0bec668ba9aeed7bae008965d013b49d91089a9b2d18c905931"
+        }
+      ]
+    },
+    {
+      "id": "openai-decisions",
+      "name": "OpenAI Decisions",
+      "access": "closed",
+      "integration": "proxy",
+      "model_names": [
+        "gpt-6-luna"
+      ],
+      "upstream": "https://api.openai.com/v1/decisions",
+      "source_url": "https://developers.openai.com/api/reference/resources/decisions/methods/create",
+      "note": "OpenAI native Decisions protocol; use the original choices/levels schema. Model names are source-reviewed suggestions, not an account availability check. HTTP reference says 1–400 questions; pinned SDK docstring says 1–200. No undocumented Score-level bound is claimed.",
+      "profile": {},
+      "verification": "source-reviewed",
+      "checked_at": "2026-10-23",
+      "protocol": "openai-decisions",
+      "provider": "openai",
+      "model_profile": "openai-decisions",
+      "source_pins": [
+        {
+          "url": "https://raw.githubusercontent.com/openai/openai-python/7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b/src/openai/resources/decisions.py",
+          "revision": "7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b",
+          "sha256": "3bb329d4f41d26022780ce0c97e093af7772de41385336559d018642813e340a"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/openai/openai-python/7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b/src/openai/types/decision.py",
+          "revision": "7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b",
+          "sha256": "0f3d7418efebcd85c3378556bf5165e1ca433d16bbe85ccb83e2c7207cf03ab1"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/openai/openai-python/7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b/src/openai/types/decision_create_params.py",
+          "revision": "7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b",
+          "sha256": "23f5742a2c683a75f7a56a847e6016f5e64147857d7ded70d4124a1f091dbe4b"
+        }
+      ]
     }
-  ]
+  ],
+  "review_scope": "Incremental source review; each entry retains its own checked_at date. No live model inference for these additions."
 }

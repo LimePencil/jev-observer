@@ -57,7 +57,7 @@ impl Store {
             for answer in answers {
                 tx.prepare_cached("INSERT OR IGNORE INTO groups(id,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter) VALUES(?,?,?,?,?,?,?,?,?,?,?)")?.execute( params![text(answer,"group_id"),text(answer,"key"),text(answer,"kind"),text(record,"source"),text(answer,"definition_id"),text(answer,"presentation_id"),serde_json::to_string(&answer["definition"])?,optional_text(answer,"task_version"),optional_text(answer,"family_id"),optional_text(answer,"family_name"),optional_text(answer,"adapter")])?;
                 let child = answer.as_object().context("Answer must be an object")?;
-                tx.prepare_cached("INSERT INTO answers(request_id,key,group_id,kind,valid,value_num,value_text,confidence,data) VALUES(?,?,?,?,?,?,?,?,?)")?.execute(params![id,text(answer,"key"),text(answer,"group_id"),text(answer,"kind"),answer["valid"].as_bool().unwrap_or(false),answer["value"].as_f64(),answer["value"].as_str(),answer["confidence"].as_f64(),serialize_without_field(child,"definition")?])?;
+                tx.prepare_cached("INSERT INTO answers(request_id,key,group_id,kind,valid,value_num,value_text,confidence,data) VALUES(?,?,?,?,?,?,?,?,?)")?.execute(params![id,text(answer,"key"),text(answer,"group_id"),text(answer,"kind"),answer["valid"].as_bool().unwrap_or(false),answer["value"].as_f64(),answer["choice_key"].as_str().or(answer["value"].as_str()),answer["confidence"].as_f64(),serialize_without_field(child,"definition")?])?;
             }
             if let Some(labels) = record["labels"].as_array() {
                 for label in labels {

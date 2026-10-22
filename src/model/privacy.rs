@@ -17,7 +17,9 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 pub(super) const REDACTED: &str = "[REDACTED]";
-pub(super) const INPUT_FIELDS: [&str; 5] = ["state", "images", "image", "audio", "video"];
+pub(super) const INPUT_FIELDS: [&str; 9] = [
+    "state", "images", "image", "audio", "video", "assets", "media", "videos", "input",
+];
 #[derive(Clone, Copy)]
 pub(super) struct RedactionLimits {
     pub(super) patterns: usize,
@@ -271,12 +273,16 @@ pub(super) fn scrub_string(value: &str, matcher: &mut SecretMatcher<'_>) -> Resu
 pub(super) enum IdentifierNamespace<'a> {
     Question,
     Choice(&'a str),
+    DecisionName(&'a str),
+    ScoreLabel(&'a str, u64),
 }
 
 #[derive(Default)]
 pub(super) struct SemanticIdentifiers<'a> {
     pub(super) questions: BTreeMap<String, &'a str>,
     pub(super) choices: BTreeMap<&'a str, BTreeMap<String, &'a str>>,
+    names: BTreeMap<&'a str, BTreeMap<String, &'a str>>,
+    levels: BTreeMap<(&'a str, u64), BTreeMap<String, &'a str>>,
     pub(super) count: usize,
 }
 
@@ -290,7 +296,9 @@ impl<'a> SemanticIdentifiers<'a> {
     ) -> Result<()> {
         let question_bytes = match namespace {
             IdentifierNamespace::Question => 0,
-            IdentifierNamespace::Choice(question) => question.len(),
+            IdentifierNamespace::Choice(question)
+            | IdentifierNamespace::DecisionName(question)
+            | IdentifierNamespace::ScoreLabel(question, _) => question.len(),
         };
         // Bound both B-tree lookups/comparisons and retained-key storage before
         // any owned allocation. Original identifiers borrow the input JSON;
@@ -307,6 +315,10 @@ impl<'a> SemanticIdentifiers<'a> {
         let identifiers = match namespace {
             IdentifierNamespace::Question => &mut self.questions,
             IdentifierNamespace::Choice(question) => self.choices.entry(question).or_default(),
+            IdentifierNamespace::DecisionName(question) => self.names.entry(question).or_default(),
+            IdentifierNamespace::ScoreLabel(question, index) => {
+                self.levels.entry((question, index)).or_default()
+            }
         };
         if let Some(previous) = identifiers.get(retained) {
             ensure!(*previous == original, RedactionCollisionError);
@@ -324,6 +336,7 @@ enum PrivacyContext<'a> {
     Other,
     Request(&'a Profile),
     Response(&'a Profile),
+    CloudflareResponse(&'a Profile),
     Questions(&'a Profile),
     Answers(&'a Profile),
     Definition(&'a Profile, Option<&'a str>),
@@ -336,6 +349,12 @@ enum PrivacyContext<'a> {
     ChoiceCriteria(&'a Profile, &'a str),
     ChoiceProbabilities(&'a str),
     Identifier(IdentifierNamespace<'a>),
+    TypedOptions(&'a str),
+    TypedOption(&'a str),
+    DecisionLevels(&'a str),
+    DecisionLevel(&'a str, u64),
+    ScoreProbabilities(&'a str),
+    ScoreProbability(&'a str, u64),
 }
 
 impl<'a> PrivacyContext<'a> {
@@ -343,6 +362,7 @@ impl<'a> PrivacyContext<'a> {
         match (self, key) {
             (Self::Request(profile), "questions") => Self::Questions(profile),
             (Self::Response(profile), "answers") => Self::Answers(profile),
+            (Self::CloudflareResponse(profile), "result") => Self::Response(profile),
             (Self::Questions(profile), _) => Self::Definition(profile, Some(key)),
             (Self::Answers(profile), _) => Self::Answer(profile, Some(key)),
             (Self::Observer(profile), "answers") => Self::ObserverAnswers(profile),
@@ -353,6 +373,33 @@ impl<'a> PrivacyContext<'a> {
                 Self::Answer(profile, question)
             }
             (Self::ObserverAnswer(_, _), "key") => Self::Identifier(IdentifierNamespace::Question),
+            (Self::Definition(profile, Some(question)), "choices") if profile.decisions => {
+                Self::TypedOptions(question)
+            }
+            (Self::Definition(profile, Some(question)), "levels") if profile.decisions => {
+                Self::DecisionLevels(question)
+            }
+            (
+                Self::Definition(profile, Some(question)) | Self::Answer(profile, Some(question)),
+                "name",
+            ) if profile.decisions => Self::Identifier(IdentifierNamespace::DecisionName(question)),
+            (Self::Answer(profile, Some(question)), "probabilities")
+                if profile.decisions && object["type"] == "score" =>
+            {
+                Self::ScoreProbabilities(question)
+            }
+            (
+                Self::DecisionLevel(question, index) | Self::ScoreProbability(question, index),
+                "label",
+            ) => Self::Identifier(IdentifierNamespace::ScoreLabel(question, index)),
+            (Self::Answer(profile, Some(question)), "probabilities")
+                if profile.decisions && object["type"] == "choice" =>
+            {
+                Self::TypedOptions(question)
+            }
+            (Self::TypedOption(question), "value") => {
+                Self::Identifier(IdentifierNamespace::Choice(question))
+            }
             (Self::Definition(profile, Some(question)), "criteria")
                 if object["type"] == "choice" =>
             {
@@ -391,12 +438,17 @@ impl<'a> PrivacyContext<'a> {
             || matches!(self, Self::NoulCriteria(_) | Self::SemanticMap)
     }
 
-    fn item(self, item: &'a Value) -> Self {
+    fn item(self, index: usize, item: &'a Value) -> Self {
         match self {
             Self::ObserverAnswers(profile) => Self::ObserverAnswer(profile, item["key"].as_str()),
             Self::ChoiceCriteria(profile, question) if profile.list_choice => {
                 Self::Identifier(IdentifierNamespace::Choice(question))
             }
+            Self::TypedOptions(question) => Self::TypedOption(question),
+            Self::DecisionLevels(question) => Self::DecisionLevel(question, index as u64),
+            Self::ScoreProbabilities(question) => item["value"]
+                .as_u64()
+                .map_or(Self::Other, |index| Self::ScoreProbability(question, index)),
             _ => Self::Other,
         }
     }
@@ -414,25 +466,46 @@ impl<'a> PrivacyContext<'a> {
     fn validates_optional_field(self, object: &Value, key: &str) -> bool {
         match self {
             Self::Definition(profile, _) => {
-                (key == "criteria" && object["type"] == "noul")
+                (key == "criteria" && matches!(object["type"].as_str(), Some("noul" | "box")))
                     || (key == "instructions" && profile.optional_instructions)
+                    || (key == "name" && profile.decisions)
             }
             Self::Answer(profile, _) => {
                 (key == "confidence"
                     && profile.optional_confidence
                     && matches!(object["type"].as_str(), Some("choice" | "score")))
                     || (key == "legend" && profile.optional_legend && object["type"] == "score")
+                    || (matches!(key, "found" | "present")
+                        && profile.box_presence
+                        && object["type"] == "box")
+                    || (key == "name" && profile.decisions)
+                    || (matches!(key, "valid" | "abstain") && profile.reported_abstention)
             }
+            Self::TypedOption(_) | Self::DecisionLevel(_, _) => key == "description",
             _ => false,
         }
     }
 
     fn repairs_text_shape(self, key: &str, original: &Value, retained: &Value) -> bool {
+        let strict_text = match self {
+            Self::Definition(profile, _) => {
+                profile.decisions && matches!(key, "instructions" | "name")
+            }
+            Self::Answer(profile, _) => profile.decisions && key == "name" && !original.is_null(),
+            Self::TypedOption(_) => key == "description",
+            Self::DecisionLevel(_, _) => matches!(key, "label" | "description"),
+            _ => false,
+        };
+        if strict_text {
+            return !original.is_string() && retained.is_string();
+        }
         let (profile, optional_null) = match self {
             Self::Definition(profile, _) if key == "instructions" => {
                 (profile, profile.optional_instructions)
             }
-            Self::NoulCriteria(profile) if matches!(key, "true" | "false") => (profile, false),
+            Self::NoulCriteria(profile) if matches!(key, "true" | "false") => {
+                (profile, profile.nullable_noul_criteria)
+            }
             _ => return false,
         };
         !accepts_text(original, profile, optional_null)
@@ -472,7 +545,10 @@ fn scrub_with_context<'a>(
         Value::Array(values) => Value::Array(
             values
                 .iter()
-                .map(|v| scrub_with_context(v, options, matcher, context.item(v), identifiers))
+                .enumerate()
+                .map(|(index, v)| {
+                    scrub_with_context(v, options, matcher, context.item(index, v), identifiers)
+                })
                 .collect::<Result<_>>()?,
         ),
         Value::Object(values) => {
@@ -604,7 +680,20 @@ pub(super) fn privacy_observer(
     options: &NormalizeOptions,
     remaining: &mut usize,
 ) -> Result<Value> {
-    let profile = catalog::profile(value["provider"].as_str().unwrap_or("typesafe"));
+    ensure!(
+        value["model_profile"].is_null()
+            || value["model_profile"]
+                .as_str()
+                .is_some_and(crate::catalog::known_profile),
+        "Unknown model_profile"
+    );
+    let mut profile = catalog::profile(
+        value["model_profile"]
+            .as_str()
+            .or(value["provider"].as_str())
+            .unwrap_or("typesafe"),
+    );
+    profile.decisions = value["protocol"] == "openai-decisions";
     let secrets = privacy_secrets(value, options, &[]);
     let retained = with_secret_matcher(&secrets, remaining, |matcher| {
         if !options.capture_state {
@@ -624,7 +713,18 @@ pub(super) fn privacy_observer(
         !value["answers"]
             .as_array()
             .is_some_and(|answers| !answers.is_empty())
-            || profile == catalog::profile(retained["provider"].as_str().unwrap_or("typesafe")),
+            || ({
+                let mut retained_profile = catalog::profile(
+                    retained["model_profile"]
+                        .as_str()
+                        .or(retained["provider"].as_str())
+                        .unwrap_or("typesafe"),
+                );
+                retained_profile.decisions = retained["protocol"] == "openai-decisions";
+                profile == retained_profile
+                    && value["protocol"] == retained["protocol"]
+                    && value["model_profile"] == retained["model_profile"]
+            }),
         RedactionValidationError
     );
     Ok(retained)
@@ -636,12 +736,15 @@ pub(super) fn privacy_capture_envelope(
     explicit: &[&str],
     remaining: &mut usize,
 ) -> Result<Value> {
-    let profile = catalog::profile(options.provider.as_deref().unwrap_or("typesafe"));
+    let profile = options.validation_profile();
     let secrets = privacy_secrets(envelope, options, explicit);
     with_secret_matcher(&secrets, remaining, |matcher| {
         if !options.capture_state {
             clear_input_fields(&mut envelope["request"]);
             clear_response_input_fields(&mut envelope["response"]);
+            if options.protocol == super::types::Protocol::CloudflareSystemone {
+                clear_response_input_fields(&mut envelope["response"]["result"]);
+            }
         }
         let mut out = Map::new();
         let mut identifiers = SemanticIdentifiers::default();
@@ -655,6 +758,11 @@ pub(super) fn privacy_capture_envelope(
             } else {
                 let context = match key.as_str() {
                     "request" => PrivacyContext::Request(&profile),
+                    "response"
+                        if options.protocol == super::types::Protocol::CloudflareSystemone =>
+                    {
+                        PrivacyContext::CloudflareResponse(&profile)
+                    }
                     "response" => PrivacyContext::Response(&profile),
                     _ => PrivacyContext::Other,
                 };
@@ -740,6 +848,9 @@ fn clear_observer_inputs(record: &mut Value) {
     }
     if let Some(response) = record.get_mut("response_extra") {
         clear_response_input_fields(response);
+    }
+    if let Some(metadata) = record.get_mut("protocol_metadata") {
+        clear_response_input_fields(metadata);
     }
     if let Some(receipt) = record.get_mut("receipt") {
         remove_receipt_inputs(receipt);

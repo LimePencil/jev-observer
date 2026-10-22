@@ -47,6 +47,10 @@ mod capture_decoding_tests {
     include!("server/capture_decoding_tests.rs");
 }
 
+mod protocol_tests {
+    include!("server_protocol_tests.rs");
+}
+
 struct Fixture {
     _directory: tempfile::TempDir,
     state: AppState,

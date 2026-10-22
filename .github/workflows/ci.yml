@@ -69,7 +69,9 @@ jobs:
           npm ci --prefix ui --no-audit --no-fund
           npm run build --prefix ui
       - name: Verify decision capture converters
-        run: python3 scripts/test-decision-capture.py
+        run: |
+          python3 scripts/test-decision-capture.py
+          python3 scripts/test-model-catalog.py
       - name: Verify retention soak failure diagnostics
         run: python3 scripts/test-retention-soak.py
       - name: Verify stress helper discovery without building or loading a server
