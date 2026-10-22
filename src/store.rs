@@ -148,6 +148,9 @@ const STRICT_ANSWER_QUERY: &str = "SELECT request_id,valid,value_num,confidence,
 
 const DASHBOARD_INDEX: &str = "CREATE INDEX request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id,json_extract(data,'$.transport_error'))";
 
+const FAMILY_PAIR_QUERY: &str = "SELECT g.id FROM answers a INDEXED BY sqlite_autoindex_answers_1 LEFT JOIN groups g ON g.id=a.group_id AND g.family_id IS NOT NULL WHERE a.request_id=?1 LIMIT ?2";
+const FAMILY_PAIR_SELECTION: &str = " AND g.id IN (SELECT group_id FROM temp.dashboard_family_pairs) AND a.request_id IN (SELECT request_id FROM temp.dashboard_family_pairs selected WHERE selected.group_id=g.id)";
+
 fn check_schema(conn: &Connection) -> Result<()> {
     let exists: bool = conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_version')",
@@ -1608,6 +1611,77 @@ impl Store {
             .transpose()
     }
 
+    /// Bound both unrelated groups and unrelated answers of a shared group.
+    /// Keep SQL's existing indexed accumulation order and aggregate semantics.
+    /// Dense/large selections retain the original family query unchanged.
+    fn family_dashboard_selection(
+        conn: &Connection,
+        parents: &HashMap<String, i64>,
+    ) -> Result<&'static str> {
+        if parents.is_empty() {
+            return Ok(" AND 0");
+        }
+        if parents.len() > 512 {
+            return Ok("");
+        }
+        let sparse: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM requests INDEXED BY request_time LIMIT 1 OFFSET ?)",
+            [(parents.len() * 4) as i64],
+            |row| row.get(0),
+        )?;
+        if !sparse {
+            return Ok("");
+        }
+        let mut statement = conn.prepare(FAMILY_PAIR_QUERY)?;
+        let mut pairs: HashMap<String, Vec<&String>> = HashMap::new();
+        let mut visited = 0;
+        let mut copied_bytes = 0;
+        for request in parents.keys() {
+            let mut rows = statement.query(params![request, 4097 - visited])?;
+            while let Some(row) = rows.next()? {
+                visited += 1;
+                if visited > 4096 {
+                    return Ok("");
+                }
+                // Count every answer, including strict or orphaned groups.
+                // Keep unusual legacy group-ID storage on the original path.
+                let group = match row.get_ref(0)?.as_str_or_null() {
+                    Ok(Some(group)) => group,
+                    Ok(None) => continue,
+                    Err(_) => return Ok(""),
+                };
+                // Sparse parents can still span many unrelated definitions.
+                // Fall back before owning the next group or building TEMP data.
+                if pairs.len() == 128 && !pairs.contains_key(group) {
+                    return Ok("");
+                }
+                for bytes in [group.len(), request.len()] {
+                    if bytes > 1024 * 1024 - copied_bytes {
+                        return Ok("");
+                    }
+                    copied_bytes += bytes;
+                }
+                if let Some(requests) = pairs.get_mut(group) {
+                    requests.push(request);
+                } else {
+                    pairs.insert(group.to_owned(), vec![request]);
+                }
+            }
+        }
+        // Readers keep temp_store=MEMORY. Build the bounded selection only
+        // after the probe succeeds, without retaining answer/definition JSON.
+        conn.execute_batch("CREATE TEMP TABLE dashboard_family_pairs(group_id TEXT NOT NULL,request_id TEXT NOT NULL,PRIMARY KEY(group_id,request_id)) WITHOUT ROWID")?;
+        let mut insert = conn.prepare(
+            "INSERT OR IGNORE INTO temp.dashboard_family_pairs(group_id,request_id) VALUES(?,?)",
+        )?;
+        for (group, requests) in pairs {
+            for request in requests {
+                insert.execute(params![group, request])?;
+            }
+        }
+        Ok(FAMILY_PAIR_SELECTION)
+    }
+
     pub fn dashboard(&self, filter: &Filter) -> Result<Value> {
         let mut anchored = filter.clone();
         anchored
@@ -1642,8 +1716,9 @@ impl Store {
         )?;
         // Families may contain multiple keys per request. Keep their exact SQL
         // distinct counts; strict groups compute metrics and bins in one pass.
+        let family_selection = Self::family_dashboard_selection(&tx, &parents)?;
         let from = format!(
-            "FROM groups g INDEXED BY sqlite_autoindex_groups_1 CROSS JOIN answers a INDEXED BY answer_statistics ON a.group_id=g.id CROSS JOIN requests r INDEXED BY request_join_scope ON r.id=a.request_id WHERE {predicate}"
+            "FROM groups g INDEXED BY sqlite_autoindex_groups_1 CROSS JOIN answers a INDEXED BY answer_statistics ON a.group_id=g.id CROSS JOIN requests r INDEXED BY request_join_scope ON r.id=a.request_id WHERE {predicate}{family_selection}"
         );
         let metrics = "count(*) AS answer_count,coalesce(sum(a.valid),0) AS valid_count,count(DISTINCT r.id) AS request_count,max(r.timestamp) AS last_seen,avg(CASE WHEN a.valid THEN a.value_num END) AS mean_value,avg(CASE WHEN a.valid THEN a.confidence END) AS mean_confidence";
         let mut stats = Self::strict_dashboard_groups(&tx, &parents, filter)?;
@@ -3683,3 +3758,7 @@ mod export_tests;
 #[cfg(test)]
 #[path = "retention_tests.rs"]
 mod retention_tests;
+
+#[cfg(test)]
+#[path = "family_selection_tests.rs"]
+mod family_selection_tests;
