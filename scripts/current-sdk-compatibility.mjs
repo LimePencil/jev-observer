@@ -21,7 +21,7 @@ for (const kind of ['small', 'large', 'multipart', 'disabled']) {
     apiKey: 'current-sdk-placeholder', baseURL: origin.origin,
     timeout: 5000, retry: { maxRetries: 0 }, logLevel: 'off',
     ...(kind === 'disabled' ? { compression: false } : {}),
-    defaultHeaders: { 'x-observer-source': `current-javascript-${kind}`, 'x-observer-access': process.env.OBSERVER_SDK_ACCESS, 'Accept-Encoding': 'identity' },
+    defaultHeaders: { 'x-observer-source': `current-javascript-${kind}`, 'x-observer-access': process.env.OBSERVER_SDK_ACCESS, 'Accept-Encoding': 'identity', ...(kind === 'multipart' ? { 'TypeSafe-Danger-Zone-Images': 'true' } : {}) },
     fetch: async (input, init) => {
       const destination = new URL(input);
       assert.equal(destination.href, origin.origin + '/v1/systemone');
@@ -32,7 +32,9 @@ for (const kind of ['small', 'large', 'multipart', 'disabled']) {
       assert.equal(coding, ['large', 'multipart'].includes(kind) ? 'zstd' : 'identity');
       const media = headers.get('Content-Type');
       assert.equal(media.startsWith('multipart/form-data;'), kind === 'multipart');
-      calls.push({ sha256: createHash('sha256').update(body).digest('hex'), coding, media });
+      const images = headers.get('TypeSafe-Danger-Zone-Images');
+      assert.equal(images, kind === 'multipart' ? 'true' : null);
+      calls.push({ sha256: createHash('sha256').update(body).digest('hex'), coding, media, images });
       const response = await fetch(input, init);
       assert.equal(response.status, 200);
       assert.deepEqual(Buffer.from(await response.clone().arrayBuffer()), responseBytes);

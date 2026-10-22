@@ -65,7 +65,9 @@ class Mock(BaseHTTPRequestHandler):
                 assert len(body) == size
             self.calls.append({'sha256': hashlib.sha256(body).hexdigest(),
                                'coding': self.headers.get('Content-Encoding', 'identity'),
-                               'media': self.headers.get('Content-Type')})
+                               'media': self.headers.get('Content-Type'),
+                               'images': self.headers.get('TypeSafe-Danger-Zone-Images')})
+            assert self.calls[-1]['images'] == ('true' if self.calls[-1]['media'].startswith('multipart/form-data;') else None)
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(RESPONSE)))
@@ -88,7 +90,9 @@ class Transport(httpx2.HTTPTransport):
         assert coding == ('zstd' if self.kind in ('large', 'multipart') else 'identity')
         media = request.headers.get('content-type')
         assert media.startswith('multipart/form-data;') == (self.kind == 'multipart')
-        self.calls.append({'sha256': hashlib.sha256(body).hexdigest(), 'coding': coding, 'media': media})
+        images = request.headers.get('TypeSafe-Danger-Zone-Images')
+        assert images == ('true' if self.kind == 'multipart' else None)
+        self.calls.append({'sha256': hashlib.sha256(body).hexdigest(), 'coding': coding, 'media': media, 'images': images})
         response = super().handle_request(request)
         response.read()
         assert response.status_code == 200 and response.content == RESPONSE
@@ -104,7 +108,8 @@ def python_sdk(origin, token):
                             retry=RetryPolicy(max_retries=0), timeout=5, transport=transport,
                             **({'compression': False} if kind == 'disabled' else {}),
                             headers={'x-observer-source': 'current-python-' + kind,
-                                     'x-observer-access': token, 'Accept-Encoding': 'identity'}) as client:
+                                     'x-observer-access': token, 'Accept-Encoding': 'identity',
+                                     **({'TypeSafe-Danger-Zone-Images': 'true'} if kind == 'multipart' else {})}) as client:
             state = {'password': STATE_SECRET, 'padding': '' if kind == 'small' else 'x' * 2048}
             if kind == 'multipart':
                 state['photo'] = Image(PNG)

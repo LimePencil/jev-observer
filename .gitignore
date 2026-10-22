@@ -3,6 +3,7 @@ __pycache__/
 /target/
 /ui/node_modules/
 /fixtures/sdk/node_modules/
+/fixtures/current-sdk/node_modules/
 /ui/dist/
 /data/
 *.sqlite
