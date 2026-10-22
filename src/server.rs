@@ -2203,97 +2203,103 @@ mod tests {
     #[tokio::test]
     async fn basic_credential_echoes_are_redacted_in_both_local_auth_modes() {
         for upstream_auth in [UpstreamAuth::Bearer, UpstreamAuth::None] {
-            let (url, task) = mock(Router::new().route(
-                "/v1/systemone",
-                post(move |request: Request| async move {
-                    let expected = (upstream_auth == UpstreamAuth::Bearer)
-                        .then_some("Bearer synthetic-fallback-provider-key");
-                    assert_eq!(
-                        request
-                            .headers()
-                            .get(header::AUTHORIZATION)
-                            .map(|value| value.to_str().unwrap()),
-                        expected
-                    );
-                    assert!(request.headers().get("x-observer-source").is_none());
-                    assert!(request.headers().get("x-observer-task-version").is_none());
-                    let body: Value =
-                        serde_json::from_slice(&to_bytes(request.into_body(), 4096).await.unwrap())
-                            .unwrap();
-                    Json(json!({"answers":{"q":{"type":"noul","noul":0.8}},
+            for prefix in [
+                "Basic ", "basic ", "BASIC ", "bAsIc ", "Basic  ", "bAsIc   ",
+            ] {
+                let (url, task) = mock(Router::new().route(
+                    "/v1/systemone",
+                    post(move |request: Request| async move {
+                        let expected = (upstream_auth == UpstreamAuth::Bearer)
+                            .then_some("Bearer synthetic-fallback-provider-key");
+                        assert_eq!(
+                            request
+                                .headers()
+                                .get(header::AUTHORIZATION)
+                                .map(|value| value.to_str().unwrap()),
+                            expected
+                        );
+                        assert!(request.headers().get("x-observer-source").is_none());
+                        assert!(request.headers().get("x-observer-task-version").is_none());
+                        let body: Value = serde_json::from_slice(
+                            &to_bytes(request.into_body(), 4096).await.unwrap(),
+                        )
+                        .unwrap();
+                        Json(json!({"answers":{"q":{"type":"noul","noul":0.8}},
                         "echo":body["echo"], "ordinary_extension":body["ordinary_extension"]}))
-                }),
-            ))
-            .await;
-            let mut fixture = fixture_with_config(&url, 4096, false, |config| {
-                config.upstream_auth = upstream_auth;
-                config.api_key = Some("synthetic-fallback-provider-key".into());
-            });
-            let access = Access::test();
-            fixture.state.access = Some(access.clone());
-            let basic = access.basic_header();
-            let component = basic.strip_prefix("Basic ").unwrap();
-            let mut echoes = vec![basic, component, access.token()];
-            if upstream_auth == UpstreamAuth::Bearer {
-                echoes.push("synthetic-fallback-provider-key");
-            }
-            let body = json!({"questions":{"q":{"type":"noul","instructions":"Synthetic question"}},
+                    }),
+                ))
+                .await;
+                let mut fixture = fixture_with_config(&url, 4096, false, |config| {
+                    config.upstream_auth = upstream_auth;
+                    config.api_key = Some("synthetic-fallback-provider-key".into());
+                });
+                let access = Access::test();
+                fixture.state.access = Some(access.clone());
+                let component = access.basic_header().strip_prefix("Basic ").unwrap();
+                let basic = format!("{prefix}{component}");
+                let basic = basic.as_str();
+                let mut echoes = vec![basic, component, access.token()];
+                if upstream_auth == UpstreamAuth::Bearer {
+                    echoes.push("synthetic-fallback-provider-key");
+                }
+                let body = json!({"questions":{"q":{"type":"noul","instructions":"Synthetic question"}},
                 "echo":echoes, "ordinary_extension":{"fixture":"ordinary retained text"}});
-            let mut invalid = native(body.to_string());
-            invalid.headers_mut().insert(
-                header::AUTHORIZATION,
-                HeaderValue::from_static("Basic invalid"),
-            );
-            let rejected = router(fixture.state.clone())
-                .oneshot(invalid)
-                .await
-                .unwrap();
-            assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
-            let rejection = to_bytes(rejected.into_body(), 1024).await.unwrap();
-            assert!(!String::from_utf8_lossy(&rejection).contains("Basic invalid"));
-            assert_eq!(fixture.state.collector.health()["forwarded"], 0);
-
-            let mut request = native(body.to_string());
-            request
-                .headers_mut()
-                .insert(header::AUTHORIZATION, HeaderValue::from_str(basic).unwrap());
-            request
-                .headers_mut()
-                .insert("x-observer-source", HeaderValue::from_str(basic).unwrap());
-            request.headers_mut().insert(
-                "x-observer-task-version",
-                HeaderValue::from_str(component).unwrap(),
-            );
-            let response = router(fixture.state.clone())
-                .oneshot(request)
-                .await
-                .unwrap();
-            assert_eq!(response.status(), StatusCode::OK);
-            let response: Value =
-                serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap())
-                    .unwrap();
-            assert_eq!(response["echo"], body["echo"]);
-            assert_eq!(response["ordinary_extension"], body["ordinary_extension"]);
-            let record = saved(&fixture).await;
-            let retained = record.to_string();
-            for secret in echoes {
-                assert!(
-                    !retained.contains(secret),
-                    "accepted local credential survived capture"
+                let mut invalid = native(body.to_string());
+                invalid.headers_mut().insert(
+                    header::AUTHORIZATION,
+                    HeaderValue::from_static("Basic invalid"),
                 );
+                let rejected = router(fixture.state.clone())
+                    .oneshot(invalid)
+                    .await
+                    .unwrap();
+                assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
+                let rejection = to_bytes(rejected.into_body(), 1024).await.unwrap();
+                assert!(!String::from_utf8_lossy(&rejection).contains("Basic invalid"));
+                assert_eq!(fixture.state.collector.health()["forwarded"], 0);
+
+                let mut request = native(body.to_string());
+                request
+                    .headers_mut()
+                    .insert(header::AUTHORIZATION, HeaderValue::from_str(basic).unwrap());
+                request
+                    .headers_mut()
+                    .insert("x-observer-source", HeaderValue::from_str(basic).unwrap());
+                request.headers_mut().insert(
+                    "x-observer-task-version",
+                    HeaderValue::from_str(component).unwrap(),
+                );
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                let response: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap())
+                        .unwrap();
+                assert_eq!(response["echo"], body["echo"]);
+                assert_eq!(response["ordinary_extension"], body["ordinary_extension"]);
+                let record = saved(&fixture).await;
+                let retained = record.to_string();
+                for secret in echoes {
+                    assert!(
+                        !retained.contains(secret),
+                        "accepted local credential survived capture"
+                    );
+                }
+                assert_eq!(record["source"], "[REDACTED]");
+                assert_eq!(record["answers"][0]["task_version"], "[REDACTED]");
+                assert_eq!(
+                    record["request_extra"]["ordinary_extension"],
+                    body["ordinary_extension"]
+                );
+                assert_eq!(
+                    record["response_extra"]["ordinary_extension"],
+                    body["ordinary_extension"]
+                );
+                fixture.state.collector.shutdown().await;
+                task.abort();
             }
-            assert_eq!(record["source"], "[REDACTED]");
-            assert_eq!(record["answers"][0]["task_version"], "[REDACTED]");
-            assert_eq!(
-                record["request_extra"]["ordinary_extension"],
-                body["ordinary_extension"]
-            );
-            assert_eq!(
-                record["response_extra"]["ordinary_extension"],
-                body["ordinary_extension"]
-            );
-            fixture.state.collector.shutdown().await;
-            task.abort();
         }
     }
 

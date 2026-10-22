@@ -127,7 +127,18 @@ impl Access {
     }
 
     pub fn allows_basic(&self, value: Option<&str>) -> bool {
-        value.is_some_and(|value| same_bytes(value.as_bytes(), self.basic.as_bytes()))
+        value
+            .and_then(|value| value.split_once(' '))
+            .is_some_and(|(scheme, credential)| {
+                // HTTP auth schemes are case-insensitive and use one or more
+                // ASCII spaces. Only that syntax is normalized: the encoded
+                // credential remains an exact, constant-time comparison.
+                scheme.eq_ignore_ascii_case("Basic")
+                    && same_bytes(
+                        credential.trim_start_matches(' ').as_bytes(),
+                        &self.basic.as_bytes()["Basic ".len()..],
+                    )
+            })
     }
 
     pub fn allows_token(&self, value: Option<&str>) -> bool {
@@ -248,6 +259,87 @@ mod tests {
                 panic!("Opening a named-pipe access token blocked startup");
             }
             std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+#[cfg(test)]
+mod basic_tests {
+    use super::*;
+
+    #[test]
+    fn basic_scheme_is_case_insensitive() {
+        let access = Access::test();
+        let credential = access.basic_header().strip_prefix("Basic ").unwrap();
+        for scheme in ["Basic", "basic", "BASIC", "bAsIc"] {
+            assert!(access.allows_basic(Some(&format!("{scheme} {credential}"))));
+        }
+    }
+
+    #[test]
+    fn basic_separator_accepts_multiple_ascii_spaces() {
+        let access = Access::test();
+        let credential = access.basic_header().strip_prefix("Basic ").unwrap();
+        for separator in [" ", "  ", "    "] {
+            assert!(access.allows_basic(Some(&format!("Basic{separator}{credential}"))));
+        }
+    }
+
+    #[test]
+    fn basic_credentials_remain_exact_and_case_sensitive() {
+        let access = Access::test();
+        let credential = access.basic_header().strip_prefix("Basic ").unwrap();
+        let mut changed_case = credential.as_bytes().to_vec();
+        let letter = changed_case
+            .iter_mut()
+            .find(|byte| byte.is_ascii_alphabetic())
+            .unwrap();
+        *letter = if letter.is_ascii_lowercase() {
+            letter.to_ascii_uppercase()
+        } else {
+            letter.to_ascii_lowercase()
+        };
+        let changed_case = String::from_utf8(changed_case).unwrap();
+        let wrong_user = STANDARD.encode(format!("Observer:{}", access.token()));
+        let wrong_token = STANDARD.encode(format!("observer:{PREFIX}{}", "b".repeat(64)));
+        for malformed in [
+            format!("Basic {changed_case}"),
+            format!("Basic {wrong_user}"),
+            format!("Basic {wrong_token}"),
+            format!("Basic {credential} trailing"),
+            format!("Basic {credential} "),
+            format!("Basic {credential}\t"),
+            format!("Basic {credential}="),
+        ] {
+            assert!(
+                !access.allows_basic(Some(&malformed)),
+                "altered credential accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn basic_separator_rejects_tabs_and_missing_components() {
+        let access = Access::test();
+        let credential = access.basic_header().strip_prefix("Basic ").unwrap();
+        assert!(!access.allows_basic(None));
+        for malformed in [
+            String::new(),
+            "Basic".into(),
+            "Basic ".into(),
+            "Basic    ".into(),
+            format!("Basic\t{credential}"),
+            format!("Basic \t{credential}"),
+            format!("Basic\t {credential}"),
+            format!("Basic\u{00a0}{credential}"),
+            format!(" Basic {credential}"),
+            format!("Bearer {credential}"),
+            format!("BasicX {credential}"),
+        ] {
+            assert!(
+                !access.allows_basic(Some(&malformed)),
+                "invalid Basic syntax accepted"
+            );
         }
     }
 }

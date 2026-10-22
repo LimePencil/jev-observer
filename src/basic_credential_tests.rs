@@ -59,22 +59,28 @@ fn basic_credential_import_headers_redact_full_and_encoded_echoes() {
     let access = crate::access::Access::test();
     let header = access.basic_header();
     let component = header.strip_prefix("Basic ").unwrap();
-    for (format, mut record) in records() {
-        let extra = extra(format, &mut record);
-        extra["headers"] = json!({"Authorization":header, "X-Observer-Access":access.token()});
-        extra["echo"] = json!([header, component, access.token()]);
-        extra["ordinary_extension"] = json!("ordinary retained text");
-        let imported =
-            import_records(&record.to_string(), format, &NormalizeOptions::default()).unwrap();
-        let retained = imported[0].to_string();
-        for secret in [header, component, access.token()] {
-            assert!(
-                !retained.contains(secret),
-                "known Basic credential survived {format}"
-            );
+    for prefix in [
+        "Basic ", "basic ", "BASIC ", "bAsIc ", "Basic  ", "bAsIc   ",
+    ] {
+        let header = format!("{prefix}{component}");
+        let header = header.as_str();
+        for (format, mut record) in records() {
+            let extra = extra(format, &mut record);
+            extra["headers"] = json!({"Authorization":header, "X-Observer-Access":access.token()});
+            extra["echo"] = json!([header, component, access.token()]);
+            extra["ordinary_extension"] = json!("ordinary retained text");
+            let imported =
+                import_records(&record.to_string(), format, &NormalizeOptions::default()).unwrap();
+            let retained = imported[0].to_string();
+            for secret in [header, component, access.token()] {
+                assert!(
+                    !retained.contains(secret),
+                    "known Basic credential survived {format}"
+                );
+            }
+            assert!(retained.contains("ordinary retained text"));
+            assert!(retained.contains(REDACTED));
         }
-        assert!(retained.contains("ordinary retained text"));
-        assert!(retained.contains(REDACTED));
     }
 }
 
