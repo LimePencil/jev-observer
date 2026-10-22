@@ -40,6 +40,8 @@ Unknown usage, cost, confidence and outcomes remain unknown. Version comparisons
 
 Dashboard and detail queries keep temporary selections and payload sorting in memory, so retained text is not written to SQLite temporary files. Large filtered histories can therefore use additional memory; this is not a process-memory cap.
 
+Retention removes at most 256 requests or orphaned groups per DELETE statement, while keeping the complete maintenance pass in one transaction. Smaller statements reduce temporary rollback-journal allocations without exposing partially pruned history. This is a row-count bound, not a memory cap: individual records, answer fanout, definitions and database caches can still use substantial memory.
+
 | Setting | Default |
 |---|---|
 | Listener | `127.0.0.1:8765`; change the port with `--port` |
