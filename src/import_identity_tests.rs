@@ -24,7 +24,11 @@ fn rejected(text: &str, format: &str, options: &NormalizeOptions) {
     let failure =
         import_records(text, format, options).expect_err("redacted identity must be rejected");
     let explanation = format!("{failure:#}");
-    assert!(explanation.contains("privacy filtering changes an event identity"));
+    assert!(
+        explanation.contains("privacy filtering changes an event identity"),
+        "unexpected error for {format}, private keys {:?}: {explanation}",
+        options.redact_keys
+    );
     assert!(!explanation.contains("private-identity"));
     assert!(!explanation.contains("fixture-source"));
 }
@@ -144,8 +148,13 @@ fn import_identity_redaction_in_reconstructed_envelopes_is_rejected() {
         },
     );
     for key in ["id", "source", "import_format"] {
+        let mut record = receipt();
+        // Keep this fixture focused on reconstructed identity. With private
+        // candidate IDs, the original probability keys also collide and are
+        // correctly rejected by the earlier object-key collision guard.
+        record["raw_jev"]["answers"] = json!({});
         rejected(
-            &receipt().to_string(),
+            &record.to_string(),
             "jevrouter-receipt",
             &NormalizeOptions {
                 redact_keys: vec![key.into()],
