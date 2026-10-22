@@ -254,6 +254,66 @@ for (const succeeds of [true, false]) {
   }
 }
 
+for (const status of ['absent', 'configured', 'failed'] as const) {
+  test(`credential status after reopening reconciles ${status} status with the remembered token`, async ({ page }, testInfo) => {
+    const state = await harness(page);
+    let reads = 0, writes = 0, laterReads = 0, delivered = 0, reopening = false;
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/credentials', async route => {
+      if (route.request().method() !== 'GET') { writes += 1; return route.fallback(); }
+      reads += 1;
+      if (!reopening) return route.fallback();
+      laterReads += 1;
+      await pending;
+      delivered += 1;
+      if (status === 'failed') return route.fulfill({ status: 503, json: { error: 'Credential status temporarily unavailable' } });
+      return route.fallback();
+    });
+    try {
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+      await page.getByLabel('TypeSafe API key').fill('synthetic-status-key');
+      await page.getByRole('button', { name: 'Register key', exact: true }).click();
+      await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+      await expect(page.locator('.credential-token .copy-field code')).toHaveText(state.clientToken);
+      await expect(page.getByText('Key available until Observer stops.', { exact: true })).toBeVisible();
+      const originalToken = state.clientToken;
+      expect(originalToken).not.toBe('');
+      expect(writes).toBe(1);
+      expect(reads).toBe(1);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      // Models another dashboard removing the registration, or a session-only
+      // credential disappearing on restart while this browser remains loaded.
+      if (status === 'absent') {
+        state.credentials = { configured: false, storage: 'none' };
+        state.providerKey = ''; state.clientToken = '';
+      }
+      reopening = true;
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      await expect.poll(() => laterReads).toBe(1);
+      await expect(page.locator('.credential-token .copy-field code')).toHaveText(originalToken);
+      release();
+      if (status === 'absent') await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+      else if (status === 'failed') await expect(page.getByRole('alert')).toContainText('Credential status temporarily unavailable');
+      else await expect(page.getByText('Registered key: this session only')).toBeVisible();
+      await expect.poll(() => delivered).toBe(1);
+      expect(reads).toBe(2);
+      expect(writes).toBe(1);
+      const observation = { status, reads, writes, laterReads,
+        rememberedTokenVisible: await page.locator('.credential-token').count() === 1,
+        priorSuccessVisible: await page.getByText('Key available until Observer stops.', { exact: true }).count() === 1,
+      };
+      await testInfo.attach('credential-status-reconciliation.json', { body: JSON.stringify(observation, null, 2), contentType: 'application/json' });
+      if (status === 'absent') {
+        await expect(page.locator('.credential-token')).toHaveCount(0);
+        await expect(page.getByText('Key available until Observer stops.', { exact: true })).toHaveCount(0);
+      } else await expect(page.locator('.credential-token .copy-field code')).toHaveText(originalToken);
+    } finally { release(); }
+  });
+}
+
 test('a failed replacement keeps the valid token and blocks overlapping mutations after reopening', async ({ page }) => {
   const state = await harness(page);
   await page.getByRole('button', { name: 'Connect an application' }).click();
