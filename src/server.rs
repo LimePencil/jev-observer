@@ -3679,6 +3679,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalid_import_timestamps_reject_the_whole_batch_and_release_the_slot() {
+        let raw = json!({
+            "id":"valid-clock", "source":"time-domain", "provider":"typesafe",
+            "timestamp":chrono::Utc::now().timestamp_millis(), "status":200, "capture_complete":true,
+            "request":{"questions":{"urgent":{"type":"noul","instructions":"Urgent?"}}},
+            "response":{"answers":{"urgent":{"type":"noul","noul":0.8}}}
+        });
+        let normalized =
+            model::import_records(&raw.to_string(), "systemone-capture", &Default::default())
+                .unwrap()
+                .remove(0);
+        for (format, first) in [
+            ("observer-jsonl", normalized.clone()),
+            ("systemone-capture", raw),
+        ] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
+            let keys: &[&str] = if format == "observer-jsonl" {
+                &["timestamp", "imported_at"]
+            } else {
+                &["timestamp"]
+            };
+            for &key in keys {
+                let mut invalid = first.clone();
+                invalid["id"] = json!("invalid-clock");
+                invalid[key] = json!(i64::MAX);
+                let response = router(fixture.state.clone())
+                    .oneshot(
+                        Request::builder()
+                            .method("POST")
+                            .uri("/api/import")
+                            .header("host", "127.0.0.1:8765")
+                            .header("x-observer-request", "1")
+                            .header("content-type", "application/json")
+                            .body(Body::from(
+                                json!({"format":format, "text":format!("{first}\n{invalid}")})
+                                    .to_string(),
+                            ))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{format} {key}");
+                assert!(
+                    fixture.state.store.is_empty().unwrap(),
+                    "Part of invalid batch was saved"
+                );
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            let response = router(fixture.state.clone())
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/import")
+                        .header("host", "127.0.0.1:8765")
+                        .header("x-observer-request", "1")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            json!({"format":format, "text":first.to_string()}).to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(
+                fixture
+                    .state
+                    .store
+                    .request(normalized["id"].as_str().unwrap())
+                    .unwrap()
+                    .is_some()
+            );
+            fixture.state.collector.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
     async fn import_normalization_limits_are_atomic_and_release_the_import_slot() {
         let fixture = fixture("http://127.0.0.1:1/v1/systemone", 1024, true);
         let first = model::sample_records().remove(0);
