@@ -11,8 +11,14 @@ export const tokens = (value: number | null | undefined, abbreviated = false) =>
 export const money = (value: number | null | undefined) => value == null ? 'Unknown' : value > 0 && value < 0.000001 ? '<$0.000001' : (value > 0 && value < 0.01 ? fractionalCents : value > 0 && value < 1 ? fractionalDollars : dollars).format(value);
 export const ms = (value: number | null | undefined) => value == null ? 'Unknown' : value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Number(value.toFixed(1))} ms`;
 export const percent = (value: number | null | undefined) => value == null ? 'Unknown' : `${(value * 100).toFixed(1)}%`;
-export const time = (value: number | null | undefined) => value == null ? 'Unknown' : new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-export const dateTime = (value: number | null | undefined) => value == null ? 'Unknown' : new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const formattedDate = (value: number | null | undefined, options: Intl.DateTimeFormatOptions) => {
+  if (value == null) return 'Unknown';
+  if (!Number.isInteger(value)) return 'Invalid timestamp';
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString([], { ...options, ...(options.year && date.getFullYear() <= 0 ? { era: 'short' as const } : {}) }) : 'Date out of range';
+};
+export const time = (value: number | null | undefined) => formattedDate(value, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+export const dateTime = (value: number | null | undefined) => formattedDate(value, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, timeZoneName: 'shortOffset', hour12: false });
 export const bytes = (value: number) => value >= 1024 * 1024 ? `${(value / (1024 * 1024)).toFixed(1)} MiB` : value >= 1024 ? `${Math.round(value / 1024)} KiB` : `${value} B`;
 export const shortId = (id: string | null | undefined) => id ? id.replace(/^(?:presentation|group|def|candidate|family)_v\d+_/, '').slice(0, 10) : 'Unknown';
 export const answerValue = (value: unknown, kind: string) => value == null ? 'Unknown' : kind === 'noul' && typeof value === 'number' ? percent(value) : typeof value === 'number' ? String(Number(value.toFixed(3))) : String(value);
@@ -36,7 +42,8 @@ export const dateFilter = (value: string) => {
   const timestamp = new Date(htmlDateToIso(value)).getTime();
   return Number.isFinite(timestamp) ? String(timestamp) : '';
 };
-export const chartTime = (value: number, showDate: boolean) => new Date(value).toLocaleString([], { ...(showDate ? { month: 'short', day: 'numeric' } as const : {}), hour: '2-digit', minute: '2-digit', hour12: false });
+// Axis midpoints may be fractional even when the stored endpoints are integer milliseconds.
+export const chartTime = (value: number, showDate: boolean) => formattedDate(Math.trunc(value), { ...(showDate ? { month: 'short', day: 'numeric' } as const : {}), hour: '2-digit', minute: '2-digit', hour12: false });
 
 export const storageHint = (category: string) => ({
   database_busy: 'The database was busy. Check whether another Observer process is using this history.',

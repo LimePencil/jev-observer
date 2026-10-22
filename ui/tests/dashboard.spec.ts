@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import type { CredentialStatus, Dashboard, Group, RequestRecord, Settings } from '../src/types';
@@ -236,6 +237,46 @@ test('valid numeric probabilities keep their sorted bars and percentages', async
   await expect(card.getByText('Inspect raw answer', { exact: true })).toHaveCount(0);
 });
 
+test('JSON disclosures release closed content and retain keyboard focus across reviews', async ({ page }) => {
+  const state = await harness(page);
+  state.record.state_retained = true;
+  state.record.state = { message: 'Synthetic retained input', nested: [null, { value: '한글' }] };
+  state.record.answers[0] = { ...state.record.answers[0], valid: false, error: 'Synthetic invalid choice', raw_answer: { type: 'choice', choice: 'outside', evidence: [false, { value: '한글' }] } };
+  const opener = page.getByLabel('Inspect request request-one', { exact: true });
+  await opener.click();
+  const drawer = page.getByRole('dialog');
+  const definition = drawer.locator('.definition-details');
+  const raw = drawer.locator('.raw-answer-details');
+  const input = drawer.locator('details').filter({ has: page.getByText('Inspect retained input', { exact: true }) });
+  for (const [disclosure, value] of [[definition, state.record.answers[0].definition], [raw, state.record.answers[0].raw_answer], [input, state.record.state]] as const) {
+    const summary = disclosure.locator('summary');
+    await expect(disclosure.locator('.json-view')).toHaveCount(0);
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(disclosure.locator('.json-view')).toHaveText(JSON.stringify(value, null, 2));
+    await expect(summary).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(disclosure.locator('.json-view')).toHaveCount(0);
+    await expect(summary).toBeFocused();
+  }
+  const review = page.getByLabel('Review department');
+  await review.focus();
+  await review.selectOption('correct');
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
+  await expect(review).toBeFocused();
+  await expect(drawer.locator('details .json-view')).toHaveCount(0);
+  await raw.locator('summary').click();
+  await review.focus();
+  await review.selectOption('incorrect');
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
+  await expect(review).toBeFocused();
+  await expect(raw).toHaveAttribute('open', '');
+  await expect(raw.locator('.json-view')).toHaveText(JSON.stringify(state.record.answers[0].raw_answer, null, 2));
+  await expect(definition.locator('.json-view')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(opener).toBeFocused();
+});
+
 test('token totals disclose independently missing usage and preserve known zero values', async ({ page }) => {
   const state = await harness(page);
   // Request A reports only input tokens; request B reports only output tokens.
@@ -314,6 +355,236 @@ test('registers a provider key and shows only the local client token', async ({ 
   await page.getByRole('button', { name: 'Confirm removal' }).click();
   await expect(page.getByText('No key registered in Observer.')).toBeVisible();
   await expect(page.getByRole('dialog')).not.toContainText('jo_local_');
+});
+
+for (const succeeds of [true, false]) {
+  for (const reopenBeforeCompletion of [true, false]) {
+    test(`credential registration ${succeeds ? 'success' : 'failure'} survives ${reopenBeforeCompletion ? 'reopening while pending' : 'completion while closed'}`, async ({ page }) => {
+      const state = await harness(page);
+      let release!: () => void;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      let writes = 0;
+      await page.route('**/api/credentials', async route => {
+        if (route.request().method() !== 'PUT') return route.fallback();
+        writes += 1;
+        await pending;
+        return succeeds ? route.fallback() : route.fulfill({ status: 503, json: { error: 'Credential store is locked' } });
+      });
+      try {
+        await page.getByRole('button', { name: 'Connect an application' }).click();
+        await page.getByLabel('TypeSafe API key').fill('provider-secret');
+        await page.getByRole('button', { name: 'Register key' }).click();
+        await expect.poll(() => writes).toBe(1);
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        if (reopenBeforeCompletion) {
+          await page.getByRole('button', { name: 'Connect an application' }).click();
+          await expect(page.getByLabel('TypeSafe API key')).toBeDisabled();
+          await expect(page.getByRole('button', { name: 'Working…' })).toBeDisabled();
+        }
+        const response = page.waitForResponse(value => value.url().endsWith('/api/credentials') && value.request().method() === 'PUT');
+        release();
+        await response;
+        if (!reopenBeforeCompletion) await page.getByRole('button', { name: 'Connect an application' }).click();
+        if (succeeds) {
+          await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+          await expect(page.getByRole('dialog')).toContainText(state.clientToken);
+          await expect(page.getByText('Registered key: this session only')).toBeVisible();
+          await expect(page.getByLabel('TypeSafe API key')).toHaveValue('');
+        } else {
+          await expect(page.getByText('Credential store is locked')).toBeVisible();
+          await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+          await expect(page.getByRole('dialog')).not.toContainText('jo_local_');
+        }
+        await expect(page.getByLabel('TypeSafe API key')).toBeEnabled();
+        expect(writes).toBe(1);
+        expect(await page.evaluate(() => [JSON.stringify(localStorage), JSON.stringify(sessionStorage)].join(' '))).not.toMatch(/provider-secret|jo_local_/);
+      } finally { release(); }
+    });
+  }
+}
+
+for (const status of ['absent', 'configured', 'failed'] as const) {
+  test(`credential status after reopening reconciles ${status} status with the remembered token`, async ({ page }, testInfo) => {
+    const state = await harness(page);
+    let reads = 0, writes = 0, laterReads = 0, delivered = 0, reopening = false;
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/credentials', async route => {
+      if (route.request().method() !== 'GET') { writes += 1; return route.fallback(); }
+      reads += 1;
+      if (!reopening) return route.fallback();
+      laterReads += 1;
+      await pending;
+      delivered += 1;
+      if (status === 'failed') return route.fulfill({ status: 503, json: { error: 'Credential status temporarily unavailable' } });
+      return route.fallback();
+    });
+    try {
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+      await page.getByLabel('TypeSafe API key').fill('synthetic-status-key');
+      await page.getByRole('button', { name: 'Register key', exact: true }).click();
+      await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+      await expect(page.locator('.credential-token .copy-field code')).toHaveText(state.clientToken);
+      await expect(page.getByText('Key available until Observer stops.', { exact: true })).toBeVisible();
+      const originalToken = state.clientToken;
+      expect(originalToken).not.toBe('');
+      expect(writes).toBe(1);
+      expect(reads).toBe(1);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      // Models another dashboard removing the registration, or a session-only
+      // credential disappearing on restart while this browser remains loaded.
+      if (status === 'absent') {
+        state.credentials = { configured: false, storage: 'none' };
+        state.providerKey = ''; state.clientToken = '';
+      }
+      reopening = true;
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      await expect.poll(() => laterReads).toBe(1);
+      await expect(page.locator('.credential-token .copy-field code')).toHaveText(originalToken);
+      release();
+      if (status === 'absent') await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+      else if (status === 'failed') await expect(page.getByRole('alert')).toContainText('Credential status temporarily unavailable');
+      else await expect(page.getByText('Registered key: this session only')).toBeVisible();
+      await expect.poll(() => delivered).toBe(1);
+      expect(reads).toBe(2);
+      expect(writes).toBe(1);
+      const observation = { status, reads, writes, laterReads,
+        rememberedTokenVisible: await page.locator('.credential-token').count() === 1,
+        priorSuccessVisible: await page.getByText('Key available until Observer stops.', { exact: true }).count() === 1,
+      };
+      await testInfo.attach('credential-status-reconciliation.json', { body: JSON.stringify(observation, null, 2), contentType: 'application/json' });
+      if (status === 'absent') {
+        await expect(page.locator('.credential-token')).toHaveCount(0);
+        await expect(page.getByText('Key available until Observer stops.', { exact: true })).toHaveCount(0);
+      } else await expect(page.locator('.credential-token .copy-field code')).toHaveText(originalToken);
+    } finally { release(); }
+  });
+}
+
+test('a failed replacement keeps the valid token and blocks overlapping mutations after reopening', async ({ page }) => {
+  const state = await harness(page);
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await page.getByLabel('TypeSafe API key').fill('original-key');
+  await page.getByRole('button', { name: 'Register key' }).click();
+  await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+  const originalToken = state.clientToken;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const writes: string[] = [];
+  await page.route('**/api/credentials', async route => {
+    if (route.request().method() === 'GET') return route.fallback();
+    writes.push(route.request().method());
+    await pending;
+    return route.fulfill({ status: 503, json: { error: 'Replacement could not be saved' } });
+  });
+  try {
+    await page.getByLabel('TypeSafe API key').fill('replacement-key');
+    await page.getByRole('button', { name: 'Replace registered key' }).click();
+    await expect.poll(() => writes).toEqual(['PUT']);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await expect(page.getByLabel('TypeSafe API key')).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Remove key' })).toBeDisabled();
+    await expect(page.getByRole('dialog')).toContainText(originalToken);
+    release();
+    await expect(page.getByText('Replacement could not be saved')).toBeVisible();
+    await expect(page.getByRole('dialog')).toContainText(originalToken);
+    await expect(page.getByRole('button', { name: 'Remove key' })).toBeEnabled();
+    expect(state.providerKey).toBe('original-key');
+    expect(writes).toEqual(['PUT']);
+  } finally { release(); }
+});
+
+test('a failed credential replacement keeps the original token until the page reloads', async ({ page }) => {
+  const state = await harness(page);
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await page.getByLabel('TypeSafe API key').fill('original-key');
+  await page.getByRole('button', { name: 'Register key' }).click();
+  await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+  const originalToken = state.clientToken;
+  await page.route('**/api/credentials', route => route.request().method() === 'PUT'
+    ? route.fulfill({ status: 503, json: { error: 'Replacement could not be saved' } }) : route.fallback());
+  await page.getByLabel('TypeSafe API key').fill('replacement-key');
+  await page.getByRole('button', { name: 'Replace registered key' }).click();
+  await expect(page.getByText('Replacement could not be saved')).toBeVisible();
+  await expect(page.locator('.credential-token .copy-field code')).toHaveText(originalToken);
+  expect(state.providerKey).toBe('original-key');
+  await page.reload();
+  await page.getByRole('button', { name: 'Connect an application' }).click();
+  await expect(page.getByText('Registered key: this session only')).toBeVisible();
+  await expect(page.getByRole('dialog')).not.toContainText(originalToken);
+});
+
+for (const succeeds of [true, false]) {
+  test(`credential removal ${succeeds ? 'success' : 'failure'} survives reopening and preserves the correct token`, async ({ page }) => {
+    const state = await harness(page);
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await page.getByLabel('TypeSafe API key').fill('original-key');
+    await page.getByRole('button', { name: 'Register key' }).click();
+    await expect(page.getByText('Copy this local client token now.')).toBeVisible();
+    const originalToken = state.clientToken;
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const writes: string[] = [];
+    await page.route('**/api/credentials', async route => {
+      if (route.request().method() === 'GET') return route.fallback();
+      writes.push(route.request().method());
+      await pending;
+      return succeeds ? route.fallback() : route.fulfill({ status: 503, json: { error: 'Removal could not be saved' } });
+    });
+    try {
+      await page.getByRole('button', { name: 'Remove key' }).click();
+      await page.getByRole('button', { name: 'Confirm removal' }).click();
+      await expect.poll(() => writes).toEqual(['DELETE']);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Connect an application' }).click();
+      await expect(page.getByLabel('TypeSafe API key')).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Remove key' })).toBeDisabled();
+      release();
+      if (succeeds) {
+        await expect(page.getByText('Registered provider key removed.')).toBeVisible();
+        await expect(page.getByText('No key registered in Observer.')).toBeVisible();
+        await expect(page.getByRole('dialog')).not.toContainText(originalToken);
+      } else {
+        await expect(page.getByText('Removal could not be saved')).toBeVisible();
+        await expect(page.getByRole('dialog')).toContainText(originalToken);
+        await expect(page.getByRole('button', { name: 'Remove key' })).toBeEnabled();
+      }
+      await expect(page.getByLabel('TypeSafe API key')).toBeEnabled();
+      expect(writes).toEqual(['DELETE']);
+    } finally { release(); }
+  });
+}
+
+test('a credential status read started before registration cannot replace its successful result', async ({ page }) => {
+  const state = await harness(page);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let statusReads = 0;
+  await page.route('**/api/credentials', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    statusReads += 1;
+    await pending;
+    return route.fulfill({ json: { configured: false, storage: 'none' } });
+  });
+  try {
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await expect.poll(() => statusReads).toBe(1);
+    await page.getByLabel('TypeSafe API key').fill('provider-secret');
+    await page.getByLabel('Save in this computer’s credential store').check();
+    const cancelled = page.waitForEvent('requestfailed', request => request.url().endsWith('/api/credentials') && request.method() === 'GET');
+    await page.getByRole('button', { name: 'Register key' }).click();
+    await cancelled;
+    await expect(page.getByText('Registered key: saved in system credential store')).toBeVisible();
+    release();
+    await expect(page.getByRole('dialog')).toContainText(state.clientToken);
+    await expect(page.getByText('Registered key: saved in system credential store')).toBeVisible();
+    await expect(page.getByText('No key registered in Observer.')).toHaveCount(0);
+    await expect(page.getByLabel('Save in this computer’s credential store')).toBeChecked();
+  } finally { release(); }
 });
 
 for (const { storage, choice } of [
@@ -671,10 +942,24 @@ test('request labels persist through API and versions remain separate', async ({
   expect(state.labelHeaders?.['x-observer-request']).toBe('1');
   await expect(page.getByText('Not collected. An API response')).toBeVisible();
   await page.getByRole('button', { name: 'View recurring group' }).click();
+  const definition = page.getByRole('dialog').locator('details').filter({ has: page.getByText('Inspect definition', { exact: true }) });
+  await expect(definition.locator('.json-view')).toHaveCount(0);
+  await definition.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(definition.locator('.json-view')).toHaveText(JSON.stringify(group.definition, null, 2));
+  await page.keyboard.press('Space');
+  await expect(definition.locator('.json-view')).toHaveCount(0);
+  await expect(definition.locator('summary')).toBeFocused();
   await page.getByLabel('Compare with').selectOption('group_v1_2222222222');
+  const comparison = page.locator('.version-comparison details');
+  await expect(comparison.locator('.json-view')).toHaveCount(0);
   await page.getByText('Compare definitions and context', { exact: true }).click();
+  await expect(comparison.locator('.json-view')).toHaveText([JSON.stringify(group.definition, null, 2), JSON.stringify({ instructions: 'Changed department rules' }, null, 2)]);
   await expect(page.getByText('Changed department rules')).toBeVisible();
   await expect(page.getByText('Presentation: 2222222222')).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(comparison.locator('.json-view')).toHaveCount(0);
+  await expect(comparison.locator('summary')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
@@ -963,6 +1248,117 @@ for (const unavailable of ['missing', 'denied'] as const) {
   });
 }
 
+for (const reopenBeforeCompletion of [false, true]) {
+  test(`closed deletion preserves failure when Settings reopens ${reopenBeforeCompletion ? 'before' : 'after'} completion`, async ({ page }) => {
+    const state = await harness(page);
+    let finish!: () => void, writes = 0;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    await page.route('**/api/data', async route => {
+      writes += 1;
+      await pending;
+      return route.fulfill({ status: 503, json: { error: 'History could not be deleted' } });
+    });
+    try {
+      await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+      await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+      await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+      await page.getByRole('button', { name: 'Permanently delete history' }).click();
+      await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+      await page.keyboard.press('Escape');
+      if (reopenBeforeCompletion) {
+        await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+        await expect(page.getByLabel('Type DELETE to confirm')).toHaveCount(0);
+      }
+      const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname === '/api/data');
+      finish(); await finished;
+      if (!reopenBeforeCompletion) await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+      await expect(page.getByRole('dialog').getByRole('alert')).toContainText('History could not be deleted');
+      await expect(page.getByRole('button', { name: 'Delete history', exact: true })).toBeEnabled();
+      expect(writes).toBe(1); expect(state.deleted).toBe(false);
+      await page.keyboard.press('Escape');
+      await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeVisible();
+    } finally { finish(); }
+  });
+}
+
+test('reopened pending deletion prevents another write and preserves the new Settings panel on success', async ({ page }) => {
+  const state = await harness(page);
+  let finish!: () => void, writes = 0;
+  state.deletePending = new Promise(resolve => { finish = resolve; });
+  await page.route('**/api/data', route => { writes += 1; return route.fallback(); });
+  try {
+    await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).click();
+    await expect.poll(() => writes).toBe(1);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    const pendingButton = page.getByRole('button', { name: 'Deleting…' });
+    await expect(pendingButton).toBeDisabled();
+    await pendingButton.evaluate(button => (button as HTMLButtonElement).click());
+    await expect(page.getByLabel('Type DELETE to confirm')).toHaveCount(0);
+    expect(writes).toBe(1);
+    finish();
+    await expect(page.locator('.toast')).toContainText('Local history deleted');
+    await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Delete history', exact: true })).toBeEnabled();
+    expect(writes).toBe(1);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { name: 'Your workspace is ready' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
+  } finally { finish(); }
+});
+
+test('deletion retry clears the previous failure and refreshes once after rapid confirmation', async ({ page }) => {
+  const state = await harness(page);
+  let finish!: () => void, writes = 0, detailReads = 0;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  await page.route('**/api/data', async route => {
+    writes += 1;
+    if (writes === 1) return route.fulfill({ status: 503, json: { error: 'History could not be deleted' } });
+    await pending;
+    return route.fallback();
+  });
+  await page.route('**/api/requests/request-one', route => {
+    detailReads += 1;
+    return state.deleted ? route.fulfill({ status: 404, json: { error: 'Record not found' } }) : route.fulfill({ json: state.record });
+  });
+  try {
+    await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).click();
+    await expect(page.getByRole('alert')).toContainText('History could not be deleted');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('History could not be deleted');
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Permanently delete history' })).toBeDisabled();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).evaluate(button => {
+      (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click();
+    });
+    await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect.poll(() => writes).toBe(2);
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    await expect(page.locator('.request-detail-id')).toBeVisible();
+    const initialReads = detailReads;
+    finish();
+    await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Record not found');
+    expect(detailReads).toBe(initialReads + 1); expect(writes).toBe(2);
+    await expect(page.locator('.toast')).toContainText('Local history deleted');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Inspect request request-one', { exact: true })).toHaveCount(0);
+  } finally { finish(); }
+});
+
 test('a completed deletion refreshes history without closing a newly opened panel', async ({ page }) => {
   const state = await harness(page);
   let finish!: () => void;
@@ -1058,6 +1454,222 @@ for (const succeeds of [false, true]) {
     await expect(page.getByLabel('Filter by source')).toHaveValue('Test inbox');
   });
 }
+
+for (const outcome of ['success', 'failure'] as const) {
+  test(`closed import ${outcome} retains operation ownership and completion feedback on reopening`, async ({ page }) => {
+    await harness(page);
+    let finish!: () => void, writes = 0, groupReads = 0, imported = false;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const payloads: { text: string; format: string }[] = [];
+    await page.route('**/api/import', async route => {
+      writes += 1;
+      payloads.push(route.request().postDataJSON());
+      if (writes === 1) {
+        await pending;
+        if (outcome === 'failure') return route.fulfill({ status: 400, json: { error: 'Synthetic import rejected atomically' } });
+        imported = true;
+        return route.fulfill({ json: { imported: 7, duplicates: 2 } });
+      }
+      return route.fulfill({ json: { imported: 1, duplicates: 0 } });
+    });
+    await page.route(`**/api/groups/${group.id}*`, route => {
+      groupReads += 1;
+      return route.fulfill({ json: { group: { ...group, answer_count: imported ? 9 : 2 }, versions: [group], requests: [], answers: [], timeline: [] } });
+    });
+    const openImport = page.getByRole('button', { name: 'Import records', exact: true }).first();
+    await openImport.click();
+    const drawer = page.getByRole('dialog');
+    await page.getByLabel('Source format').selectOption('systemone-capture');
+    await page.getByLabel('Or paste records').fill('{"first":true}');
+    // Rapid duplicate activation must still own exactly one pending write.
+    await drawer.getByRole('button', { name: 'Import records', exact: true }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await expect.poll(() => writes).toBe(1);
+    await page.keyboard.press('Escape');
+    await openImport.click();
+    await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
+    for (const field of ['Source format', 'Or paste records', 'Choose import file']) await expect(page.getByLabel(field)).toBeDisabled();
+    await expect(page.getByLabel('Or paste records')).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+    await expect(drawer.locator('.detail-grid').first()).toContainText('1 / 2');
+    const previousReads = groupReads;
+    const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname === '/api/import');
+    finish(); await finished;
+    await expect(drawer.locator('.detail-grid').first()).toContainText(outcome === 'success' ? '1 / 9' : '1 / 2');
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(groupReads).toBe(previousReads + (outcome === 'success' ? 1 : 0));
+    await page.keyboard.press('Escape');
+    await openImport.click();
+    await expect(drawer.getByText(outcome === 'success' ? '7 records imported.' : 'Synthetic import rejected atomically', { exact: true })).toBeVisible();
+    if (outcome === 'success') await expect(drawer.getByRole('status')).toContainText('2 duplicates skipped');
+    await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
+    await expect(page.getByLabel('Or paste records')).toHaveValue('');
+    await expect(page.getByLabel('Or paste records')).toBeEnabled();
+    expect(writes).toBe(1);
+
+    // A deliberate new input clears settled feedback, then a new operation
+    // replaces it without restoring the previous completion on another reopen.
+    await page.getByLabel('Or paste records').fill('{"second":true}');
+    await expect(drawer.getByRole('alert')).toHaveCount(0);
+    await expect(drawer.locator('.success-notice')).toHaveCount(0);
+    await page.getByLabel('Source format').selectOption('jevrouter-receipt');
+    await drawer.getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(drawer.getByRole('status')).toContainText('1 records imported.');
+    await page.keyboard.press('Escape');
+    await openImport.click();
+    await expect(drawer.getByRole('status')).toContainText('1 records imported.');
+    await expect(drawer).not.toContainText('7 records imported.');
+    await expect(drawer.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByLabel('Source format')).toHaveValue('jevrouter-receipt');
+    await expect(page.getByLabel('Or paste records')).toHaveValue('');
+    expect(payloads).toEqual([{ text: '{"first":true}', format: 'systemone-capture' }, { text: '{"second":true}', format: 'jevrouter-receipt' }]);
+  });
+}
+
+test('a closed drawer file read cannot replace a newer import input or completion', async ({ page }) => {
+  await harness(page);
+  await page.evaluate(() => {
+    (window as unknown as { finishOldImportRead: (text: string) => void }).finishOldImportRead = () => {};
+    File.prototype.arrayBuffer = function () { return new Promise<ArrayBuffer>(resolve => {
+      (window as unknown as { finishOldImportRead: (text: string) => void }).finishOldImportRead = text => resolve(new TextEncoder().encode(text).buffer);
+    }); };
+  });
+  const openImport = page.getByRole('button', { name: 'Import records', exact: true }).first();
+  await openImport.click();
+  await page.getByLabel('Choose import file').setInputFiles({ name: 'old.jsonl', mimeType: 'application/json', buffer: Buffer.from('{"old":true}') });
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Reading old.jsonl');
+  await page.keyboard.press('Escape');
+  await openImport.click();
+  await page.getByLabel('Or paste records').fill('{"new":true}');
+  await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('2 records imported.');
+  await page.evaluate(() => (window as unknown as { finishOldImportRead: (text: string) => void }).finishOldImportRead('{"old":true}'));
+  await expect(page.getByLabel('Or paste records')).toHaveValue('{"new":true}');
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('2 records imported.');
+  await expect(page.getByRole('dialog')).not.toContainText('old.jsonl');
+});
+
+for (const removed of [false, true]) {
+  for (const dismiss of ['Escape', 'close button'] as const) {
+    test(`request drawer focus survives ${removed ? 'deletion of' : 'return to'} its opener after ${dismiss}`, async ({ page }, testInfo) => {
+      const state = await harness(page);
+      let finishDelete!: () => void, writes = 0, missingReads = 0;
+      const deleting = new Promise<void>(resolve => { finishDelete = resolve; });
+      if (removed) {
+        state.deletePending = deleting;
+        await page.route('**/api/data', async route => {
+          if (route.request().method() === 'DELETE') writes += 1;
+          await route.fallback();
+        });
+        await page.route('**/api/requests/request-one', async route => {
+          if (!state.deleted) return route.fallback();
+          missingReads += 1;
+          await route.fulfill({ status: 404, json: { error: 'Record not found' } });
+        });
+      }
+      try {
+        if (removed) {
+          await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+          await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+          await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+          await page.getByRole('button', { name: 'Permanently delete history' }).click();
+          await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+          await expect.poll(() => writes).toBe(1);
+          await page.keyboard.press('Escape');
+        }
+        const opener = page.getByLabel('Inspect request request-one', { exact: true });
+        const originalOpener = await opener.elementHandle();
+        expect(originalOpener).not.toBeNull();
+        await opener.focus();
+        await page.keyboard.press('Enter');
+        const drawer = page.getByRole('dialog');
+        await expect(drawer.locator('.request-detail-id')).toContainText('request-one');
+        if (removed) {
+          finishDelete();
+          await expect(drawer.getByRole('alert')).toContainText('Record not found');
+          await expect.poll(() => originalOpener!.evaluate(element => element.isConnected)).toBe(false);
+          await expect(opener).toHaveCount(0);
+          expect(missingReads).toBe(1);
+          expect(writes).toBe(1);
+        }
+        const scrollBeforeClose = await page.evaluate(() => window.scrollY);
+        if (dismiss === 'Escape') await page.keyboard.press('Escape');
+        else await page.getByRole('button', { name: 'Close detail panel' }).click();
+        await expect(drawer).toHaveCount(0);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const focused = () => page.evaluate(() => {
+          const element = document.activeElement as HTMLElement | null;
+          return {
+            tag: element?.tagName ?? null,
+            role: element?.getAttribute('role') ?? null,
+            label: element?.getAttribute('aria-label') ?? null,
+            text: element?.textContent?.trim().slice(0, 120) ?? '',
+            usable: Boolean(element && element !== document.body && element !== document.documentElement
+              && element.isConnected && element.getClientRects().length && !element.closest('[aria-hidden="true"], [inert]')),
+          };
+        });
+        const afterClose = await focused();
+        if (!removed) await expect(opener).toBeFocused();
+        else {
+          await expect(page.getByRole('main')).toBeFocused();
+          expect(await page.evaluate(() => window.scrollY)).toBe(scrollBeforeClose);
+        }
+        await page.keyboard.press('Tab');
+        const observation = { removed, dismiss, writes, missingReads,
+          originalOpenerConnected: await originalOpener!.evaluate(element => element.isConnected),
+          afterClose, afterTab: await focused() };
+        await testInfo.attach('drawer-opener-focus.json', { body: JSON.stringify(observation, null, 2), contentType: 'application/json' });
+        expect(afterClose.usable, JSON.stringify(observation)).toBe(true);
+        if (removed) await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeFocused();
+      } finally { finishDelete(); }
+    });
+  }
+}
+
+for (const mobileOpener of [true, false]) {
+  test(`closing a drawer after its ${mobileOpener ? 'mobile' : 'desktop'} opener becomes hidden restores dashboard focus`, async ({ page }, testInfo) => {
+    await page.setViewportSize(mobileOpener ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    await harness(page);
+    const opener = page.getByRole('button', { name: mobileOpener ? 'Open navigation' : 'Open settings', exact: true, includeHidden: true });
+    await opener.click();
+    if (mobileOpener) await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+    await page.setViewportSize(mobileOpener ? { width: 1440, height: 1000 } : { width: 390, height: 844 });
+    await expect(opener).toBeHidden();
+    expect(await opener.evaluate(element => element.isConnected)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const observation = { mobileOpener,
+      active: await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id })),
+      opener: await opener.evaluate(element => ({ connected: element.isConnected, visible: Boolean(element.getClientRects().length) })),
+    };
+    await testInfo.attach('hidden-drawer-opener-focus.json', { body: JSON.stringify(observation, null, 2), contentType: 'application/json' });
+    await expect(page.getByRole('main')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeFocused();
+  });
+}
+
+test('reopening a panel before the close frame keeps focus inside the new panel', async ({ page }) => {
+  await harness(page);
+  const opener = page.getByLabel('Inspect request request-one', { exact: true });
+  await opener.click();
+  await expect(page.getByRole('dialog').locator('.request-detail-id')).toContainText('request-one');
+  // Two user-facing button events in one task leave the close frame pending
+  // until after the new panel has been requested.
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('[aria-label="Close detail panel"]')!.click();
+    document.querySelector<HTMLButtonElement>('[aria-label="Open settings"]')!.click();
+  });
+  await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect.poll(() => page.getByRole('dialog').evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await expect(opener).not.toBeFocused();
+  await expect(page.getByRole('main', { includeHidden: true })).not.toBeFocused();
+});
 
 test('a completed deletion discards an older in-flight detail response', async ({ page }) => {
   const state = await harness(page);
@@ -1426,6 +2038,129 @@ test('reopened review completion preserves a detail timeout and Retry reads the 
   finishRead();
   expect(writes).toBe(1);
 });
+
+test('a committed old review response cannot mark a deleted and reimported raw identity Saved', async ({ page }, testInfo) => {
+  const state = await harness(page);
+  const raw = { id: 'synthetic-review-event', source: 'Test inbox', provider: 'typesafe', timestamp: now, status: 200, capture_complete: true,
+    request: { questions: { department: group.definition, untouched: group.definition } },
+    response: { answers: { department: { type: 'choice', choice: 'technical', probabilities: { technical: .8, billing: .2 } }, untouched: { type: 'choice', choice: 'technical', probabilities: { technical: .8, billing: .2 } } } } };
+  // This is CaptureId::raw_import's canonical original tuple, not a fresh ID
+  // invented on reimport. The API fixture models committed storage separately
+  // from response delivery, as a slow network may delay an already saved POST.
+  const id = 'capture_v1_' + createHash('sha256').update(JSON.stringify([raw.source, raw.provider, raw.id])).digest('hex');
+  const imported = { ...structuredClone(record), id, source_event_id: id, import_format: 'systemone-capture',
+    answers: [structuredClone(record.answers[0]), { ...structuredClone(record.answers[0]), key: 'untouched' }] };
+  const dashboard = structuredClone(state.dashboard);
+  let imports = 0, writes = 0, committed = false, detailReads = 0, release!: () => void;
+  const delivery = new Promise<void>(resolve => { release = resolve; });
+  state.dashboard.requests = [];
+  state.dashboard.summary.request_count = 0;
+  state.deleted = true;
+  await page.route('**/api/import', async route => {
+    const payload = route.request().postDataJSON();
+    expect(payload.format).toBe('systemone-capture');
+    expect(JSON.parse(payload.text)).toEqual(raw);
+    imports += 1;
+    state.record = structuredClone(imported);
+    state.deleted = false;
+    state.dashboard = { ...structuredClone(dashboard), requests: [state.record], summary: { ...dashboard.summary, request_count: 1, answer_count: 2 } };
+    await route.fulfill({ json: { imported: 1, duplicates: 0 } });
+  });
+  await page.route(`**/api/requests/${id}`, async route => {
+    detailReads += 1;
+    await route.fulfill(state.deleted ? { status: 404, json: { error: 'Record not found' } } : { json: state.record });
+  });
+  await page.route(`**/api/requests/${id}/label`, async route => {
+    writes += 1;
+    const payload = route.request().postDataJSON();
+    state.record.labels = [{ key: payload.key, label: payload.label }];
+    committed = true;
+    await delivery;
+    // Do not write again when delivering this old success response.
+    await route.fulfill({ json: { ok: true } });
+  });
+  async function importOriginal() {
+    await page.getByRole('complementary', { name: 'Workspace navigation' }).getByRole('button', { name: 'Import records', exact: true }).click();
+    await page.getByLabel('Source format').selectOption('systemone-capture');
+    await page.getByLabel('Or paste records').fill(JSON.stringify(raw));
+    await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText('1 records imported.');
+    await page.keyboard.press('Escape');
+  }
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await importOriginal();
+  await page.getByLabel(`Inspect request ${id}`, { exact: true }).click();
+  await page.getByLabel('Review department', { exact: true }).selectOption('correct');
+  await expect.poll(() => committed).toBe(true);
+  expect(state.record.labels).toEqual([{ key: 'department', label: 'correct' }]);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+  await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+  await page.getByRole('button', { name: 'Permanently delete history' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(state.deleted).toBe(true);
+  await importOriginal();
+  expect(state.record.labels).toEqual([]);
+  await page.getByLabel(`Inspect request ${id}`, { exact: true }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer.getByLabel('Review department', { exact: true })).toHaveAttribute('aria-disabled', 'true');
+  const untouched = drawer.locator('.answer-card').filter({ has: page.getByRole('heading', { name: 'untouched', exact: true }) });
+  await expect(untouched.getByLabel('Review untouched', { exact: true })).toHaveValue('');
+  await expect(untouched.getByRole('status')).toBeEmpty();
+  const priorReads = detailReads;
+  const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname.endsWith('/label'));
+  release(); await finished;
+  await expect.poll(() => detailReads).toBeGreaterThan(priorReads);
+  await expect(drawer.getByLabel('Review department', { exact: true })).toHaveValue('');
+  await expect(drawer.getByLabel('Review department', { exact: true })).toHaveAttribute('aria-disabled', 'false');
+  expect(imports).toBe(2); expect(writes).toBe(1); expect(state.record.labels).toEqual([]);
+  const observed = { imports, writes, detailReads, storedLabels: state.record.labels,
+    selectValue: await drawer.getByLabel('Review department', { exact: true }).inputValue(),
+    statusText: await drawer.locator('.answer-card').first().getByRole('status').textContent() };
+  await testInfo.attach('same-identity-review-observation', { body: JSON.stringify(observed, null, 2), contentType: 'application/json' });
+  await testInfo.attach('same-identity-review', { body: await page.screenshot(), contentType: 'image/png' });
+  await expect(drawer.locator('.answer-card').first().getByRole('status')).toBeEmpty();
+});
+
+for (const refreshedLabel of ['correct', 'incorrect'] as const) {
+  test(`completed review feedback follows an authoritative ${refreshedLabel} label after refresh`, async ({ page }) => {
+    const state = await harness(page);
+    let finishImport!: () => void, imported = false, refreshed = 0, writes = 0;
+    const importing = new Promise<void>(resolve => { finishImport = resolve; });
+    await page.route('**/api/import', async route => {
+      await importing; imported = true;
+      await route.fulfill({ json: { imported: 1, duplicates: 0 } });
+    });
+    await page.route('**/api/requests/request-one', async route => {
+      if (imported) refreshed += 1;
+      await route.fulfill({ json: state.record });
+    });
+    await page.route('**/api/requests/request-one/label', async route => {
+      writes += 1;
+      const { key, label } = route.request().postDataJSON();
+      state.record.labels = [{ key, label }];
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.getByRole('button', { name: 'Import records', exact: true }).click();
+    await page.getByLabel('Or paste records').fill('{"synthetic":true}');
+    await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    const drawer = page.getByRole('dialog'), review = drawer.getByLabel('Review department', { exact: true });
+    await review.selectOption('correct');
+    await expect(drawer.getByText('Saved', { exact: true })).toBeVisible();
+    // An independent reviewer may replace the label before an unrelated
+    // import completes and refreshes this still-open detail snapshot.
+    state.record.labels = [{ key: 'department', label: refreshedLabel }];
+    finishImport();
+    await expect.poll(() => refreshed).toBe(1);
+    await expect(review).toHaveValue(refreshedLabel);
+    await expect(drawer.locator('.review-status')).toHaveText(refreshedLabel === 'correct' ? 'Saved' : '');
+    expect(writes).toBe(1);
+  });
+}
 
 test('imported actions and unknown transport facts stay distinct', async ({ page }) => {
   const state = await harness(page);
@@ -1806,6 +2541,57 @@ test('committing a group search preserves request pagination history', async ({ 
   await expect(page.locator('.group-row')).toContainText('department first');
 });
 
+for (const section of ['requests', 'groups'] as const) {
+  for (const direction of ['Older', 'Newer'] as const) {
+    test(`group search during pending ${direction} ${section} preserves request history and resets groups`, async ({ page }) => {
+      await page.clock.install({ time: new Date(now) });
+      await page.clock.pauseAt(new Date(now + 1000));
+      await paginatedSearchHarness(page);
+      for (const current of ['requests', 'groups'] as const) {
+        await page.getByRole('button', { name: `Older ${current}`, exact: true }).click();
+        await expectHistoryPage(page, current, 'second');
+        if (current !== section || direction === 'Newer') {
+          await page.getByRole('button', { name: `Older ${current}`, exact: true }).click();
+          await expectHistoryPage(page, current, 'third');
+        }
+      }
+      const target = direction === 'Older' ? 'third' : 'second';
+      let release!: () => void, started = false;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      await page.route('**/api/dashboard?**', async route => {
+        const params = new URL(route.request().url()).searchParams;
+        if (!started && !params.has('group_search') && params.get(section === 'requests' ? 'request_cursor' : 'group_cursor') === target) {
+          started = true;
+          await pending;
+        }
+        return route.fallback();
+      });
+      try {
+        await page.getByRole('button', { name: `${direction} ${section}`, exact: true }).click();
+        await expect.poll(() => started).toBe(true);
+        await page.getByLabel('Find a question group').fill('department');
+        await page.clock.runFor(300);
+        await expectHistoryPage(page, 'requests', section === 'requests' ? target : 'third');
+        await expectHistoryPage(page, 'groups', 'first');
+        await expect(page.getByRole('button', { name: 'Newer groups', exact: true })).toBeDisabled();
+        release();
+        await page.clock.runFor(100);
+        // The superseded response cannot restore the old group page or cursor stack.
+        const previousRequests = section === 'requests' && direction === 'Newer' ? ['first'] : ['second', 'first'];
+        for (const cursor of previousRequests) {
+          await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+          await expectHistoryPage(page, 'requests', cursor);
+        }
+        await page.getByRole('button', { name: 'Older groups', exact: true }).click();
+        await expectHistoryPage(page, 'groups', 'second');
+        await page.getByRole('button', { name: 'Newer groups', exact: true }).click();
+        await expectHistoryPage(page, 'groups', 'first');
+        await expect(page.getByRole('alert')).toHaveCount(0);
+      } finally { release(); }
+    });
+  }
+}
+
 async function failingPageHarness(page: Page) {
   await page.clock.install({ time: new Date(now) });
   await page.clock.pauseAt(new Date(now + 1000));
@@ -1832,6 +2618,56 @@ async function expectHistoryPage(page: Page, section: 'requests' | 'groups', cur
   if (section === 'requests') await expect(page.getByLabel(`Inspect request request-${cursor}`, { exact: true })).toBeVisible();
   else await expect(page.locator('.group-row')).toContainText(`department ${cursor}`);
   await expect.poll(() => new URL(page.url()).searchParams.get(section === 'requests' ? 'request_cursor' : 'group_cursor') || 'first').toBe(cursor);
+}
+
+for (const direction of ['Older', 'Newer'] as const) {
+  test(`failed pending ${direction} requests after group search rolls back and retries in the new group scope`, async ({ page }) => {
+    const { failures } = await failingPageHarness(page);
+    await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+    await expectHistoryPage(page, 'requests', 'second');
+    if (direction === 'Newer') {
+      await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+      await expectHistoryPage(page, 'requests', 'third');
+    }
+    await openThirdPage(page, 'groups');
+    const target = direction === 'Older' ? 'third' : 'second';
+    const previous = direction === 'Older' ? 'second' : 'third';
+    let release!: () => void, started = false;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/dashboard?**', async route => {
+      const params = new URL(route.request().url()).searchParams;
+      if (!started && !params.has('group_search') && params.get('request_cursor') === target) {
+        started = true;
+        await pending;
+      }
+      return route.fallback();
+    });
+    try {
+      failures.add(`requests:${target}`);
+      await page.getByRole('button', { name: `${direction} requests`, exact: true }).click();
+      await expect.poll(() => started).toBe(true);
+      await page.getByLabel('Find a question group').fill('department');
+      await page.clock.runFor(300);
+      await expect(page.getByRole('alert')).toContainText('Showing the last successfully loaded page');
+      await expectHistoryPage(page, 'requests', previous);
+      await expectHistoryPage(page, 'groups', 'first');
+      await expect(page.getByRole('status').filter({ hasText: 'Loading history…' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Newer groups', exact: true })).toBeDisabled();
+      release();
+      await page.clock.runFor(1000);
+      await expect(page.getByRole('alert')).toContainText('Showing the last successfully loaded page');
+      failures.clear();
+      await page.getByRole('button', { name: 'Retry', exact: true }).click();
+      await expectHistoryPage(page, 'requests', target);
+      await expectHistoryPage(page, 'groups', 'first');
+      expect(new URL(page.url()).searchParams.get('group_search')).toBe('department');
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      for (const cursor of direction === 'Older' ? ['second', 'first'] : ['first']) {
+        await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+        await expectHistoryPage(page, 'requests', cursor);
+      }
+    } finally { release(); }
+  });
 }
 
 for (const section of ['requests', 'groups'] as const) {
@@ -2045,6 +2881,99 @@ test('question search reaches server history and stays editable after no matches
   await expect(search).toBeFocused();
   await search.fill('department');
   await expect(page.locator('.group-row')).toContainText('department');
+});
+
+for (const { timezoneId, locale, expected } of [
+  { timezoneId: 'UTC', locale: 'en-US', expected: ['Oct 22, 2025, 03:00:00.123 GMT', 'Oct 22, 2026, 03:00:00.123 GMT', 'Dec 31, 2025, 23:30:00.456 GMT'] },
+  { timezoneId: 'Asia/Seoul', locale: 'en-US', expected: ['Oct 22, 2025, 12:00:00.123 GMT+9', 'Oct 22, 2026, 12:00:00.123 GMT+9', 'Jan 1, 2026, 08:30:00.456 GMT+9'] },
+  { timezoneId: 'America/Los_Angeles', locale: 'en-US', expected: ['Oct 21, 2025, 20:00:00.123 GMT-7', 'Oct 21, 2026, 20:00:00.123 GMT-7', 'Dec 31, 2025, 15:30:00.456 GMT-8'] },
+  { timezoneId: 'UTC', locale: 'en-GB', expected: ['22 Oct 2025, 03:00:00.123 GMT', '22 Oct 2026, 03:00:00.123 GMT', '31 Dec 2025, 23:30:00.456 GMT'] },
+]) {
+  test.describe(`full date inspection in ${timezoneId} (${locale})`, () => {
+    test.use({ timezoneId, locale });
+
+    test('request and chart inspection distinguish years and local date rollover', async ({ page }) => {
+      const state = await harness(page, { settings: { retention_days: 0 }, path: '/?window=all' });
+      const timestamps = ['2025-10-22T03:00:00.123Z', '2026-10-22T03:00:00.123Z', '2025-12-31T23:30:00.456Z'].map(Date.parse);
+      const records = timestamps.map((timestamp, index) => ({ ...structuredClone(record), id: `dated-${index}`, timestamp }));
+      state.dashboard.requests = records;
+      state.dashboard.timeline = [...timestamps].sort((a, b) => a - b).map(timestamp => ({ timestamp, requests: 1, errors: 0, mean_latency_ms: 1, cost_usd: null }));
+      state.dashboard.timeline_meta = { start: timestamps[0], end: timestamps[1] + 86_400_000, bucket_width: 86_400_000, truncated: false };
+      await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      await expect(page.locator('.request-table tbody tr')).toHaveCount(3);
+      const activity = page.locator('.activity-panel');
+      await activity.getByText('View chart data', { exact: true }).click();
+      for (const [index, item] of records.entries()) {
+        const opener = page.getByRole('button', { name: `Inspect request ${item.id}`, exact: true });
+        const row = page.locator('.request-table tbody tr').filter({ has: opener });
+        const fullDate = await row.locator('td > span[title]').getAttribute('title');
+        // ICU versions spell the zero offset as either GMT or GMT+0.
+        expect(fullDate?.replace(/GMT\+0$/, 'GMT')).toBe(expected[index]);
+        await expect(row.locator('td > span[title] > .sr-only')).toHaveText(fullDate!);
+        await expect(row.locator('td > span[title] > [aria-hidden="true"]')).not.toContainText(/202[56]/);
+        state.record = item;
+        await opener.click();
+        const date = page.getByRole('dialog').locator('.detail-field').filter({ has: page.getByText('Recorded', { exact: true }) }).locator('dd');
+        await expect(date).toHaveText(fullDate!);
+        await page.keyboard.press('Escape');
+        await expect(opener).toBeFocused();
+        const chartIndex = state.dashboard.timeline.findIndex(point => point.timestamp === item.timestamp);
+        await expect(activity.locator('.chart-accessible tbody tr').nth(chartIndex).locator('td').first()).toHaveText(fullDate!);
+        const point = activity.locator('.chart-bar').nth(chartIndex).locator('..');
+        await expect(point.locator('title')).toHaveText(`${fullDate}: 1 requests, 0 failures`);
+        await point.hover();
+        await expect(activity.locator('.chart-tooltip > span').first()).toHaveText(fullDate!);
+      }
+      await expect(activity.locator('.chart-axis').last()).not.toContainText(/202[56]|GMT/);
+      // Full inspection does not change local custom-range controls or their epoch scope.
+      await page.getByRole('button', { name: 'Custom date range' }).click();
+      await page.getByLabel('From date').fill('2025-12-31T23:30');
+      const expectedFrom = await page.evaluate(() => String(new Date('2025-12-31T23:30').getTime()));
+      await expect.poll(() => new URL(page.url()).searchParams.get('from')).toBe(expectedFrom);
+      await expect(page.getByLabel('From date')).toHaveValue('2025-12-31T23:30');
+    });
+  });
+}
+
+test.describe('full dates at daylight-saving and legacy boundaries', () => {
+  test.use({ timezoneId: 'America/Los_Angeles', locale: 'en-US' });
+
+  test('repeated local hours carry distinct offsets in request details', async ({ page }) => {
+    const state = await harness(page);
+    for (const [timestamp, expected] of [
+      ['2026-11-01T08:30:00Z', 'Nov 1, 2026, 01:30:00.000 GMT-7'],
+      ['2026-11-01T09:30:00Z', 'Nov 1, 2026, 01:30:00.000 GMT-8'],
+    ]) {
+      state.record.timestamp = Date.parse(timestamp);
+      await page.getByRole('button', { name: 'Inspect request request-one', exact: true }).click();
+      await expect(page.getByRole('dialog').locator('.detail-field').filter({ has: page.getByText('Recorded', { exact: true }) }).locator('dd')).toHaveText(expected);
+      await page.keyboard.press('Escape');
+    }
+  });
+
+  test('legacy timestamp states and import-time fallback remain explicit', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const state = await harness(page);
+    for (const { timestamp, imported_at, expected } of [
+      { timestamp: null, imported_at: null, expected: 'Unknown' },
+      { timestamp: null, imported_at: Date.parse('2025-12-31T23:30:00.456Z'), expected: 'Dec 31, 2025, 15:30:00.456 GMT-8' },
+      { timestamp: 1.5, imported_at: null, expected: 'Invalid timestamp' },
+      { timestamp: 8_640_000_000_000_001, imported_at: null, expected: 'Date out of range' },
+    ]) {
+      Object.assign(state.record, { timestamp, imported_at });
+      state.dashboard.requests = [structuredClone(state.record)];
+      await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      await expect(page.locator('.request-table td > span[title]')).toHaveAttribute('title', expected);
+      const opener = page.getByRole('button', { name: 'Inspect request request-one', exact: true });
+      await opener.click();
+      const field = page.getByRole('dialog').locator('.detail-field').filter({ has: page.getByText(timestamp == null ? 'Imported at' : 'Recorded', { exact: true }) });
+      await expect(field.locator('dd')).toHaveText(expected + (timestamp == null ? 'Original event time unknown' : ''));
+      await page.keyboard.press('Escape');
+      await expect(opener).toBeFocused();
+    }
+    expect(errors).toEqual([]);
+  });
 });
 
 for (const { timezoneId, endDate, lastBucketDate } of [
