@@ -1,0 +1,343 @@
+{
+  "checked_at": "2026-10-23",
+  "scope": "Incremental primary-source contract review. Original October3 catalog entries retain their own review dates. No provider calls, weights or inference code executed.",
+  "catalog_ids": [
+    "typesafe",
+    "jev-omni",
+    "onejev",
+    "omnijev",
+    "clef",
+    "cloudflare-clef",
+    "ollama",
+    "ollama-clef",
+    "ollama-kev",
+    "liquid-d1",
+    "liquid-d1-open",
+    "liquid-d1-omni",
+    "microsoft-decision",
+    "h2o-lightning",
+    "strands-decider",
+    "pplx-decider-v11",
+    "pplx-decider-v12",
+    "openai-decisions"
+  ],
+  "sources": [
+    {
+      "url": "https://docs.typesafe.ai/models.md",
+      "revision": null,
+      "sha256": "d78f8db1fa611344cb7bb84f0e1431f704689eaa2f888da7db1f42eb4e192b04"
+    },
+    {
+      "url": "https://docs.typesafe.ai/primitives/box.md",
+      "revision": null,
+      "sha256": "146447926f0cd5a16bdd3938f924bb58df58faf2a19bb07fb2d8c433d28dbcde"
+    },
+    {
+      "url": "https://huggingface.co/akhilaaa3/Jev-Omni/resolve/fee89b076e2263bfa8bce8d34142caa4ca733a48/jev_omni.py",
+      "revision": "fee89b076e2263bfa8bce8d34142caa4ca733a48",
+      "sha256": "11d761b0b6cefc8aac29757f43af4b2b02af8f9b6c6dad19834c0b14538180f0"
+    },
+    {
+      "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/schema.py",
+      "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+      "git_blob": "9c79cf9a86262b3394cfa1aecfdcea8ea8a09f30"
+    },
+    {
+      "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/answers.py",
+      "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+      "git_blob": "e01e9a388e94b422586e8874d84ed4a647ecba49"
+    },
+    {
+      "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/server.py",
+      "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+      "git_blob": "607a63d9b28a129498247da878a70acb8d930dcd"
+    },
+    {
+      "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/client.py",
+      "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+      "git_blob": "c107174b71d75d1adf4740cb1f4e9839d7398614"
+    },
+    {
+      "url": "https://github.com/OmniJev/OneJev/blob/f3de10232bc6d57d20398301b365606cb3d57697/qev/media.py",
+      "revision": "f3de10232bc6d57d20398301b365606cb3d57697",
+      "git_blob": "b402e493f5e143c49bf20375098df02fd0432c88"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/tinnel123666888/OmniJev/14dbec4f71e194852c8d7b88ab36ef639493f400/mso/infer.py",
+      "revision": "14dbec4f71e194852c8d7b88ab36ef639493f400",
+      "sha256": "03d047b7ffa73ba5c3f142ba7a5881c20d07f73c4f0b3ccacc7ac10554b209bf"
+    },
+    {
+      "url": "https://huggingface.co/Cloudflare/clef-omni/resolve/df2d7c9505e62ba8a527b147513a4fa66a77dc5d/README.md",
+      "revision": "df2d7c9505e62ba8a527b147513a4fa66a77dc5d",
+      "sha256": "f85fa4cb9d7e2df8f25568faa9527b9657620c4da8098cd2ad24005780640bda"
+    },
+    {
+      "url": "https://huggingface.co/Cloudflare/clef-omni/resolve/df2d7c9505e62ba8a527b147513a4fa66a77dc5d/joint_schema_model.py",
+      "revision": "df2d7c9505e62ba8a527b147513a4fa66a77dc5d",
+      "sha256": "21d05ebb8cbea26a26af65eca3d16cf4b69bf80a320e2d5b203e86f0d632a670"
+    },
+    {
+      "url": "https://huggingface.co/Cloudflare/clef/resolve/a30162b99d68a481d8bd75d38df069a0cf83df40/joint_schema_model.py",
+      "revision": "a30162b99d68a481d8bd75d38df069a0cf83df40",
+      "sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
+    },
+    {
+      "url": "https://huggingface.co/Cloudflare/clef-flash/resolve/f0b7d3cd65296abfe459e6c228b618f5d8b26d2f/joint_schema_model.py",
+      "revision": "f0b7d3cd65296abfe459e6c228b618f5d8b26d2f",
+      "sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
+    },
+    {
+      "url": "https://developers.cloudflare.com/workers-ai/models/clef-omni/",
+      "revision": null,
+      "sha256": "ad22984caa711008c028c24f87193268073c5bcfff464a4c0a2695dbbf0c28b7"
+    },
+    {
+      "url": "https://developers.cloudflare.com/workers-ai/get-started/rest-api/",
+      "revision": null,
+      "sha256": "ac66316dfebe0046a02deb7f59694a33392cf31d26ccff2f3bfc3041cb5915ea"
+    },
+    {
+      "url": "https://blog.cloudflare.com/clef-faster-cheaper-multimodal/",
+      "revision": null,
+      "sha256": "cf6c739bdf30c5d66336898ac9b00052856e5989a79a6a4d760860ee53aff461"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/capabilities/decision.mdx",
+      "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+      "sha256": "853c2b824c067644d81fe2dbd7eee912c02e5767e90b15d6e3df7bf5a53bad8e"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/systemone.go",
+      "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+      "sha256": "c99f198e3307f16b5696db9d75c075af8572498801510970e7ce45adcfaea347"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/types.go",
+      "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+      "sha256": "0609772af3f929f0923f93677b5dbdc1455874f7fe2848cb39aa83722effb5f5"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/clef.go",
+      "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+      "sha256": "8e67f6ceb822929fb9cd0f299ad95c1a12e02dbb6978fbb7cb0ec549f87042ba"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/kev.go",
+      "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+      "sha256": "f4d5d1d88fe4b39a9743594ffdd6a7f44cfe20474119ca791171b271c2466642"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/pplx.go",
+      "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+      "sha256": "c1ef998b383f7fe5fe7bb1125c53b312998a46bad4f923bafb45bfc34e40b5f3"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/decision/strands.go",
+      "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+      "sha256": "e972b34c7bb6800c9cc1b51f2139f60f8f97f43193bd3514791f46a6b63b0eef"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/server/routes.go",
+      "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+      "sha256": "b8528f189140afc0e4c9389e0c5a220a0dc535ab2b54f8f1ee146fd3974065e6"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/openapi.yaml",
+      "revision": "efabf6bc450454dc856c1f799aac7ea865e3a4cf",
+      "sha256": "e94c8f02969c6807f431b7d0643eb0f8368f1d1baa719a4edaf07989b758f257"
+    },
+    {
+      "url": "https://ollama.com/library/clef",
+      "revision": null,
+      "sha256": "022ce603b2e122bbde95edbdeaf91da7585f40c6eaed35a84e3b89aaac3f3e91"
+    },
+    {
+      "url": "https://ollama.com/library/nimble-v3",
+      "revision": null,
+      "sha256": "9118c6132141c00e2cbb7b8f5fc56420223ba4f78d4ad9ab6f04de610b9d6bc0"
+    },
+    {
+      "url": "https://docs.liquid.ai/lfm/models/decision-models",
+      "revision": null,
+      "sha256": "e9f70d528378bf1178582fffeb50e16121278b612247ed1b786a87d31f1f6669"
+    },
+    {
+      "url": "https://docs.liquid.ai/lfm/models/d1",
+      "revision": null,
+      "sha256": "2dd5bcbd45c5128de7b1292f6c230939ce2aa34756748fd42a78c64d5ee91403"
+    },
+    {
+      "url": "https://www.liquid.ai/blog/d1-open",
+      "revision": null,
+      "sha256": "f510993a64476bab940d3b081d9267922e8615d160dcfbe9aa83df26b4b2dd33"
+    },
+    {
+      "url": "https://huggingface.co/LiquidAI/d1-3B/resolve/051bcc464b01b9f92942b364d9586b0ef5912432/README.md",
+      "revision": "051bcc464b01b9f92942b364d9586b0ef5912432",
+      "sha256": "175b0bd5f0b4272a67723e16d5e1994e7a8c2d162e7797c9f1c24c01fed83f1d"
+    },
+    {
+      "url": "https://huggingface.co/LiquidAI/d1-3B/resolve/051bcc464b01b9f92942b364d9586b0ef5912432/api.py",
+      "revision": "051bcc464b01b9f92942b364d9586b0ef5912432",
+      "sha256": "94e9f82eabfdf92c4abe1153e9a6dc4dd9821f9cc2fec3221e79e70723d8ada0"
+    },
+    {
+      "url": "https://huggingface.co/LiquidAI/d1-3B/resolve/051bcc464b01b9f92942b364d9586b0ef5912432/prompt.py",
+      "revision": "051bcc464b01b9f92942b364d9586b0ef5912432",
+      "sha256": "a20b5f52e41a6d29e694bb8c861a5a4803ce3eb69364edad79511ccf8edb5c31"
+    },
+    {
+      "url": "https://huggingface.co/LiquidAI/d1-omni-600M/resolve/02b55d7076f15129e59ab3f94783f32c4b088674/README.md",
+      "revision": "02b55d7076f15129e59ab3f94783f32c4b088674",
+      "sha256": "6577bee7b8cb23b595a90e99aa82007f57214d447f0ebcdfb2e812a7123d57bf"
+    },
+    {
+      "url": "https://huggingface.co/LiquidAI/d1-omni-600M/resolve/02b55d7076f15129e59ab3f94783f32c4b088674/modeling_d1.py",
+      "revision": "02b55d7076f15129e59ab3f94783f32c4b088674",
+      "sha256": "2b71a5c909ec5d3aa6307378a41a0fd24af1e17d5c1c1f8d510582147051a686"
+    },
+    {
+      "url": "https://huggingface.co/LiquidAI/d1-omni-600M/resolve/02b55d7076f15129e59ab3f94783f32c4b088674/prompt.py",
+      "revision": "02b55d7076f15129e59ab3f94783f32c4b088674",
+      "sha256": "a6b29a55ec8345f1fc1fdbfcc4b64d80d473dc4316f095a62c51cb6cce1194cf"
+    },
+    {
+      "url": "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision",
+      "revision": null,
+      "sha256": "d240d1453506d1fa186a1f12f8a2152ba7f45e9e4abbffdccb12b32922726903"
+    },
+    {
+      "url": "https://commandline.microsoft.com/microsoft-decision-1-model-foundry/",
+      "revision": null,
+      "sha256": "474b61bc54eab173a105d51731fe4d70530d73f212faf6446e3be7b28add8f60"
+    },
+    {
+      "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/README.md",
+      "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+      "sha256": "50ffa0b65c225e7a8fe74909c2b9454765a48a10011cda8e1bb926b2f78ff610"
+    },
+    {
+      "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/h2o_lightning_shim.py",
+      "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+      "sha256": "2f42ea6d3aeb057559c27d1aaa0b35ea582f33691ed342a76869f3547a0cb074"
+    },
+    {
+      "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/serve_config.json",
+      "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+      "sha256": "1157d869d84ec5560cb3760c6697bc2e31d503a699d4c24cf45d932f7a9e8a8c"
+    },
+    {
+      "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/box.py",
+      "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+      "sha256": "044d98014e28a03b3903488b2a1c89976f5c6730a15dbfe04d30dae8480fe791"
+    },
+    {
+      "url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/assets.py",
+      "revision": "d8d01a44c379af09750494214b247cdd1d9298b5",
+      "sha256": "e30ff2efd7628ade3cdc548c936751db9c433e6ad3a143f4d122b0baddcdc94c"
+    },
+    {
+      "url": "https://h2o.ai/company/press-media/2026/h2o-lightning-4b-ranks-first-on-jevbench",
+      "revision": null,
+      "sha256": "031fb0c8eefbcd6aabea9625b748ba38f09836c8d2d8692381f47d494d3bc3c4"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/README.md",
+      "revision": "d942e5515db750f80a51032629ec312455a87976",
+      "sha256": "37bfc4d0ab6c8f787739ac257bb6e6331ba501f4960d2f3afb7356d38d29b202"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/src/strands_decider/server.py",
+      "revision": "d942e5515db750f80a51032629ec312455a87976",
+      "sha256": "dfe2cbd5616fa5ee6068f54819c19b5b8194f864ea64b0f0956cf86ad89a2252"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/src/strands_decider/schema.py",
+      "revision": "d942e5515db750f80a51032629ec312455a87976",
+      "sha256": "a8ff32aa6bde8ce0dacb07aafe79264af5dbd47e7c147f4543ee8b758b662afc"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/src/strands_decider/infer.py",
+      "revision": "d942e5515db750f80a51032629ec312455a87976",
+      "sha256": "a29fbee918e4e67be1d5f302785e39cd16d7eb1d7b96d8074d2a205602c24e7a"
+    },
+    {
+      "url": "https://huggingface.co/api/models/StrandsAgents/strands-decider-2B-hobson-v19",
+      "revision": null,
+      "sha256": "a5800ca31bf664ec2e1194b963de13f51f49ddbdcfc6770659a1be32dab242f4"
+    },
+    {
+      "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/README.md",
+      "revision": "14c9d90137962d300f3de95633f7b6535e80c5ce",
+      "sha256": "1cc6f24b69b187db2d8de8e5a39e8193afbfa0356afcd02c820cf1240d428c0a"
+    },
+    {
+      "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/source/src/autojev/server.py",
+      "revision": "14c9d90137962d300f3de95633f7b6535e80c5ce",
+      "sha256": "840088936dbcd19c9c1a0503f348fdc3e5aa07b7b58c690eaccc9dda314691c1"
+    },
+    {
+      "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b/resolve/14c9d90137962d300f3de95633f7b6535e80c5ce/source/src/autojev/types.py",
+      "revision": "14c9d90137962d300f3de95633f7b6535e80c5ce",
+      "sha256": "250ba2eea1cd9bc5501bc76ba76b2f4a1d6c692a7fb1bba4b01affff38cb81ca"
+    },
+    {
+      "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/README.md",
+      "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+      "sha256": "978562adfa1e70609e0f1ca1376182ff4f7dfba4271ba81ab83a55da40633a9b"
+    },
+    {
+      "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/source/src/pplx_decider/protocol.py",
+      "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+      "sha256": "b29d7a50d7214bd42397f8d3ddd5b5706cb8da2b257e175bf89b5a8da455d6a0"
+    },
+    {
+      "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/source/src/pplx_decider/types.py",
+      "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+      "sha256": "3de3e545d81692346f65c0f4ff9843952696a12f7b357cf6a5d0e8545badff8a"
+    },
+    {
+      "url": "https://huggingface.co/perplexity-ai/pplx-decider-v1.2/resolve/cce0f3f80033e9d89d80831d5281fd72124aacce/source/src/pplx_decider/model.py",
+      "revision": "cce0f3f80033e9d89d80831d5281fd72124aacce",
+      "sha256": "ab5f42bd051d9e04cb9266e378d96dd72684c7a7f074efd9fc5117508e3dee91"
+    },
+    {
+      "url": "https://huggingface.co/api/models/perplexity-ai/pplx-decider-v1.2",
+      "revision": null,
+      "sha256": "cac131b3c13ac0bec668ba9aeed7bae008965d013b49d91089a9b2d18c905931"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openai/openai-python/7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b/src/openai/resources/decisions.py",
+      "revision": "7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b",
+      "sha256": "3bb329d4f41d26022780ce0c97e093af7772de41385336559d018642813e340a"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openai/openai-python/7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b/src/openai/types/decision.py",
+      "revision": "7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b",
+      "sha256": "0f3d7418efebcd85c3378556bf5165e1ca433d16bbe85ccb83e2c7207cf03ab1"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/openai/openai-python/7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b/src/openai/types/decision_create_params.py",
+      "revision": "7db9d884c33b0d5ef252e9a4b6e7ae0bbd217e5b",
+      "sha256": "23f5742a2c683a75f7a56a847e6016f5e64147857d7ded70d4124a1f091dbe4b"
+    }
+  ],
+  "source_facts": [
+    "Profiles differ in nullable Noul criteria/descriptions, nullable Score levels and scalar/null legends; these opt-in fields are separate from arbitrary JSON text.",
+    "Validation model profiles and protocol adapters are explicit and separate from billing/credential provider identity.",
+    "Box observations retain reported found/present and have no scalar mean of their four edges.",
+    "This is a scoped primary-source survey, not an exhaustive popularity or release census."
+  ],
+  "limits": [
+    "Native helper contracts and hosted/runtime wrappers are not interchangeable.",
+    "Source revision pins establish inspected code, not deployed behavior or account availability.",
+    "Clef255 is an Observer inspection limit, not a discovered native upper bound.",
+    "Microsoft unspecified precision/cardinality keep conservative defaults; Entra token refresh and api-key header routing are not implemented by catalog metadata.",
+    "OpenAI HTTP1–400 questions differs from pinned SDK1–200 docstring; native values are not rewritten and no undocumented score-level cap is claimed.",
+    "Ollama GGUF forwarding does not establish Go renderer precision; runtime profiles are selected explicitly.",
+    "H2O missing Box is represented by found:false/confidence0/fullframe; coordinate shape alone does not mean absence.",
+    "No automatic claim of interchangeable licenses across code, checkpoints, base weights, quantizations or revisions."
+  ],
+  "prior_snapshot": "sources.json"
+}

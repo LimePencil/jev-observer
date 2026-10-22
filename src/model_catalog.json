@@ -669,7 +669,7 @@
       ],
       "upstream": null,
       "source_url": "https://huggingface.co/akhilaaa3/Jev-Omni/blob/fee89b076e2263bfa8bce8d34142caa4ca733a48/README.md",
-      "note": "Single-question Python classifier, distinct from both OmniJev projects. Offline --dialect jev-omni requires exact ordered option IDs. Observer inspects2–255 options; native256 is explicitly rejected by the converter.",
+      "note": "Single-question Python classifier, distinct from both OmniJev projects. Offline --dialect jev-omni requires exact ordered option IDs. Observer inspects 2–255 options; native 256 is explicitly rejected by the converter.",
       "profile": {
         "optional_confidence": true,
         "optional_legend": true,
@@ -910,7 +910,7 @@
       "model_names": [],
       "upstream": null,
       "source_url": "https://github.com/tinnel123666888/OmniJev/blob/14dbec4f71e194852c8d7b88ab36ef639493f400/mso/infer.py",
-      "note": "Distinct from OneJev. Offline --dialect omnijev preserves abstention and modal Score. Abstaining/invalid results remain invalid; no mass renormalization.255 levels is an Observer inspection bound, not an upstream limit.",
+      "note": "Distinct from OneJev. Offline --dialect omnijev preserves abstention and modal Score. Abstaining/invalid results remain invalid; no mass renormalization. 255 levels is an Observer inspection bound, not an upstream limit.",
       "profile": {
         "probability_decimals": 4,
         "score_min": 1,
@@ -944,7 +944,7 @@
       ],
       "upstream": null,
       "source_url": "https://huggingface.co/Cloudflare/clef-omni/resolve/df2d7c9505e62ba8a527b147513a4fa66a77dc5d/README.md",
-      "note": "Saved native helper results use System One capture import. Four-decimal output;255 choices/levels is the Observer inspection bound, not a documented native maximum. Runtime wrappers have separate profiles.",
+      "note": "Saved native helper results use System One capture import. Four-decimal output; 255 choices/levels is the Observer inspection bound, not a documented native maximum. Runtime wrappers have separate profiles.",
       "profile": {
         "probability_decimals": 4,
         "score_min": 1,
@@ -1068,7 +1068,7 @@
       "model_names": [],
       "upstream": "http://127.0.0.1:11434/v1/systemone",
       "source_url": "https://raw.githubusercontent.com/ollama/ollama/efabf6bc450454dc856c1f799aac7ea865e3a4cf/docs/capabilities/decision.mdx",
-      "note": "Use the model actually pulled. Reviewed local generic renderer:2–26 choices and2–10 Score levels; no four-decimal rounding imposed. Model-specific runtime entries differ. Requires Ollama 0.35.0 or later.",
+      "note": "Use the model actually pulled. Reviewed local generic renderer: 2–26 choices and 2–10 Score levels; no four-decimal rounding imposed. Model-specific runtime entries differ. Requires Ollama 0.35.0 or later.",
       "profile": {
         "choice_min": 2,
         "choice_max": 26
@@ -1485,7 +1485,7 @@
       ],
       "upstream": "http://127.0.0.1:8741/v1/systemone",
       "source_url": "https://huggingface.co/h2oai/h2o-lightning-4b/resolve/d8d01a44c379af09750494214b247cdd1d9298b5/README.md",
-      "note": "Reviewed 1.3.1 shim supports 1–255 levels and Box. No localization returns full-frame/confidence 0/found:false; this alone does not prove target absence; preserve found/present. This is distinct from its OpenAI-style /v1/decisions adapter and GGUF runtime.",
+      "note": "Reviewed 1.3.1 shim supports 1–255 levels and Box. No localization returns full-frame/confidence 0/found:false; this alone does not prove target absence. Preserve found/present. This is distinct from its OpenAI-style /v1/decisions adapter and GGUF runtime.",
       "profile": {
         "score_min": 1,
         "score_max": 255,
@@ -1542,7 +1542,7 @@
       ],
       "upstream": "http://127.0.0.1:8000/v1/systemone",
       "source_url": "https://raw.githubusercontent.com/strands-labs/strands-decider/d942e5515db750f80a51032629ec312455a87976/README.md",
-      "note": "Start the reviewed server separately.2–255 choices / 2–10 Score levels; four-decimal output and nullable Noul criteria. Default checkpoint is text-only; vision engines require separate setup.",
+      "note": "Start the reviewed server separately. 2–255 choices / 2–10 Score levels; four-decimal output and nullable Noul criteria. Default checkpoint is text-only; vision engines require separate setup.",
       "profile": {
         "choice_min": 2,
         "probability_decimals": 4,
