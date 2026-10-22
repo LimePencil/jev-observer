@@ -13,6 +13,115 @@ const now = Date.now();
 const group: Group = { id: 'group_v1_1111111111', name: 'department', key: 'department', kind: 'choice', source: 'Test inbox', definition_id: 'def_v1_1111111111', presentation_id: 'presentation_v1_1111111111', definition: { type: 'choice', instructions: 'Choose a department', criteria: { technical: 'Bugs', billing: 'Invoices' } }, task_version: null, family_id: null, family_name: null, adapter: null, answer_count: 2, valid_count: 1, request_count: 2, last_seen: now, version_count: 2, distribution: [{ label: 'technical', count: 1 }], mean_value: null, mean_confidence: null };
 const record: RequestRecord = { id: 'request-one', timestamp: now, source: 'Test inbox', provider: 'typesafe', model: 'test-model', requested_model: 'test-model', status: 200, duration_ms: 124, input_tokens: 100, output_tokens: 20, cost_usd: null, cost_basis: null, answer_count: 1, capture_complete: true, sample: false, state_retained: false, state: null, transport_error: null, source_event_id: null, import_format: null, actions: [], labels: [], answers: [{ key: 'department', kind: 'choice', group_id: group.id, definition_id: group.definition_id, presentation_id: group.presentation_id, candidate_id: null, task_version: null, definition: group.definition, value: 'technical', probabilities: { technical: .8, billing: .2 }, confidence: null, valid: true, error: null, family_id: null, family_name: null, adapter: null, instance_ref: null, mapping_reason: null, raw_answer: {} }] };
 
+async function largeTokenHarness(page: Page, input: string, output: string, summary: Record<string, unknown> = {}) {
+  const state = await harness(page);
+  // Keep the decimal lexemes out of JavaScript Numbers until the application
+  // parses the HTTP response. A route.fulfill({ json }) fixture would pre-round.
+  const inputMarker = '__RAW_TOKEN_INPUT__', outputMarker = '__RAW_TOKEN_OUTPUT__';
+  const raw = (value: unknown) => {
+    expect(input).toMatch(/^(null|[0-9]+)$/);
+    expect(output).toMatch(/^(null|[0-9]+)$/);
+    const body = JSON.stringify(value).replaceAll(JSON.stringify(inputMarker), input).replaceAll(JSON.stringify(outputMarker), output);
+    expect(body).toContain(`"input_tokens":${input}`);
+    expect(body).toContain(`"output_tokens":${output}`);
+    return body;
+  };
+  const request = { ...record, input_tokens: inputMarker, output_tokens: outputMarker };
+  const current = { ...group, answer_count: 1, valid_count: 1, request_count: 1, input_tokens: inputMarker, output_tokens: outputMarker,
+    input_tokens_known_requests: input === 'null' ? 0 : 1, output_tokens_known_requests: output === 'null' ? 0 : 1 };
+  const dashboard = { ...state.dashboard, requests: [request], groups: [current], timeline: [], summary: {
+    ...state.dashboard.summary, request_count: 1, answer_count: 1, error_count: 0,
+    input_tokens: inputMarker, output_tokens: outputMarker, input_tokens_overflow: false, output_tokens_overflow: false,
+    input_tokens_known_requests: input === 'null' ? 0 : 1, output_tokens_known_requests: output === 'null' ? 0 : 1, ...summary,
+  } };
+  const other = { ...current, id: 'safe-comparison', request_count: 2, answer_count: 2, valid_count: 2,
+    input_tokens: Number.MAX_SAFE_INTEGER, output_tokens: null, output_tokens_overflow: true,
+    input_tokens_known_requests: 2, output_tokens_known_requests: 2 };
+  await page.route('**/api/dashboard?*', route => route.fulfill({ contentType: 'application/json', body: raw(dashboard) }));
+  await page.route('**/api/requests/*', route => route.fulfill({ contentType: 'application/json', body: raw(request) }));
+  await page.route('**/api/groups/*', route => route.fulfill({ contentType: 'application/json', body: raw({ group: current, versions: [current, other], requests: [], timeline: [], answers: [] }) }));
+  await page.reload();
+  await expect(page.locator('.request-link')).toHaveCount(1);
+}
+
+for (const { literal, displayed, abbreviated } of [
+  { literal: '9007199254740993', displayed: 'About 9,007,199,254,740,992', abbreviated: 'About 9007.2T' },
+  { literal: '9223372036854775807', displayed: 'About 9,223,372,036,854,776,000', abbreviated: 'About 9,223,372T' },
+]) {
+  test(`large token counts mark parsed ${literal} approximate throughout the request view`, async ({ page }) => {
+    await largeTokenHarness(page, literal, '0');
+    const metric = page.getByRole('group', { name: 'Token usage' });
+    await expect(metric.locator('.metric-value')).toHaveText(abbreviated);
+    await expect(metric).toContainText(`${abbreviated} in / 0 out`);
+    await expect(metric).toContainText('Input: 1 / 1 requests');
+    await expect(page.locator('.request-table tbody tr').first().locator('td').nth(4)).toHaveText(displayed);
+    if (literal === '9223372036854775807') {
+      await page.setViewportSize({ width: 390, height: 844 });
+      const containment = await metric.evaluate(element => [...element.querySelectorAll('.metric-value, .metric-foot')].map(child => ({
+        width: child.clientWidth, contentWidth: child.scrollWidth,
+      })));
+      for (const { width, contentWidth } of containment) expect(contentWidth).toBeLessThanOrEqual(width + 1);
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
+    await page.locator('.request-link').first().click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('dt').filter({ hasText: /^Input tokens$/ }).locator('..').locator('dd')).toHaveText(displayed);
+    await expect(dialog.locator('dt').filter({ hasText: /^Output tokens$/ }).locator('..').locator('dd')).toHaveText('0');
+  });
+}
+
+test('large token computed totals mark unsafe sums of safe operands approximate', async ({ page }) => {
+  await largeTokenHarness(page, '9007199254740991', '2');
+  const metric = page.getByRole('group', { name: 'Token usage' });
+  await expect(metric.locator('.metric-value')).toHaveText('About 9007.2T');
+  await expect(metric.locator('.metric-foot').first()).toHaveText('9007.2T in / 2 out');
+  await expect(page.locator('.request-table tbody tr').first().locator('td').nth(4)).toHaveText('About 9,007,199,254,740,992');
+  await page.locator('.request-link').first().click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('dt').filter({ hasText: /^Input tokens$/ }).locator('..').locator('dd')).toHaveText('9,007,199,254,740,991');
+  await expect(dialog.locator('dt').filter({ hasText: /^Output tokens$/ }).locator('..').locator('dd')).toHaveText('2');
+});
+
+for (const { input, output, displayed, abbreviated } of [
+  { input: '9007199254740991', output: '0', displayed: '9,007,199,254,740,991', abbreviated: '9007.2T' },
+  { input: '0', output: '0', displayed: '0', abbreviated: '0' },
+  { input: 'null', output: 'null', displayed: 'Unknown', abbreviated: 'Unknown' },
+]) {
+  test(`large token formatting preserves the ${input} safe or unknown control`, async ({ page }) => {
+    await largeTokenHarness(page, input, output);
+    const metric = page.getByRole('group', { name: 'Token usage' });
+    await expect(metric.locator('.metric-value')).toHaveText(abbreviated);
+    await expect(metric).not.toContainText('About');
+    await expect(page.locator('.request-table tbody tr').first().locator('td').nth(4)).toHaveText(displayed);
+    await page.locator('.request-link').first().click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('dt').filter({ hasText: /^Input tokens$/ }).locator('..').locator('dd')).toHaveText(displayed);
+    await expect(dialog.locator('.detail-grid:not(.compact-fields)')).not.toContainText('About');
+  });
+}
+
+test('large token approximation keeps backend overflow labels and coverage precedence', async ({ page }) => {
+  await largeTokenHarness(page, 'null', '9007199254740993', { input_tokens_overflow: true, input_tokens_known_requests: 1 });
+  const metric = page.getByRole('group', { name: 'Token usage' });
+  await expect(metric.locator('.metric-value')).toHaveText('Total exceeds range');
+  await expect(metric.locator('.metric-foot').first()).toHaveText('Exceeds range in / About 9007.2T out');
+  await expect(metric).toContainText('Input: 1 / 1 requests');
+  await expect(metric).toContainText('Output: 1 / 1 requests');
+});
+
+test('large token version comparisons distinguish approximation from safe counts and overflow', async ({ page }) => {
+  await largeTokenHarness(page, '9007199254740993', '0');
+  await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+  await page.getByLabel('Compare with').selectOption('safe-comparison');
+  const comparison = page.getByLabel('Version outcome comparison');
+  const input = comparison.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Reported input tokens', exact: true }) });
+  const output = comparison.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Reported output tokens', exact: true }) });
+  await expect(input.getByRole('cell').nth(0)).toHaveText('About 9,007,199,254,740,9921 / 1 requests covered');
+  await expect(input.getByRole('cell').nth(1)).toHaveText('9,007,199,254,740,9912 / 2 requests covered');
+  await expect(output.getByRole('cell').nth(0)).toHaveText('01 / 1 requests covered');
+  await expect(output.getByRole('cell').nth(1)).toHaveText('Total exceeds range2 / 2 requests covered');
+});
+
 async function harness(page: Page, options: { demo?: boolean; settings?: Partial<Settings>; path?: string } = {}) {
   const state = {
     record: structuredClone(record),
