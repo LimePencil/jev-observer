@@ -37,11 +37,19 @@ pub struct Status {
     pub storage: &'static str,
 }
 
-#[cfg(not(test))]
 fn account_for(path: &std::path::Path) -> Result<String> {
     let path = path
         .canonicalize()
         .context("Resolve workspace database path")?;
+    // Unix filenames need not be UTF-8. Hash their canonical native bytes so
+    // distinct paths cannot share an account through lossy replacement text.
+    // Valid UTF-8 paths retain the account names used by earlier releases.
+    #[cfg(unix)]
+    let hash = {
+        use std::os::unix::ffi::OsStrExt;
+        Sha256::digest(path.as_os_str().as_bytes())
+    };
+    #[cfg(not(unix))]
     let hash = Sha256::digest(path.to_string_lossy().as_bytes());
     Ok(format!("{hash:x}"))
 }
@@ -123,11 +131,15 @@ fn load_approved(account: &str, approval: &str) -> Result<Option<Pair>> {
     load(account)
 }
 
-fn forget_approved(account: &str, approval: Option<&str>) -> Result<()> {
+fn forget_approved(
+    account: &str,
+    approval: Option<&str>,
+    mut remove_entry: impl FnMut(&str) -> Result<()>,
+) -> Result<()> {
     let scoped = approval
-        .map(|approval| forget(&scoped_account(account, approval)))
+        .map(|approval| remove_entry(&scoped_account(account, approval)))
         .transpose();
-    let legacy = forget(account);
+    let legacy = remove_entry(account);
     scoped?;
     legacy
 }
@@ -290,7 +302,7 @@ impl Credentials {
                     store.set_credential_approval(None)?;
                 }
                 if (was_persisted || old_approval.is_some())
-                    && forget_approved(&account, old_approval.as_deref()).is_err()
+                    && forget_approved(&account, old_approval.as_deref(), forget).is_err()
                 {
                     eprintln!("Observer could not remove the obsolete system credential entry");
                 }
@@ -335,7 +347,7 @@ impl Credentials {
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = Active::default();
             if persisted || old_approval.is_some() {
-                forget_approved(&account, old_approval.as_deref())?;
+                forget_approved(&account, old_approval.as_deref(), forget)?;
             }
             Ok(())
         })
@@ -347,6 +359,168 @@ impl Credentials {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_accounts_preserve_utf8_hashes_and_canonical_aliases() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("observer.기록.sqlite");
+        std::fs::write(&path, b"fixture").unwrap();
+        std::fs::create_dir(dir.path().join("nested")).unwrap();
+        let canonical = path.canonicalize().unwrap();
+        let previous = format!(
+            "{:x}",
+            Sha256::digest(canonical.to_str().unwrap().as_bytes())
+        );
+        assert_eq!(account_for(&path).unwrap(), previous);
+        assert_eq!(
+            account_for(&dir.path().join("nested/../observer.기록.sqlite")).unwrap(),
+            previous
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn credential_accounts_distinguish_native_bytes_from_replacement_text() {
+        use std::os::unix::{ffi::OsStrExt, fs::symlink};
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = [
+            dir.path()
+                .join(std::ffi::OsStr::from_bytes(b"history.\xff")),
+            dir.path()
+                .join(std::ffi::OsStr::from_bytes(b"history.\xfe")),
+            dir.path().join("history.\u{fffd}"),
+        ];
+        for path in &paths {
+            std::fs::write(path, b"fixture").unwrap();
+        }
+        let previous: Vec<_> = paths
+            .iter()
+            .map(|path| {
+                format!(
+                    "{:x}",
+                    Sha256::digest(path.canonicalize().unwrap().to_string_lossy().as_bytes())
+                )
+            })
+            .collect();
+        assert!(previous.iter().all(|account| account == &previous[0]));
+        let accounts: Vec<_> = paths
+            .iter()
+            .map(|path| account_for(path).unwrap())
+            .collect();
+        assert_ne!(accounts[0], accounts[1]);
+        assert_ne!(accounts[0], accounts[2]);
+        assert_ne!(accounts[1], accounts[2]);
+        assert_eq!(accounts[2], previous[2]);
+        let alias = dir.path().join("alias.sqlite");
+        symlink(&paths[0], &alias).unwrap();
+        assert_eq!(account_for(&alias).unwrap(), accounts[0]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_path_rotation_and_cleanup_leave_ambiguous_old_accounts_untouched() {
+        use std::{cell::RefCell, collections::HashMap, os::unix::ffi::OsStrExt};
+
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir
+            .path()
+            .join(std::ffi::OsStr::from_bytes(b"history.\xff"));
+        let b = dir
+            .path()
+            .join(std::ffi::OsStr::from_bytes(b"history.\xfe"));
+        std::fs::write(&a, b"fixture").unwrap();
+        std::fs::write(&b, b"fixture").unwrap();
+        let old_account = format!(
+            "{:x}",
+            Sha256::digest(a.canonicalize().unwrap().to_string_lossy().as_bytes())
+        );
+        assert_eq!(
+            old_account,
+            format!(
+                "{:x}",
+                Sha256::digest(b.canonicalize().unwrap().to_string_lossy().as_bytes())
+            )
+        );
+        let a_account = account_for(&a).unwrap();
+        let b_account = account_for(&b).unwrap();
+        assert_ne!(a_account, b_account);
+        assert_ne!(a_account, old_account);
+        assert_ne!(b_account, old_account);
+        let old = Pair {
+            api_key: "old-provider".into(),
+            client_token: "same-approved-token".into(),
+        };
+        let next = Pair {
+            api_key: "replacement-provider".into(),
+            client_token: "replacement-token".into(),
+        };
+        let old_hash = token_hash(&old.client_token);
+        let next_hash = token_hash(&next.client_token);
+        let old_scoped = scoped_account(&old_account, &old_hash);
+        let a_scoped = scoped_account(&a_account, &old_hash);
+        let b_scoped = scoped_account(&b_account, &old_hash);
+        // Even a copied approval digest cannot address the other new account.
+        assert_ne!(a_scoped, b_scoped);
+        let entries = RefCell::new(HashMap::from([
+            (old_account.clone(), old.clone()),
+            (old_scoped.clone(), old.clone()),
+            (a_scoped.clone(), old.clone()),
+            (b_scoped.clone(), old.clone()),
+        ]));
+        let approval = RefCell::new(old_hash.clone());
+        let removed = RefCell::new(Vec::new());
+        stage_rotation(
+            &b_account,
+            &next,
+            Some(&old_hash),
+            |name, pair| {
+                entries.borrow_mut().insert(name.into(), pair.clone());
+                Ok(())
+            },
+            |hash| {
+                *approval.borrow_mut() = hash.into();
+                Ok(())
+            },
+            |name| {
+                removed.borrow_mut().push(name.to_owned());
+                entries.borrow_mut().remove(name);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(*approval.borrow(), next_hash);
+        assert_eq!(*removed.borrow(), [b_scoped.clone(), b_account.clone()]);
+        assert!(!entries.borrow().contains_key(&b_scoped));
+        let next_scoped = scoped_account(&b_account, &next_hash);
+        assert_eq!(entries.borrow()[&next_scoped].api_key, next.api_key);
+        for name in [&old_account, &old_scoped, &a_scoped] {
+            assert_eq!(entries.borrow()[name].api_key, old.api_key);
+        }
+        removed.borrow_mut().clear();
+        forget_approved(&b_account, Some(&next_hash), |name| {
+            removed.borrow_mut().push(name.to_owned());
+            entries.borrow_mut().remove(name);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(*removed.borrow(), [next_scoped, b_account]);
+        assert_eq!(entries.borrow().len(), 3);
+        for name in [&old_account, &old_scoped, &a_scoped] {
+            assert_eq!(entries.borrow()[name].api_key, old.api_key);
+        }
+    }
+
+    #[test]
+    fn credential_cleanup_attempts_both_entries_and_preserves_the_first_error() {
+        let mut removed = Vec::new();
+        let result = forget_approved("workspace", Some("approval"), |name| {
+            removed.push(name.to_owned());
+            anyhow::bail!("{name}")
+        });
+        assert_eq!(removed, ["workspace:approval", "workspace"]);
+        assert_eq!(result.unwrap_err().to_string(), "workspace:approval");
+    }
 
     #[test]
     fn failed_rotation_preserves_the_approved_entry_and_restart_digest() {
