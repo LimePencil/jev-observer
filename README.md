@@ -31,18 +31,18 @@ Inspect answers, probabilities and request usage, then add a local review label.
 
 ## What you can do
 
-- **Inspect decisions:** view Choice, Score and Noul answers, their definitions and reported probabilities.
+- **Inspect decisions:** view Choice, Score, Noul and Box answers, their definitions and reported probabilities or geometry.
 - **Compare question versions:** group recurring questions and keep statistics separate when their definitions change.
 - **Find and review results:** search question groups, filter history by date, source or model, and label answers correct, incorrect or unknown.
 - **Track usage and cost:** see request-level token usage, OpenRouter-reported USD cost or your configured estimates. Each request is counted once, even if it contains several answers.
-- **Move your data:** import Observer JSONL, raw System One captures or supported JevRouter receipts; export filtered history as JSONL or CSV.
+- **Move your data:** import Observer JSONL, saved decision request/response captures or supported JevRouter receipts; export filtered history as JSONL or CSV.
 - **Try it offline:** explore the demo without provider credentials or model calls.
 
-Observer currently forwards `POST /v1/systemone`. It does not host models, provide universal provider routing, or replay the same inputs across question versions. See [compatibility and tested scope](docs/compatibility.md).
+Observer forwards `POST /v1/systemone` by default. Select `--protocol openai-decisions` to forward `POST /v1/decisions`, or `--protocol cloudflare-systemone` for the Cloudflare result envelope. Model validation profiles and credential providers are configured separately. It does not host models, provide universal provider routing, or replay the same inputs across question versions. See [compatibility and tested scope](docs/compatibility.md).
 
 ## Quick start: try the demo
 
-[Download v0.3.1](https://github.com/LimePencil/jev-observer/releases/tag/v0.3.1), or use an installer below. Prebuilt releases need no Rust, Node.js, database server or administrator access.
+[Download v0.4.0](https://github.com/LimePencil/jev-observer/releases/tag/v0.4.0), or use an installer below. Prebuilt releases need no Rust, Node.js, database server or administrator access.
 
 | Platform | Architectures | Archive |
 |---|---|---|
@@ -54,7 +54,7 @@ Observer currently forwards `POST /v1/systemone`. It does not host models, provi
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
-sh install.sh --version 0.3.1
+sh install.sh --version 0.4.0
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
 ```
@@ -63,7 +63,7 @@ jev-observer --demo
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version 0.3.1
+.\install.ps1 -Version 0.4.0
 $env:PATH = "$env:LOCALAPPDATA\JevObserver\bin;$env:PATH"
 jev-observer --demo
 ```
@@ -77,11 +77,13 @@ Open **[http://127.0.0.1:8765](http://127.0.0.1:8765)** and sign in:
 
 Observer prints the exact token-file path at startup. Demo mode uses a separate `*.demo.sqlite` database, disables forwarding and works offline. Press **Ctrl-C** to stop it.
 
-The install commands above select published 0.3.1, which uses `observer.demo.access-token` for demo mode and `observer.access-token` for live mode in `.jev-observer/`. Current builds use the `.sqlite.token` names shown here. Use the exact path printed by your executable.
+Version 0.4.0 uses the `.sqlite.token` paths shown here. Use the exact path printed by your executable.
 
 Token files append `.token` to the complete database filename. Upgrading a workspace that has only the older `*.access-token` file creates a fresh token and prints a notice; sign in with the new token. See [token upgrade and rollback details](docs/installation.md#history-backups-and-downgrades).
 
-macOS and Windows executables are unsigned. For OS restrictions, private repository access, upgrades or uninstalling, see the [installation guide](docs/installation.md). Every release includes `SHA256SUMS`; see the [0.3.1 release notes](docs/releases/0.3.1.md) for changes.
+Before upgrading, preserve a stopped-workspace backup. Older releases cannot reliably read histories containing new Box observations; see the [rollback limits](docs/installation.md#history-backups-and-downgrades).
+
+macOS and Windows executables are unsigned. For OS restrictions, private repository access, upgrades or uninstalling, see the [installation guide](docs/installation.md). Every release includes `SHA256SUMS`; see the [0.4.0 release notes](docs/releases/0.4.0.md) for changes.
 
 ## Connect an application
 

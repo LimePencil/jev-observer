@@ -1,6 +1,6 @@
 # Installation
 
-Jev Observer 0.3.1 runs as one executable with its dashboard, fonts and SQLite included. Installation needs no Rust, Node.js, database server or administrator access.
+Jev Observer 0.4.0 runs as one executable with its dashboard, fonts and SQLite included. Installation needs no Rust, Node.js, database server or administrator access.
 
 ## Install a release
 
@@ -10,7 +10,7 @@ These commands download the public release without authentication. If you are ac
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
-sh install.sh --version 0.3.1
+sh install.sh --version 0.4.0
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
 ```
@@ -19,7 +19,7 @@ jev-observer --demo
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version 0.3.1
+.\install.ps1 -Version 0.4.0
 $env:PATH = "$env:LOCALAPPDATA\JevObserver\bin;$env:PATH"
 jev-observer --demo
 ```
@@ -30,7 +30,7 @@ Open <http://127.0.0.1:8765> and sign in with username `observer` and the token 
 
 For live requests, [generate and save a database key](../README.md#connect-an-application), supply it on each startup, then run without `--demo` and connect your application's SDK. The live dashboard token is in `.jev-observer/observer.sqlite.token`.
 
-The commands in this guide select published 0.3.1. That release uses `.jev-observer/observer.demo.access-token` for demo mode and `.jev-observer/observer.access-token` for live mode; the `.sqlite.token` examples describe current builds. The exact path printed at startup is authoritative for the executable you run.
+Version 0.4.0 uses the `.sqlite.token` paths shown here. Upgrading from 0.3.1 or earlier rotates the workspace dashboard token once; see [history backups and downgrades](#history-backups-and-downgrades). The exact path printed at startup is authoritative for the executable you run.
 
 **Prelaunch builds:** discard development binaries from the earlier private release history and install the current public release before collecting live traffic. Release numbers from that discarded history do not identify the current build.
 
@@ -43,7 +43,7 @@ Linux / macOS:
 ```sh
 gh api --hostname github.com repos/LimePencil/jev-observer/contents/install.sh \
   -H 'Accept: application/vnd.github.raw+json' > install.sh
-sh install.sh --version 0.3.1
+sh install.sh --version 0.4.0
 ```
 
 Windows PowerShell:
@@ -51,7 +51,7 @@ Windows PowerShell:
 ```powershell
 gh api --hostname github.com repos/LimePencil/jev-observer/contents/install.ps1 `
   -H 'Accept: application/vnd.github.raw+json' | Set-Content -Encoding UTF8 install.ps1
-.\install.ps1 -Version 0.3.1
+.\install.ps1 -Version 0.4.0
 ```
 
 Anonymous downloads require both the repository and release to be public. Private asset downloads use existing GitHub CLI authentication without printing or saving your GitHub token.
@@ -65,11 +65,11 @@ Omit the version option to install the latest published release. Rerun to upgrad
 Choose a different installation directory:
 
 ```sh
-sh install.sh --version v0.3.1 --install-dir "$HOME/bin"
+sh install.sh --version v0.4.0 --install-dir "$HOME/bin"
 ```
 
 ```powershell
-.\install.ps1 -Version v0.3.1 -InstallDir "$env:USERPROFILE\bin"
+.\install.ps1 -Version v0.4.0 -InstallDir "$env:USERPROFILE\bin"
 ```
 
 The installer prints a command to add that directory to the current terminal's `PATH`. To keep it available in new terminals, add the Unix export to your shell configuration or add the Windows directory to your user's `Path` environment variable.
@@ -78,9 +78,13 @@ Check the executable with `command -v jev-observer` on Unix or `Get-Command jev-
 
 ### History backups and downgrades
 
-Before upgrading to 0.3.1, stop Observer cleanly and keep a copy of the database and any remaining SQLite sidecars, the workspace dashboard-token file, and access to the saved `JEV_OBSERVER_DB_KEY`. Preserve the earlier executable if you need to test a rollback. Starting the new executable upgrades supported query indexes; a rejected unsupported database is not encrypted or otherwise rewritten. Copy files back only while every Observer process using that workspace is stopped.
+Before upgrading to 0.4.0, stop Observer cleanly and keep a copy of the database and any remaining SQLite sidecars, both current and legacy workspace dashboard-token files, and access to the saved `JEV_OBSERVER_DB_KEY`. Preserve the earlier executable if you need to test a rollback. Starting the new executable upgrades supported query indexes; a rejected unsupported database is not encrypted or otherwise rewritten. Copy files back only while every Observer process using that workspace is stopped.
 
-The token-path change described here applies to builds after the published 0.3.1 release. Those builds use the complete database filename followed by `.token`, such as `observer.sqlite.token` or `observer.demo.sqlite.token`; published 0.3.1 uses the legacy `*.access-token` path. This keeps custom databases such as `team.db` and `team.sqlite` from sharing the old `team.access-token` path. An existing new-format token is reused with the usual private-file checks. When only a legacy `*.access-token` file exists, the first startup creates a fresh random token and prints a notice; it never copies the legacy secret. Later startups reuse the new token.
+**New answer kinds limit rollback.** Valid Box observations store geometry without a numeric value. Earlier readers assume valid non-Choice answers are numeric, so their dashboard or group queries can fail on a workspace containing Box records even though the database schema has not changed. A binary-only downgrade is not a supported way to read that history. Older versions also do not understand the native Decisions protocol, typed Choice identities or new protocol/profile flags.
+
+For rollback, retain the upgraded workspace separately and restore the stopped pre-upgrade snapshot for the older executable. That snapshot excludes observations collected after the upgrade; keep the 0.4.0 workspace so they remain available when returning to 0.4.0. Exporting new Box or native Decisions records as JSONL does not make them compatible with older normalizers. Preserve the previous startup and client configuration as well as the executable.
+
+Version 0.4.0 uses the complete database filename followed by `.token`, such as `observer.sqlite.token` or `observer.demo.sqlite.token`; published 0.3.1 uses the legacy `*.access-token` path. This keeps custom databases such as `team.db` and `team.sqlite` from sharing the old `team.access-token` path. An existing new-format token is reused with the usual private-file checks. When only a legacy `*.access-token` file exists, the first startup creates a fresh random token and prints a notice; it never copies the legacy secret. Later startups reuse the new token.
 
 After that one-time rotation, sign in again as `observer` with the new token and update clients that use the workspace token in Basic auth, `X-Observer-Access`, or `--upstream-auth none` requests. This includes direct provider-key and configured-key fallback clients that supply workspace authentication. Database keys, history, saved provider credentials and registered `jo_local_` client tokens are unchanged by the token-path upgrade; session-only credentials still expire on restart as usual.
 
@@ -90,7 +94,7 @@ Version 0.2.0 reads provider credentials saved by 0.1.0. After saving or rotatin
 
 On Unix, builds containing the native credential-path update identify a workspace using the exact bytes of its canonical database path. Valid UTF-8 paths and canonical aliases keep their existing credential accounts. If any component of the canonical path contains invalid UTF-8 bytes, re-register the persisted provider key and update the application's local client token after upgrading. Earlier builds replaced invalid bytes when naming credential accounts, so distinct paths could share an account. The new account does not read, copy or remove that ambiguous old account; old entries are left untouched. An older executable still uses the old naming behavior and cannot find credentials registered under the new account. New registration changes SQLite’s approval digest, so a downgrade does not automatically reactivate an old entry: re-register the provider key or restore an appropriate matching backup, as described above. This change does not alter history, database keys or dashboard access tokens; non-Unix account naming is unchanged.
 
-The automated upgrade checks exercise encrypted history, labels, import identities, approval digests, backups and rollback using disposable fixtures. They do not establish native operating-system keychain compatibility. Reconnect the application and verify collection health before resuming normal traffic after a rollback.
+The automated upgrade checks exercise encrypted history, labels, import identities, approval digests, backups and rollback using disposable legacy-record fixtures. They do not establish that new answer kinds are readable by older releases. Native Linux credential-store compatibility is checked separately; this does not establish every operating-system keychain or older-version combination. Reconnect the application and verify collection health before resuming normal traffic after a rollback.
 
 ## Supported packages
 

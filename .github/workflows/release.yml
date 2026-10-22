@@ -66,6 +66,7 @@ jobs:
           cache-dependency-path: |
             ui/package-lock.json
             fixtures/sdk/package-lock.json
+            fixtures/current-sdk/package-lock.json
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
@@ -112,6 +113,10 @@ jobs:
             native-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}-
       - name: Verify locked dependency notices
         run: python scripts/generate-license-notices.py --check
+      - name: Verify decision converters and catalog metadata
+        run: |
+          python scripts/test-decision-capture.py
+          python scripts/test-model-catalog.py
       - name: Build embedded dashboard
         run: |
           npm ci --prefix ui --no-audit --no-fund
@@ -171,6 +176,18 @@ jobs:
             --binary "target/$RELEASE_TARGET/release/jev-observer$suffix" \
             --node-sdk "$GITHUB_WORKSPACE/fixtures/sdk/node_modules/@typesafe-ai/sdk" \
             --output sdk-compatibility.json
+      - name: Verify current SDK compression and multipart against loopback mock
+        # The bounded fixture currently uses Linux signal-based deadlines.
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          python -m pip install -r fixtures/current-sdk/python-requirements.txt
+          npm ci --prefix fixtures/current-sdk --ignore-scripts --no-audit --no-fund
+          python scripts/current-sdk-compatibility.py \
+            --binary "$GITHUB_WORKSPACE/target/$RELEASE_TARGET/release/jev-observer" \
+            --node-sdk "$GITHUB_WORKSPACE/fixtures/current-sdk/node_modules/@typesafe-ai/sdk" \
+            --output current-sdk-compatibility.json
       - name: Check live startup, demo and embedded UI, then package
         shell: bash
         run: |
@@ -204,6 +221,7 @@ jobs:
           path: |
             keyring-compatibility.json
             sdk-compatibility.json
+            current-sdk-compatibility.json
             upgrade-validation.json
             ui/test-results/
             ui/test-results-integration/

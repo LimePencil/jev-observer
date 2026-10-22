@@ -31,18 +31,18 @@ Rust, SQLite, React로 개발되었으며, 대시보드와 글꼴을 포함한 *
 
 ## 주요 기능
 
-- **판단 살펴보기:** Choice, Score, Noul 답변과 질문 정의, 모델이 보고한 확률을 확인합니다.
+- **판단 살펴보기:** Choice, Score, Noul, Box 답변과 질문 정의, 모델이 보고한 확률 또는 좌표를 확인합니다.
 - **질문 버전 비교:** 반복되는 질문을 그룹으로 묶고, 정의가 바뀌면 통계를 별도로 유지합니다.
 - **결과 검색 및 검토:** 질문 그룹을 검색하고 날짜·출처·모델로 기록을 필터링합니다. 답변에 정답·오답·알 수 없음 라벨을 붙일 수 있습니다.
 - **사용량 및 비용 확인:** 요청별 토큰 사용량, OpenRouter가 보고한 USD 비용, 직접 설정한 추정 비용을 확인합니다. 한 요청에 여러 답변이 있어도 요청은 한 번만 집계합니다.
-- **데이터 가져오기 및 내보내기:** Observer JSONL과 지원되는 JevRouter 영수증을 가져오고, 필터링한 기록을 JSONL 또는 CSV로 내보냅니다.
+- **데이터 가져오기 및 내보내기:** Observer JSONL, 저장된 판단 요청·응답 캡처와 지원되는 JevRouter 영수증을 가져오고, 필터링한 기록을 JSONL 또는 CSV로 내보냅니다.
 - **오프라인 체험:** 제공업체 인증 정보나 모델 호출 없이 데모를 사용합니다.
 
-현재 Observer가 전달하는 경로는 `POST /v1/systemone`입니다. 모델을 직접 실행하거나 모든 제공업체를 라우팅하는 기능, 같은 입력을 여러 질문 버전에 재실행하는 기능은 제공하지 않습니다. [호환성 및 검증 범위](docs/compatibility.md)를 참고하세요.
+기본 전달 경로는 `POST /v1/systemone`입니다. `--protocol openai-decisions`를 선택하면 `POST /v1/decisions`를 전달하고, `--protocol cloudflare-systemone`은 Cloudflare 응답 형식을 처리합니다. 모델 검증 프로필과 인증 제공업체는 별도로 설정합니다. 모델을 직접 실행하거나 모든 제공업체를 라우팅하는 기능, 같은 입력을 여러 질문 버전에 재실행하는 기능은 제공하지 않습니다. [호환성 및 검증 범위](docs/compatibility.md)를 참고하세요.
 
 ## 빠른 시작: 데모 실행
 
-[v0.3.1 다운로드](https://github.com/LimePencil/jev-observer/releases/tag/v0.3.1) 또는 아래 설치 스크립트를 이용하세요. 미리 빌드된 실행 파일은 Rust, Node.js, 데이터베이스 서버, 관리자 권한 없이 실행할 수 있습니다.
+[v0.4.0 다운로드](https://github.com/LimePencil/jev-observer/releases/tag/v0.4.0) 또는 아래 설치 스크립트를 이용하세요. 미리 빌드된 실행 파일은 Rust, Node.js, 데이터베이스 서버, 관리자 권한 없이 실행할 수 있습니다.
 
 | 플랫폼 | 아키텍처 | 압축 형식 |
 |---|---|---|
@@ -54,7 +54,7 @@ Rust, SQLite, React로 개발되었으며, 대시보드와 글꼴을 포함한 *
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.sh -o install.sh
-sh install.sh --version 0.3.1
+sh install.sh --version 0.4.0
 export PATH="$HOME/.local/bin:$PATH"
 jev-observer --demo
 ```
@@ -63,7 +63,7 @@ jev-observer --demo
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/LimePencil/jev-observer/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Version 0.3.1
+.\install.ps1 -Version 0.4.0
 $env:PATH = "$env:LOCALAPPDATA\JevObserver\bin;$env:PATH"
 jev-observer --demo
 ```
@@ -77,11 +77,13 @@ jev-observer --demo
 
 Observer는 시작할 때 정확한 토큰 파일 경로를 출력합니다. 데모는 별도의 `*.demo.sqlite` 데이터베이스를 사용하며, 요청을 모델로 전달하지 않고 오프라인으로 동작합니다. **Ctrl-C**로 종료할 수 있습니다.
 
-위 설치 명령은 공개된 0.3.1 버전을 설치합니다. 이 버전은 `.jev-observer/` 안의 데모용 `observer.demo.access-token`과 실제 요청 수집용 `observer.access-token`을 사용합니다. 현재 빌드는 이 문서에 표시된 `.sqlite.token` 이름을 사용하므로, 실행 파일이 출력하는 정확한 경로를 확인하세요.
+0.4.0은 위에 표시된 `.sqlite.token` 경로를 사용합니다. 실행 파일이 출력하는 정확한 경로를 확인하세요.
 
 토큰 파일 이름은 데이터베이스의 전체 파일 이름 뒤에 `.token`을 붙입니다. 이전 `*.access-token` 파일만 있는 워크스페이스를 업그레이드하면 새 토큰을 만들고 안내를 출력합니다. 새 토큰으로 다시 로그인하세요. 자세한 내용은 [토큰 업그레이드 및 롤백 안내](docs/installation.md#history-backups-and-downgrades)를 참고하세요.
 
-macOS와 Windows 실행 파일은 서명되지 않았습니다. 운영체제의 실행 제한, 비공개 저장소 접근, 업그레이드, 삭제 방법은 [설치 안내](docs/installation.md)를 참고하세요. 릴리스에는 `SHA256SUMS`가 포함됩니다. 변경 사항은 [0.3.1 릴리스 노트](docs/releases/0.3.1.md)에 정리되어 있습니다.
+업그레이드 전에 Observer를 종료하고 워크스페이스를 백업하세요. 이전 버전은 새 Box 관측이 포함된 기록을 정상적으로 읽지 못할 수 있습니다. [롤백 제한](docs/installation.md#history-backups-and-downgrades)을 참고하세요.
+
+macOS와 Windows 실행 파일은 서명되지 않았습니다. 운영체제의 실행 제한, 비공개 저장소 접근, 업그레이드, 삭제 방법은 [설치 안내](docs/installation.md)를 참고하세요. 릴리스에는 `SHA256SUMS`가 포함됩니다. 변경 사항은 [0.4.0 릴리스 노트](docs/releases/0.4.0.md)에 정리되어 있습니다.
 
 ## 애플리케이션 연결
 
