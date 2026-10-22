@@ -8,26 +8,27 @@ import { connectionSnippet } from './connection';
 import { ModelCatalog } from './ModelCatalog';
 import type { ReviewController, ReviewState } from './reviews';
 import type { CredentialController } from './credentials';
+import type { ImportController } from './imports';
 import { answerValue, bytes, costBasis, dateTime, money, ms, number, percent, shortId } from './format';
 import { Definition, Distribution, Empty, ErrorNotice, KindBadge, LazyDetails, Loading, RequestTable, StatusBadge, Timeline } from './components';
 
 export type Panel = { type: 'request' | 'group'; id: string } | { type: 'settings' | 'import' | 'connect'; format?: string } | null;
 const DECISIONS_PER_PAGE = 50;
 const emptyReview: ReviewState = { pending: null, error: '', saved: false };
-type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; credentials: CredentialController; historyChanged: () => void; historyRevision: number; filterGroup: (id: string) => void; notify: (message: string) => void };
+type Props = { health?: Health; panel: Panel; setPanel: (value: Panel) => void; filters: Filters; reviews: ReviewController; credentials: CredentialController; imports: ImportController; historyChanged: () => void; historyRevision: number; filterGroup: (id: string) => void; notify: (message: string) => void };
 
 function DetailHeading({ eyebrow, title, description, icon }: { eyebrow: string; title: string; description: string; icon?: ReactNode }) {
   return <div className="drawer-heading"><div className="eyebrow">{icon}{eyebrow}</div><Dialog.Title>{title}</Dialog.Title><Dialog.Description>{description}</Dialog.Description></div>;
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="detail-field"><dt>{label}</dt><dd>{children}</dd></div>; }
 
-export default function Details({ health, panel, setPanel, filters, reviews, credentials, historyChanged, historyRevision, filterGroup, notify }: Props) {
+export default function Details({ health, panel, setPanel, filters, reviews, credentials, imports, historyChanged, historyRevision, filterGroup, notify }: Props) {
   return <Dialog.Root open={panel !== null} onOpenChange={open => { if (!open) setPanel(null); }}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className={`drawer ${panel?.type === 'import' || panel?.type === 'connect' ? 'drawer-small' : ''}`}>
     <Dialog.Close className="icon-button drawer-close" aria-label="Close detail panel"><X size={20} weight="bold" /></Dialog.Close>
     {panel?.type === 'request' && <RequestDetails key={panel.id} id={panel.id} setPanel={setPanel} controller={reviews} historyRevision={historyRevision} />}
     {panel?.type === 'group' && <GroupDetails id={panel.id} filters={filters} setPanel={setPanel} filterGroup={filterGroup} historyRevision={historyRevision} />}
     {panel?.type === 'settings' && <SettingsDetails changed={historyChanged} notify={notify} close={() => setPanel(null)} />}
-    {panel?.type === 'import' && <ImportDetails changed={historyChanged} initialFormat={panel.format} />}
+    {panel?.type === 'import' && <ImportDetails controller={imports} initialFormat={panel.format} />}
     {panel?.type === 'connect' && <ConnectDetails health={health} controller={credentials} importCaptures={() => setPanel({ type: 'import', format: 'systemone-capture' })} />}
   </Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
@@ -166,8 +167,9 @@ function SettingsDetails({ changed, notify, close }: { changed: () => void; noti
   </div>}</>;
 }
 
-function ImportDetails({ changed, initialFormat }: { changed: () => void; initialFormat?: string }) {
-  const [format, setFormat] = useState(initialFormat ?? 'observer-jsonl'), [text, setText] = useState(''), [filename, setFilename] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false), [result, setResult] = useState<{ imported: number; duplicates: number } | null>(null);
+function ImportDetails({ controller, initialFormat }: { controller: ImportController; initialFormat?: string }) {
+  const { busy, result, error: importError, clear, submit: importRecords } = controller;
+  const [format, setFormat] = useState((busy ? controller.format : initialFormat ?? controller.format) ?? 'observer-jsonl'), [text, setText] = useState(''), [filename, setFilename] = useState(''), [error, setError] = useState('');
   const [reading, setReading] = useState(false);
   const inputRevision = useRef(0);
   useEffect(() => () => { inputRevision.current += 1; }, []);
@@ -177,7 +179,7 @@ function ImportDetails({ changed, initialFormat }: { changed: () => void; initia
     if (!file || busy) return;
     event.target.value = '';
     const revision = ++inputRevision.current;
-    setText(''); setFilename(file.name); setReading(false); setError(''); setResult(null);
+    setText(''); setFilename(file.name); setReading(false); setError(''); clear();
     if (file.size > maxBytes) { setError('Choose a file no larger than 8 MiB. Split larger histories into separate imports.'); return; }
     setReading(true);
     try {
@@ -191,20 +193,16 @@ function ImportDetails({ changed, initialFormat }: { changed: () => void; initia
   }
   async function submit() {
     if (busy || reading || !text.trim()) return;
-    setError(''); setBusy(true); setResult(null);
-    try {
-      if (new Blob([text]).size > maxBytes) throw new Error('Imports must not exceed 8 MiB.');
-      const result = await api<{ imported: number; duplicates: number }>('/api/import', { method: 'POST', body: JSON.stringify({ text, format }) });
-      setResult(result); changed();
-    } catch (error) { setError(error instanceof Error ? error.message : 'Import failed'); }
-    finally { setBusy(false); }
+    setError(''); clear();
+    if (new Blob([text]).size > maxBytes) { setError('Imports must not exceed 8 MiB.'); return; }
+    await importRecords(text, format);
   }
   return <><DetailHeading eyebrow="Local data" title="Bring your history." description="Import exported records into this workspace. Your file stays on this machine." icon={<FileArrowUp size={15} />} /><div className="drawer-body">
-    <label className="field-label">Source format<select value={format} disabled={busy} onChange={event => { setFormat(event.target.value); setError(''); setResult(null); }}><option value="observer-jsonl">Observer JSONL export</option><option value="jevrouter-receipt">JevRouter decision receipt</option><option value="systemone-capture">System One request/response capture</option></select></label>
+    <label className="field-label">Source format<select value={format} disabled={busy} onChange={event => { if (busy) return; setFormat(event.target.value); setError(''); clear(); }}><option value="observer-jsonl">Observer JSONL export</option><option value="jevrouter-receipt">JevRouter decision receipt</option><option value="systemone-capture">System One request/response capture</option></select></label>
     {format === 'systemone-capture' && <p className="caption">Keep original definitions and full reported distributions. Missing confidence stays unknown. Include id, timestamp (Unix milliseconds), source, provider, status, capture_complete, request and response in every line. Request questions and response answers use the System One shape.</p>}<label className="file-input"><FileArrowUp size={28} weight="duotone" /><strong>{filename || 'Choose a local file'}</strong><span>JSONL or JSON · up to 8 MiB</span><input type="file" disabled={busy} accept=".json,.jsonl,application/json,application/x-ndjson" onChange={event => void fileSelected(event)} aria-label="Choose import file" /></label>
-    <label className="field-label">Or paste records<textarea rows={9} disabled={busy} value={text} onChange={event => { inputRevision.current += 1; setReading(false); setText(event.target.value); setFilename(''); setError(''); setResult(null); }} placeholder={format === 'observer-jsonl' ? 'One exported Observer record per line' : format === 'systemone-capture' ? 'One call per line: id, timestamp, source, provider, status, capture_complete, request, response' : 'Paste a JevRouter decision receipt'} spellCheck={false} /></label>
+    <label className="field-label">Or paste records<textarea rows={9} disabled={busy} value={text} onChange={event => { if (busy) return; inputRevision.current += 1; setReading(false); setText(event.target.value); setFilename(''); setError(''); clear(); }} placeholder={format === 'observer-jsonl' ? 'One exported Observer record per line' : format === 'systemone-capture' ? 'One call per line: id, timestamp, source, provider, status, capture_complete, request, response' : 'Paste a JevRouter decision receipt'} spellCheck={false} /></label>
     <div className="inline-notice"><Fingerprint size={18} /><span>Explicit source event IDs prevent duplicate imports. Identical payloads from separate calls remain separate observations.</span></div>
-    {reading && <p className="caption" role="status">Reading {filename}…</p>}{error && <ErrorNotice message={error} />}{result && <div className="success-notice" role="status"><Check size={19} weight="bold" /><span><strong>{number(result.imported)} records imported.</strong> {number(result.duplicates)} duplicates skipped.</span></div>}
+    {reading && <p className="caption" role="status">Reading {filename}…</p>}{(error || importError) && <ErrorNotice message={error || importError} />}{result && <div className="success-notice" role="status"><Check size={19} weight="bold" /><span><strong>{number(result.imported)} records imported.</strong> {number(result.duplicates)} duplicates skipped.</span></div>}
     <button className="button primary full-width" disabled={!text.trim() || busy || reading} onClick={() => void submit()}><DownloadSimple size={17} />{busy ? 'Importing records…' : 'Import records'}</button>
   </div></>;
 }

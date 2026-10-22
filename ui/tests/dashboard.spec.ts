@@ -1174,6 +1174,102 @@ for (const succeeds of [false, true]) {
   });
 }
 
+for (const outcome of ['success', 'failure'] as const) {
+  test(`closed import ${outcome} retains operation ownership and completion feedback on reopening`, async ({ page }) => {
+    await harness(page);
+    let finish!: () => void, writes = 0, groupReads = 0, imported = false;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const payloads: { text: string; format: string }[] = [];
+    await page.route('**/api/import', async route => {
+      writes += 1;
+      payloads.push(route.request().postDataJSON());
+      if (writes === 1) {
+        await pending;
+        if (outcome === 'failure') return route.fulfill({ status: 400, json: { error: 'Synthetic import rejected atomically' } });
+        imported = true;
+        return route.fulfill({ json: { imported: 7, duplicates: 2 } });
+      }
+      return route.fulfill({ json: { imported: 1, duplicates: 0 } });
+    });
+    await page.route(`**/api/groups/${group.id}*`, route => {
+      groupReads += 1;
+      return route.fulfill({ json: { group: { ...group, answer_count: imported ? 9 : 2 }, versions: [group], requests: [], answers: [], timeline: [] } });
+    });
+    const openImport = page.getByRole('button', { name: 'Import records', exact: true }).first();
+    await openImport.click();
+    const drawer = page.getByRole('dialog');
+    await page.getByLabel('Source format').selectOption('systemone-capture');
+    await page.getByLabel('Or paste records').fill('{"first":true}');
+    // Rapid duplicate activation must still own exactly one pending write.
+    await drawer.getByRole('button', { name: 'Import records', exact: true }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await expect.poll(() => writes).toBe(1);
+    await page.keyboard.press('Escape');
+    await openImport.click();
+    await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
+    for (const field of ['Source format', 'Or paste records', 'Choose import file']) await expect(page.getByLabel(field)).toBeDisabled();
+    await expect(page.getByLabel('Or paste records')).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+    await expect(drawer.locator('.detail-grid').first()).toContainText('1 / 2');
+    const previousReads = groupReads;
+    const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname === '/api/import');
+    finish(); await finished;
+    await expect(drawer.locator('.detail-grid').first()).toContainText(outcome === 'success' ? '1 / 9' : '1 / 2');
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(groupReads).toBe(previousReads + (outcome === 'success' ? 1 : 0));
+    await page.keyboard.press('Escape');
+    await openImport.click();
+    await expect(drawer.getByText(outcome === 'success' ? '7 records imported.' : 'Synthetic import rejected atomically', { exact: true })).toBeVisible();
+    if (outcome === 'success') await expect(drawer.getByRole('status')).toContainText('2 duplicates skipped');
+    await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
+    await expect(page.getByLabel('Or paste records')).toHaveValue('');
+    await expect(page.getByLabel('Or paste records')).toBeEnabled();
+    expect(writes).toBe(1);
+
+    // A deliberate new input clears settled feedback, then a new operation
+    // replaces it without restoring the previous completion on another reopen.
+    await page.getByLabel('Or paste records').fill('{"second":true}');
+    await expect(drawer.getByRole('alert')).toHaveCount(0);
+    await expect(drawer.locator('.success-notice')).toHaveCount(0);
+    await page.getByLabel('Source format').selectOption('jevrouter-receipt');
+    await drawer.getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(drawer.getByRole('status')).toContainText('1 records imported.');
+    await page.keyboard.press('Escape');
+    await openImport.click();
+    await expect(drawer.getByRole('status')).toContainText('1 records imported.');
+    await expect(drawer).not.toContainText('7 records imported.');
+    await expect(drawer.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByLabel('Source format')).toHaveValue('jevrouter-receipt');
+    await expect(page.getByLabel('Or paste records')).toHaveValue('');
+    expect(payloads).toEqual([{ text: '{"first":true}', format: 'systemone-capture' }, { text: '{"second":true}', format: 'jevrouter-receipt' }]);
+  });
+}
+
+test('a closed drawer file read cannot replace a newer import input or completion', async ({ page }) => {
+  await harness(page);
+  await page.evaluate(() => {
+    (window as unknown as { finishOldImportRead: (text: string) => void }).finishOldImportRead = () => {};
+    File.prototype.arrayBuffer = function () { return new Promise<ArrayBuffer>(resolve => {
+      (window as unknown as { finishOldImportRead: (text: string) => void }).finishOldImportRead = text => resolve(new TextEncoder().encode(text).buffer);
+    }); };
+  });
+  const openImport = page.getByRole('button', { name: 'Import records', exact: true }).first();
+  await openImport.click();
+  await page.getByLabel('Choose import file').setInputFiles({ name: 'old.jsonl', mimeType: 'application/json', buffer: Buffer.from('{"old":true}') });
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Reading old.jsonl');
+  await page.keyboard.press('Escape');
+  await openImport.click();
+  await page.getByLabel('Or paste records').fill('{"new":true}');
+  await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('2 records imported.');
+  await page.evaluate(() => (window as unknown as { finishOldImportRead: (text: string) => void }).finishOldImportRead('{"old":true}'));
+  await expect(page.getByLabel('Or paste records')).toHaveValue('{"new":true}');
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('2 records imported.');
+  await expect(page.getByRole('dialog')).not.toContainText('old.jsonl');
+});
+
 test('a completed deletion discards an older in-flight detail response', async ({ page }) => {
   const state = await harness(page);
   let finishDelete!: () => void, finishDetail!: () => void, oldReads = 0, newReads = 0;
