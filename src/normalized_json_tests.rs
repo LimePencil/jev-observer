@@ -114,7 +114,7 @@ fn stored_wrapper_depth_recovers_detail_exports_and_roundtrip_identity() {
         let detail = reopened.request(&capture.id).unwrap().unwrap();
         assert_eq!(detail["answers"], normalized["answers"]);
         let filter = Filter {
-            search: Some(capture.id.clone()),
+            search: Some(capture.id.as_str().to_owned()),
             ..filter.clone()
         };
         let exported = reopened
