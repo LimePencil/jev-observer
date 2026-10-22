@@ -25,7 +25,7 @@ spec.loader.exec_module(helpers)
 KEY = 'current-sdk-placeholder'
 STATE_SECRET = 'current-state-placeholder'
 PNG = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPioAAAAASUVORK5CYII=')
-RESPONSE = b'{ "model":"synthetic", "answers":{"q":{"type":"noul","noul":0.75}}, "echo":"current-sdk-placeholder", "ordinary":"retained" }'
+RESPONSE = b'{ "model":"synthetic", "answers":{"q":{"type":"noul","noul":0.75}}, "usage":{"input_tokens":10,"output_tokens":1}, "echo":"current-sdk-placeholder", "ordinary":"retained" }'
 
 class WorkDeadline(Exception):
     pass
