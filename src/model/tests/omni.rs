@@ -608,3 +608,39 @@ fn legacy_choice_labels_and_extensions_cannot_select_typed_rendering() {
         .unwrap();
     assert_eq!(detail["group"]["distribution"], group["distribution"]);
 }
+
+#[test]
+fn offline_omni_converter_fixtures_revalidate_and_roundtrip_without_renormalizing() {
+    let fixtures: Value = serde_json::from_str(include_str!(
+        "../../../research/models/omni-converter-fixtures.json"
+    ))
+    .unwrap();
+    for case in fixtures["cases"].as_array().unwrap() {
+        let record = import_records(
+            &case["capture"].to_string(),
+            "systemone-capture",
+            &NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        assert_eq!(
+            record["answers"][0]["valid"], case["valid"],
+            "{}: {record}",
+            case["name"]
+        );
+        assert_eq!(
+            record["answers"][0]["raw_answer"],
+            case["capture"]["response"]["answers"]["q"]
+        );
+        assert_eq!(record["provider"], "local-provider");
+        assert_eq!(record["model_profile"], case["capture"]["model_profile"]);
+        let roundtrip = import_records(
+            &record.to_string(),
+            "observer-jsonl",
+            &NormalizeOptions::default(),
+        )
+        .unwrap()
+        .remove(0);
+        assert_eq!(roundtrip["answers"], record["answers"], "{}", case["name"]);
+    }
+}
