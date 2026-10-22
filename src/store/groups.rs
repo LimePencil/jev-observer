@@ -28,6 +28,7 @@ pub(super) fn distribution_label(group: &Value, raw: &str) -> String {
             let low = raw.parse::<usize>().unwrap_or(0);
             let maximum = group["definition"]["criteria"]
                 .as_array()
+                .or_else(|| group["definition"]["levels"].as_array())
                 .map(|a| a.len().saturating_sub(1));
             if maximum == Some(low) {
                 raw.into()
@@ -37,6 +38,17 @@ pub(super) fn distribution_label(group: &Value, raw: &str) -> String {
         }
         _ => raw.into(),
     }
+}
+
+pub(super) fn distribution_bin(group: &Value, raw: &str, count: Value) -> Value {
+    if group["kind"] == "choice"
+        && group["adapter"] == "openai-decisions-v1"
+        && let Some(bin) =
+            crate::model::decisions::typed_bin(&group["definition"], raw, count.clone())
+    {
+        return bin;
+    }
+    json!({"label":distribution_label(group,raw),"count":count})
 }
 
 impl Store {
@@ -197,12 +209,12 @@ impl Store {
             _ => "CAST(a.value_num AS INTEGER)",
         };
         let mut stmt = conn.prepare(&format!(
-            "SELECT CAST({expression} AS TEXT),count(*) {from} AND a.valid=1 GROUP BY 1 ORDER BY {expression}"
+            "SELECT CAST({expression} AS TEXT),count(*) {from} AND a.valid=1 AND a.kind!='box' GROUP BY 1 ORDER BY {expression}"
         ))?;
         let distribution = stmt
             .query_map(params_from_iter(&args), |r| {
                 let raw: String = r.get(0)?;
-                Ok(json!({"label":distribution_label(&result, &raw),"count":r.get::<_,i64>(1)?}))
+                Ok(distribution_bin(&result, &raw, json!(r.get::<_, i64>(1)?)))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         result["distribution"] = json!(distribution);

@@ -50,7 +50,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .layer(DefaultBodyLimit::max(MAX_IMPORT_BYTES));
     Router::new()
-        .route("/v1/systemone", post(proxy))
+        .route(state.config.protocol.local_path(), post(proxy))
         .nest("/api", api)
         .fallback(get(ui))
         .layer(middleware::from_fn_with_state(state.clone(), local_guard))

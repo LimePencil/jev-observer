@@ -4,6 +4,69 @@ use serde_json::Value;
 use serde_json::json;
 use sha2::Digest;
 use sha2::Sha256;
+use std::collections::BTreeSet;
+
+/// Asset references embedded in a question change its meaning independently
+/// of its text. Isolate these observations without publishing a content hash.
+pub(super) fn semantic_asset_questions(request: &Value) -> BTreeSet<String> {
+    let mut patterns: Vec<&str> = request["assets"]
+        .as_object()
+        .into_iter()
+        .flat_map(|assets| assets.keys().map(String::as_str))
+        .filter(|key| !key.is_empty())
+        .collect();
+    if request["media"]
+        .as_array()
+        .is_some_and(|items| !items.is_empty())
+    {
+        patterns.extend(["<image:", "<video:"]);
+    }
+    let Some(questions) = request["questions"].as_object() else {
+        return BTreeSet::new();
+    };
+    if patterns.is_empty() {
+        return BTreeSet::new();
+    }
+    // Bound matcher construction even for malformed provider envelopes.
+    if patterns.len() > 1024 || patterns.iter().map(|key| key.len()).sum::<usize>() > 65_536 {
+        return questions.keys().cloned().collect();
+    }
+    let Ok(matcher) = aho_corasick::AhoCorasick::builder()
+        .kind(Some(aho_corasick::AhoCorasickKind::NoncontiguousNFA))
+        .dense_depth(0)
+        .build(patterns)
+    else {
+        return questions.keys().cloned().collect();
+    };
+    fn referenced(value: &Value, matcher: &aho_corasick::AhoCorasick) -> bool {
+        match value {
+            Value::String(text) => matcher.is_match(text),
+            Value::Array(values) => values.iter().any(|value| referenced(value, matcher)),
+            Value::Object(values) => values.values().any(|value| referenced(value, matcher)),
+            _ => false,
+        }
+    }
+    questions
+        .iter()
+        .filter(|(_, definition)| {
+            referenced(&definition["instructions"], &matcher)
+                || referenced(&definition["criteria"], &matcher)
+        })
+        .map(|(key, _)| key.clone())
+        .collect()
+}
+
+pub(super) fn group_context(
+    options: &super::types::NormalizeOptions,
+    id: &Value,
+    isolated: bool,
+) -> Value {
+    if options.model_profile.is_none() && options.protocol == super::types::Protocol::Systemone {
+        return if isolated { id.clone() } else { Value::Null };
+    }
+    json!({"protocol": options.protocol, "model_profile": options.profile_name(),
+        "observation": if isolated { id.clone() } else { Value::Null }})
+}
 
 fn canonical(value: &Value) -> Value {
     match value {

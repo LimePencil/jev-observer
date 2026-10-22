@@ -81,7 +81,7 @@ pub(super) fn import_receipt(
     };
     // Receipt answers are provenance, not inference observations. They were
     // already included in the global privacy pass and are preserved below.
-    let mut out = normalize_import(&capture, options, &[], budget, false)?;
+    let mut out = normalize_import(&capture, options, &[], budget, false, false)?;
     out["timestamp"] = Value::Null;
     out["timestamp_basis"] = json!("import");
     out["imported_at"] = json!(chrono::Utc::now().timestamp_millis());
