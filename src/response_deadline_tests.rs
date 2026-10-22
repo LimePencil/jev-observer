@@ -57,7 +57,7 @@ fn probe(
     };
     let capture = recording.then(|| {
         let mut state = capturing(1024);
-        state.capture.id = uuid::Uuid::new_v4().to_string();
+        state.capture.id = model::CaptureId::new_live();
         state.capture.timestamp = chrono::Utc::now().timestamp_millis();
         state.capture.source = "deadline-fixture".into();
         state.capture.status = 200;
