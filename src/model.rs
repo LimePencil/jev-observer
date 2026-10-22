@@ -55,6 +55,20 @@ pub fn valid_timestamp(timestamp: i64) -> bool {
     (-8_640_000_000_000_000..=8_640_000_000_000_000).contains(&timestamp)
 }
 
+const REDACTION_VALIDATION_MESSAGE: &str = "Credential redaction changed answer validation information; request and response content were not retained";
+pub const IMPORT_REDACTION_VALIDATION_MESSAGE: &str = "Import rejected because credential redaction changes answer validation fields or the provider profile.";
+
+#[derive(Debug)]
+pub struct RedactionValidationError;
+
+impl std::fmt::Display for RedactionValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(IMPORT_REDACTION_VALIDATION_MESSAGE)
+    }
+}
+
+impl std::error::Error for RedactionValidationError {}
+
 #[derive(Debug)]
 pub struct ImportLimitError(&'static str);
 
@@ -509,22 +523,84 @@ fn scrub_string(value: &str, matcher: &mut SecretMatcher<'_>) -> Result<String> 
         .collect())
 }
 
+#[derive(Clone, Copy, Default)]
+enum PrivacyContext<'a> {
+    #[default]
+    Other,
+    Request(&'a Profile),
+    Response(&'a Profile),
+    Questions(&'a Profile),
+    Answers(&'a Profile),
+    Definition(&'a Profile),
+    Answer(&'a Profile),
+    Observer(&'a Profile),
+    ObserverAnswers(&'a Profile),
+    ObserverAnswer(&'a Profile),
+}
+
+impl<'a> PrivacyContext<'a> {
+    fn field(self, key: &str) -> Self {
+        match (self, key) {
+            (Self::Request(profile), "questions") => Self::Questions(profile),
+            (Self::Response(profile), "answers") => Self::Answers(profile),
+            (Self::Questions(profile), _) => Self::Definition(profile),
+            (Self::Answers(profile), _) => Self::Answer(profile),
+            (Self::Observer(profile), "answers") => Self::ObserverAnswers(profile),
+            (Self::ObserverAnswer(profile), "definition") => Self::Definition(profile),
+            (Self::ObserverAnswer(profile), "raw_answer") => Self::Answer(profile),
+            _ => Self::Other,
+        }
+    }
+
+    fn item(self) -> Self {
+        match self {
+            Self::ObserverAnswers(profile) => Self::ObserverAnswer(profile),
+            _ => Self::Other,
+        }
+    }
+
+    fn validates_optional_field(self, object: &Value, key: &str) -> bool {
+        match self {
+            Self::Definition(profile) => {
+                (key == "criteria" && object["type"] == "noul")
+                    || (key == "instructions" && profile.optional_instructions)
+            }
+            Self::Answer(profile) => {
+                (key == "confidence"
+                    && profile.optional_confidence
+                    && matches!(object["type"].as_str(), Some("choice" | "score")))
+                    || (key == "legend" && profile.optional_legend && object["type"] == "score")
+            }
+            _ => false,
+        }
+    }
+}
+
 fn scrub(
     value: &Value,
     options: &NormalizeOptions,
     matcher: &mut SecretMatcher<'_>,
+) -> Result<Value> {
+    scrub_with_context(value, options, matcher, PrivacyContext::Other)
+}
+
+fn scrub_with_context(
+    value: &Value,
+    options: &NormalizeOptions,
+    matcher: &mut SecretMatcher<'_>,
+    context: PrivacyContext<'_>,
 ) -> Result<Value> {
     Ok(match value {
         Value::String(s) => json!(scrub_string(s, matcher)?),
         Value::Array(values) => Value::Array(
             values
                 .iter()
-                .map(|v| scrub(v, options, matcher))
+                .map(|v| scrub_with_context(v, options, matcher, context.item()))
                 .collect::<Result<_>>()?,
         ),
         Value::Object(values) => {
             let mut out = Map::new();
-            for (key, value) in values {
+            for (key, original) in values {
                 // Headers are not part of the retained event format, even if
                 // embedded in provider extensions or imported records.
                 if matches!(
@@ -533,15 +609,22 @@ fn scrub(
                 ) {
                     continue;
                 }
-                let value = if sensitive_key(key, options) {
+                let retained = if sensitive_key(key, options) {
                     json!(REDACTED)
                 } else {
-                    scrub(value, options, matcher)?
+                    scrub_with_context(original, options, matcher, context.field(key))?
                 };
+                let retained_key = scrub_string(key, matcher)?;
+                // Follow only exact original protocol paths. Optional fields
+                // cannot become "not reported" after their names are scrubbed.
+                ensure!(
+                    retained_key == *key || !context.validates_optional_field(value, key),
+                    RedactionValidationError
+                );
                 // Distinct original keys must not silently replace one another,
                 // even when one already contains a literal redaction marker.
                 ensure!(
-                    out.insert(scrub_string(key, matcher)?, value).is_none(),
+                    out.insert(retained_key, retained).is_none(),
                     RedactionCollisionError
                 );
             }
@@ -620,12 +703,38 @@ fn privacy_with_input_filter(
     })
 }
 
+fn privacy_observer(
+    value: &mut Value,
+    options: &NormalizeOptions,
+    remaining: &mut usize,
+) -> Result<Value> {
+    let profile = catalog::profile(value["provider"].as_str().unwrap_or("typesafe"));
+    let secrets = privacy_secrets(value, options, &[]);
+    let retained = with_secret_matcher(&secrets, remaining, |matcher| {
+        if !options.capture_state {
+            clear_observer_inputs(value);
+        }
+        scrub_with_context(value, options, matcher, PrivacyContext::Observer(&profile))
+    })?;
+    // Observer imports select their validator from this retained field. Privacy
+    // must not silently substitute a different profile before revalidation.
+    ensure!(
+        !value["answers"]
+            .as_array()
+            .is_some_and(|answers| !answers.is_empty())
+            || profile == catalog::profile(retained["provider"].as_str().unwrap_or("typesafe")),
+        RedactionValidationError
+    );
+    Ok(retained)
+}
+
 fn privacy_capture_envelope(
     envelope: &mut Value,
     options: &NormalizeOptions,
     explicit: &[&str],
     remaining: &mut usize,
 ) -> Result<Value> {
+    let profile = catalog::profile(options.provider.as_deref().unwrap_or("typesafe"));
     let secrets = privacy_secrets(envelope, options, explicit);
     with_secret_matcher(&secrets, remaining, |matcher| {
         if !options.capture_state {
@@ -641,7 +750,12 @@ fn privacy_capture_envelope(
             let value = if sensitive_key(key, options) {
                 json!(REDACTED)
             } else {
-                scrub(value, options, matcher)?
+                let context = match key.as_str() {
+                    "request" => PrivacyContext::Request(&profile),
+                    "response" => PrivacyContext::Response(&profile),
+                    _ => PrivacyContext::Other,
+                };
+                scrub_with_context(value, options, matcher, context)?
             };
             out.insert(key.clone(), value);
         }
@@ -971,6 +1085,8 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
             capture,
             if error.is::<RedactionCollisionError>() {
                 REDACTION_COLLISION_MESSAGE
+            } else if error.is::<RedactionValidationError>() {
+                REDACTION_VALIDATION_MESSAGE
             } else {
                 REDACTION_LIMIT_MESSAGE
             },
@@ -1754,7 +1870,7 @@ fn import_observer(
             remove_receipt_inputs(action);
         }
     }
-    let out = privacy(&out, options, &[], &mut budget.batch.redaction_remaining)?;
+    let out = privacy_observer(&mut out, options, &mut budget.batch.redaction_remaining)?;
     // Reconstruction and retained provenance introduce later privacy passes.
     // Check the actual stored identity, not only the first filtered input.
     check_persisted_import_identity(&out, id, source, event_id, "observer-jsonl")?;
@@ -2032,19 +2148,17 @@ fn import_records_with_limits(
             }
             // Scrub before normalization so all recomputed identities describe the
             // retained definition, and credential echoes cannot leak into metadata.
-            let mut safe = privacy_with_input_filter(
-                record,
-                options,
-                &[],
-                &mut budget.batch.redaction_remaining,
-                |record| {
-                    if format == "observer-jsonl" {
-                        clear_observer_inputs(record);
-                    } else {
-                        remove_receipt_inputs(record);
-                    }
-                },
-            )?;
+            let mut safe = if format == "observer-jsonl" {
+                privacy_observer(record, options, &mut budget.batch.redaction_remaining)?
+            } else {
+                privacy_with_input_filter(
+                    record,
+                    options,
+                    &[],
+                    &mut budget.batch.redaction_remaining,
+                    remove_receipt_inputs,
+                )?
+            };
             // Before reconstruction/cloning, bound even privacy-expanded input.
             // Observer derived answer fields are not retained wholesale: its
             // reconstructed input and provenance are charged by import_observer.
@@ -3563,3 +3677,7 @@ mod redaction_collision_tests;
 #[cfg(test)]
 #[path = "input_opt_out_tests.rs"]
 mod input_opt_out_tests;
+
+#[cfg(test)]
+#[path = "redaction_validation_tests.rs"]
+mod redaction_validation_tests;

@@ -1177,6 +1177,11 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
                             StatusCode::BAD_REQUEST,
                             model::IMPORT_IDENTITY_ERROR_MESSAGE,
                         )
+                    } else if error.is::<model::RedactionValidationError>() {
+                        LocalError(
+                            StatusCode::BAD_REQUEST,
+                            model::IMPORT_REDACTION_VALIDATION_MESSAGE,
+                        )
                     } else {
                         import_failure(StatusCode::BAD_REQUEST)
                     }
@@ -3024,6 +3029,113 @@ mod tests {
             }
         }
         fixture.state.collector.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn semantic_redaction_keeps_wire_bytes_but_records_an_incomplete_capture() {
+        let request_body = br#"{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"invalid":"Wrong"}}},"credentials":["criteria"]}"#;
+        let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.2}}}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        let response = router(fixture.state.clone())
+            .oneshot(native(request_body.as_slice()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+            response_body
+        );
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let record = saved(&fixture).await;
+        assert_eq!(record["capture_complete"], false);
+        assert_eq!(record["answers"], json!([]));
+        assert_eq!(
+            record["normalization_error"],
+            "Credential redaction changed answer validation information; request and response content were not retained"
+        );
+        assert!(!record.to_string().contains("Wrong"));
+        let health = fixture.state.collector.health();
+        for field in ["forwarded", "captured", "persisted", "truncated"] {
+            assert_eq!(health[field], 1, "{field}");
+        }
+        for field in [
+            "dropped",
+            "write_failures",
+            "queue_depth",
+            "active_captures",
+        ] {
+            assert_eq!(health[field], 0, "{field}");
+        }
+        assert!(health["last_gap_at"].as_i64().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn semantic_redaction_import_rejection_is_specific_atomic_and_recoverable() {
+        let good = json!({"id":"fixture-event", "source":"fixture", "provider":"typesafe",
+            "timestamp":1800000000000_i64, "status":200, "capture_complete":true,
+            "request":{"questions":{"q":{"type":"noul","instructions":"Rule","criteria":{"invalid":"Wrong"}}}},
+            "response":{"answers":{"q":{"type":"noul","noul":0.2}}}});
+        let observer =
+            model::import_records(&good.to_string(), "systemone-capture", &Default::default())
+                .unwrap()
+                .remove(0);
+        for (format, good) in [("systemone-capture", good), ("observer-jsonl", observer)] {
+            let fixture = fixture("http://127.0.0.1:1/v1/systemone", 4096, true);
+            let mut bad = good.clone();
+            bad[if format == "systemone-capture" {
+                "request"
+            } else {
+                "request_extra"
+            }]["credentials"] = json!(["criteria"]);
+            for (text, success) in [(format!("{good}\n{bad}"), false), (good.to_string(), true)] {
+                let request = Request::builder()
+                    .method("POST")
+                    .uri("/api/import")
+                    .header("host", "127.0.0.1:8765")
+                    .header("x-observer-request", "1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"format":format,"text":text}).to_string()))
+                    .unwrap();
+                let response = router(fixture.state.clone())
+                    .oneshot(request)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    if success {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::BAD_REQUEST
+                    }
+                );
+                let body: Value =
+                    serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                        .unwrap();
+                if success {
+                    assert_eq!(body, json!({"imported":1,"duplicates":0}));
+                } else {
+                    assert_eq!(
+                        body,
+                        json!({"error":model::IMPORT_REDACTION_VALIDATION_MESSAGE})
+                    );
+                    assert!(fixture.state.store.is_empty().unwrap());
+                }
+                assert_eq!(fixture.state.import_slots.available_permits(), 1);
+            }
+            fixture.state.collector.shutdown().await;
+        }
     }
 
     #[tokio::test]

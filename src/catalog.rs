@@ -9,7 +9,7 @@ pub static CATALOG: LazyLock<Value> = LazyLock::new(|| {
     serde_json::from_str(include_str!("model_catalog.json")).expect("embedded model catalog")
 });
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Profile {
     pub probability_decimals: Option<i32>,
