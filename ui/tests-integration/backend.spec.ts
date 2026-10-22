@@ -96,7 +96,7 @@ test('packaged dashboard authenticates, saves reviews, imports, and exports real
         else expect(contents).toMatch(/^id,timestamp,source,model,status,/);
       }
       const settings = await (await context.request.get(origin + '/api/settings')).json();
-      expect(settings.model_catalog.models.length).toBe(38);
+      expect(settings.model_catalog.models.length).toBe(54);
       await page.getByRole('button', { name: 'Connect an application', exact: true }).click();
       await expect(page.getByLabel('Model integration')).toBeVisible();
       await page.getByLabel('Model integration').selectOption('vercel');
