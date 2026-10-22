@@ -9,6 +9,7 @@ import type { Dashboard, Filters, Settings } from './types';
 import type { Panel } from './Details';
 import { DetailBoundary, DetailFallback } from './DetailBoundary';
 import { useReviews } from './reviews';
+import { useCredentials } from './credentials';
 
 const Details = lazy(() => import('./Details'));
 const defaults = defaultFilters;
@@ -37,6 +38,7 @@ export default function App() {
   const mobileMenuRef = useRef<HTMLButtonElement>(null);
   const { snapshot, error, errorRequestOrder, slow, invalidate, reset, scope } = useDashboard(filters);
   const reviews = useReviews(panel?.type === 'request' ? panel.id : null, historyRevision, invalidate);
+  const credentials = useCredentials(panel?.type === 'connect');
   const liveHealth = useLiveHealth();
   const { data: settings } = useResource<Settings>('/api/settings');
   const frozen = paused || panel !== null;
@@ -46,7 +48,21 @@ export default function App() {
   }, [snapshot, frozen, displayed?.scope]);
   useEffect(() => {
     if (!pageNavigation) return;
-    if (pageNavigation.scope !== scope) { setPageNavigation(null); return; }
+    if (pageNavigation.scope !== scope) {
+      const previous = readFilters(pageNavigation.returnScope);
+      const target = pageNavigation.filters;
+      const requestNavigation = (target.request_cursor ?? '') !== (previous.request_cursor ?? '');
+      if (requestNavigation && parentScope(pageNavigation.scope) === parentScope(scope)
+        && (target.request_cursor ?? '') === (filters.request_cursor ?? '')
+        && (target.group_search ?? '') !== (filters.group_search ?? '') && !filters.group_cursor) {
+        // Group search changes only the group page. Carry the pending request
+        // push/pop and its retry/rollback into that new scope together.
+        setPageNavigation({ ...pageNavigation, scope, filters, groupPages: [],
+          returnScope: query({ ...filters, request_cursor: previous.request_cursor ?? '', group_cursor: '' }),
+        });
+      } else setPageNavigation(null);
+      return;
+    }
     if (snapshot?.scope === scope) {
       setRequestPages(pageNavigation.requestPages); setGroupPages(pageNavigation.groupPages);
       setPageNavigation(null);
@@ -58,7 +74,7 @@ export default function App() {
       const previous = readFilters(pageNavigation.returnScope);
       setFilters(value => ({ ...value, request_cursor: previous.request_cursor ?? '', group_cursor: previous.group_cursor ?? '' }));
     }
-  }, [pageNavigation, scope, snapshot, error, errorRequestOrder]);
+  }, [pageNavigation, scope, snapshot, error, errorRequestOrder, filters]);
   useEffect(() => {
     if (pageFailure && pageFailure.navigation.returnScope !== scope) setPageFailure(null);
   }, [scope, pageFailure]);
@@ -198,7 +214,7 @@ export default function App() {
       </>}
       </main>
     </div>
-    {panel && <DetailBoundary close={() => setPanel(null)}><Suspense fallback={<DetailFallback close={() => setPanel(null)} />}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} reviews={reviews} historyChanged={historyChanged} historyRevision={historyRevision} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests'); }} notify={notify} /></Suspense></DetailBoundary>}
+    {panel && <DetailBoundary close={() => setPanel(null)}><Suspense fallback={<DetailFallback close={() => setPanel(null)} />}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} reviews={reviews} credentials={credentials} historyChanged={historyChanged} historyRevision={historyRevision} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests'); }} notify={notify} /></Suspense></DetailBoundary>}
     {toast && <div className="toast" role="status"><Info size={18} /><span>{toast}</span><button className="icon-button" aria-label="Dismiss notification" onClick={() => setToast('')}><X size={15} /></button></div>}
   </div></Dialog.Root>;
 }
