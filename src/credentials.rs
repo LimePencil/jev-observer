@@ -378,7 +378,8 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    // Requires byte filenames; the macOS release filesystem rejects these names.
+    #[cfg(target_os = "linux")]
     #[test]
     fn credential_accounts_distinguish_native_bytes_from_replacement_text() {
         use std::os::unix::{ffi::OsStrExt, fs::symlink};
@@ -417,7 +418,8 @@ mod tests {
         assert_eq!(account_for(&alias).unwrap(), accounts[0]);
     }
 
-    #[cfg(unix)]
+    // Requires byte filenames; the macOS release filesystem rejects these names.
+    #[cfg(target_os = "linux")]
     #[test]
     fn native_path_rotation_and_cleanup_leave_ambiguous_old_accounts_untouched() {
         use std::{cell::RefCell, collections::HashMap, os::unix::ffi::OsStrExt};

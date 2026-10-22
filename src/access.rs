@@ -198,7 +198,8 @@ mod tests {
         ]
         .map(std::ffi::OsString::from)
         .to_vec();
-        #[cfg(unix)]
+        // The macOS release filesystem rejects invalid UTF-8 filenames.
+        #[cfg(target_os = "linux")]
         let names = {
             use std::os::unix::ffi::OsStringExt;
             let mut names = names;
@@ -221,6 +222,36 @@ mod tests {
             assert!(reopened.allows_token(Some(access.token())));
             tokens.push(access);
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn token_paths_preserve_native_bytes_without_filesystem_access() {
+        use std::os::unix::ffi::OsStrExt;
+
+        // This byte-preservation contract applies even where the filesystem
+        // rejects invalid UTF-8 names, as on the macOS release runner.
+        let cases: [(&[u8], &[u8]); 3] = [
+            (b"workspace/history.\xff", b"workspace/history.\xff.token"),
+            (b"workspace/history.\xfe", b"workspace/history.\xfe.token"),
+            (
+                b"workspace/history.\xef\xbf\xbd",
+                b"workspace/history.\xef\xbf\xbd.token",
+            ),
+        ];
+        let paths: Vec<_> = cases
+            .iter()
+            .map(|(input, expected)| {
+                let path = token_path(Path::new(std::ffi::OsStr::from_bytes(input)));
+                assert_eq!(path.as_os_str().as_bytes(), *expected);
+                path
+            })
+            .collect();
+        assert_eq!(paths[0].to_string_lossy(), paths[1].to_string_lossy());
+        assert_eq!(paths[0].to_string_lossy(), paths[2].to_string_lossy());
+        assert_ne!(paths[0], paths[1]);
+        assert_ne!(paths[0], paths[2]);
+        assert_ne!(paths[1], paths[2]);
     }
 
     #[cfg(unix)]
