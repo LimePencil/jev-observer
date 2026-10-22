@@ -5,6 +5,9 @@ const dollars = moneyFormat(2), fractionalDollars = moneyFormat(4), fractionalCe
 
 export const number = (value: number | null | undefined) => value == null ? 'Unknown' : numberFormat.format(value);
 export const compact = (value: number | null | undefined) => value == null ? 'Unknown' : compactFormat.format(value);
+// JSON parsing may already have rounded large token integers; unsafe sums
+// also need an approximation label even when each operand was safe.
+export const tokens = (value: number | null | undefined, abbreviated = false) => value == null ? 'Unknown' : `${Number.isSafeInteger(value) ? '' : 'About '}${(abbreviated ? compactFormat : numberFormat).format(value)}`;
 export const money = (value: number | null | undefined) => value == null ? 'Unknown' : value > 0 && value < 0.000001 ? '<$0.000001' : (value > 0 && value < 0.01 ? fractionalCents : value > 0 && value < 1 ? fractionalDollars : dollars).format(value);
 export const ms = (value: number | null | undefined) => value == null ? 'Unknown' : value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Number(value.toFixed(1))} ms`;
 export const percent = (value: number | null | undefined) => value == null ? 'Unknown' : `${(value * 100).toFixed(1)}%`;
