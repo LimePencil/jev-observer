@@ -1,9 +1,9 @@
 /** @jsxImportSource react */
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Aperture, ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, Info, Pulse, WarningCircle } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 import type { Group, RequestSummary, Summary, TimelineBucket, TimelineMeta } from './types';
-import { chartTime, compact, costBasis, dateTime, money, ms, number, time } from './format';
+import { chartTime, compact, costBasis, dateTime, money, ms, number, time, tokens } from './format';
 
 // Reuse the website's duotone mark and two-weight wordmark in every app shell.
 export function Brand({ className = '', onNavigate }: { className?: string; onNavigate: () => void }) {
@@ -37,10 +37,11 @@ export function TokenMetric({ summary }: { summary: Summary }) {
   const overflow = summary.input_tokens_overflow || summary.output_tokens_overflow;
   const total = summary.input_tokens == null && summary.output_tokens == null
     ? null : (summary.input_tokens ?? 0) + (summary.output_tokens ?? 0);
-  return <div className={`metric${overflow ? ' metric-token-overflow' : ''}`} role="group" aria-label="Token usage">
+  const approximate = total != null && !Number.isSafeInteger(total);
+  return <div className={`metric${overflow ? ' metric-token-overflow' : approximate ? ' metric-token-approximate' : ''}`} role="group" aria-label="Token usage">
     <span className="metric-label">{complete ? 'Reported tokens' : 'Known tokens'}<Pulse size={14} /></span>
-    <span className="metric-value">{overflow ? 'Total exceeds range' : compact(total)}</span>
-    <span className="metric-foot">{summary.input_tokens_overflow ? 'Exceeds range' : compact(summary.input_tokens)} in / {summary.output_tokens_overflow ? 'Exceeds range' : compact(summary.output_tokens)} out</span>
+    <span className="metric-value">{overflow ? 'Total exceeds range' : tokens(total, true)}</span>
+    <span className="metric-foot">{summary.input_tokens_overflow ? 'Exceeds range' : tokens(summary.input_tokens, true)} in / {summary.output_tokens_overflow ? 'Exceeds range' : tokens(summary.output_tokens, true)} out</span>
     <span className="metric-foot metric-coverage">{coverageKnown ? <>
       <span>Input: {number(inputCoverage)} / {number(summary.request_count)} requests</span>
       <span>Output: {number(outputCoverage)} / {number(summary.request_count)} requests</span>
@@ -60,11 +61,26 @@ export function LazyDetails({ summary, children, className }: { summary: ReactNo
 export function Timeline({ data, meta, metric = 'requests', compact: small = false }: { data: TimelineBucket[]; meta?: TimelineMeta; metric?: 'requests' | 'latency' | 'cost'; compact?: boolean }) {
   const chartId = useId();
   const [active, setActive] = useState<number | null>(null);
-  const width = 900, height = small ? 120 : 170, pad = metric === 'cost' ? 76 : 36;
+  const chart = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const get = (point: TimelineBucket) => metric === 'latency' ? point.mean_latency_ms : metric === 'cost' ? point.cost_usd : point.requests;
   const values = data.map(get);
   const valid = values.filter((value): value is number => value !== null);
-  if (!data.length || !valid.length) return <div className="chart-empty">{metric === 'cost' ? 'No known cost in this window' : 'Activity will appear here as requests are recorded'}</div>;
+  const hasData = data.length > 0 && valid.length > 0;
+  useEffect(() => {
+    if (!chart.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      // Hidden charts keep the last usable geometry until they become visible.
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+      setSize(previous => previous?.width === width && previous.height === height ? previous : { width, height });
+    });
+    observer.observe(chart.current);
+    return () => observer.disconnect();
+  }, [hasData]);
+  if (!hasData) return <div className="chart-empty">{metric === 'cost' ? 'No known cost in this window' : 'Activity will appear here as requests are recorded'}</div>;
+  const pad = metric === 'cost' ? 76 : 36;
+  const width = Math.max(size?.width ?? 900, pad + 9), height = Math.max(size?.height ?? (small ? 120 : 170), 37);
   const largest = Math.max(...valid);
   const max = largest > 0 ? largest : 1;
   const plotWidth = width - pad - 8;
@@ -79,7 +95,7 @@ export function Timeline({ data, meta, metric = 'requests', compact: small = fal
   const label = (value: number | null) => metric === 'latency' ? ms(value) : metric === 'cost' ? money(value) : number(value);
   const activePoint = active === null ? null : data[active];
   return <div className="timeline-wrap">
-    <svg className="timeline-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={chartId}>
+    <svg ref={chart} className="timeline-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={chartId}>
       <title id={chartId}>{metric === 'requests' ? 'Requests and failures' : metric === 'latency' ? 'Mean request latency' : 'Known request cost'} over time. An accessible data table follows.</title>
       {[0, .5, 1].map(fraction => <g key={fraction}><line x1={pad} x2={width} y1={y(fraction * max)} y2={y(fraction * max)} className="chart-grid" /><text x={pad - 9} y={y(fraction * max) + 4} textAnchor="end" className="chart-axis">{metric === 'cost' ? money(fraction * max) : compact(fraction * max)}</text></g>)}
       {data.map((point, index) => {
@@ -95,7 +111,7 @@ export function Timeline({ data, meta, metric = 'requests', compact: small = fal
           <title>{dateTime(point.timestamp)}: {label(value)}{metric === 'requests' ? ` requests, ${number(point.errors)} failures` : ''}</title>
         </g>;
       })}
-      {[0, .5, 1].map(fraction => <text key={fraction} x={pad + fraction * plotWidth} y={height - 2} textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'} className="chart-axis">{chartTime(first + fraction * span, showDate)}</text>)}
+      {(plotWidth < 400 ? [0, 1] : [0, .5, 1]).map(fraction => <text key={fraction} x={pad + fraction * plotWidth} y={height - 2} textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'} className="chart-axis">{chartTime(first + fraction * span, showDate)}</text>)}
     </svg>
     {activePoint && <div className="chart-tooltip" aria-hidden="true"><span>{dateTime(activePoint.timestamp)}</span><strong>{label(get(activePoint))}{metric === 'requests' ? ' requests' : ''}</strong>{metric === 'requests' && <span>{number(activePoint.errors)} failures</span>}</div>}
     {meta?.truncated && <p className="caption">Only part of this time range is displayed.</p>}
@@ -120,7 +136,7 @@ export function RequestTable({ requests, open, compact: small = false }: { reque
   return <div className="table-scroll"><table className={`request-table ${small ? 'compact-table' : ''}`}><thead><tr><th>Request / source</th><th>Status</th>{!small && <th>Model</th>}<th className="align-right">Latency</th>{!small && <th className="align-right">Tokens</th>}<th className="align-right">Cost</th><th>Time</th><th><span className="sr-only">Inspect</span></th></tr></thead><tbody>{requests.map(request => <tr key={request.id} className={request.failed || request.status != null && (request.status >= 400 || request.status === 0) ? 'error-row' : ''}>
     <td><button className="request-link" onClick={() => open(request.id)} aria-label={`Inspect request ${request.id}`}><span className="request-source">{request.source}{!request.capture_complete && <span className="mini-warning" title="Capture is incomplete"><WarningCircle size={13} weight="fill" /></span>}</span><span className="mono subtle request-id">{request.id.slice(0, 16)}</span></button></td>
     <td>{request.event_kind && request.event_kind !== 'request' ? <span className="status-badge is-unknown">Action</span> : <StatusBadge status={request.status} failed={request.failed} />}</td>{!small && <td><span className="model-name">{request.model || 'Unknown'}</span><span className="table-subline">{number(request.answer_count)} questions</span></td>}
-    <td className="align-right mono">{ms(request.duration_ms)}</td>{!small && <td className="align-right mono">{request.input_tokens == null || request.output_tokens == null ? 'Unknown' : number(request.input_tokens + request.output_tokens)}</td>}
+    <td className="align-right mono">{ms(request.duration_ms)}</td>{!small && <td className="align-right mono">{request.input_tokens == null || request.output_tokens == null ? 'Unknown' : tokens(request.input_tokens + request.output_tokens)}</td>}
     <td className="align-right mono" title={costBasis(request.cost_basis)}>{money(request.cost_usd)}{request.cost_usd != null && <span className="table-subline cost-basis">{costBasis(request.cost_basis)}</span>}</td><td className="mono subtle"><span title={dateTime(request.timestamp ?? request.imported_at)}><span aria-hidden="true">{time(request.timestamp ?? request.imported_at)}</span><span className="sr-only">{dateTime(request.timestamp ?? request.imported_at)}</span></span>{(request.timestamp_basis === 'import' || request.timestamp == null && request.imported_at != null) && <span className="table-subline">Import time</span>}</td><td><button className="icon-button row-open" onClick={() => open(request.id)} aria-label={`Open ${request.id}`}><ArrowRight size={16} /></button></td>
   </tr>)}</tbody></table></div>;
 }

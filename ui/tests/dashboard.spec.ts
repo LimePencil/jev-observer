@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import type { CredentialStatus, Dashboard, Group, RequestRecord, Settings } from '../src/types';
 import AxeBuilder from '@axe-core/playwright';
 
@@ -11,6 +12,115 @@ const catalog = JSON.parse(readFileSync(new URL('../../src/model_catalog.json', 
 const now = Date.now();
 const group: Group = { id: 'group_v1_1111111111', name: 'department', key: 'department', kind: 'choice', source: 'Test inbox', definition_id: 'def_v1_1111111111', presentation_id: 'presentation_v1_1111111111', definition: { type: 'choice', instructions: 'Choose a department', criteria: { technical: 'Bugs', billing: 'Invoices' } }, task_version: null, family_id: null, family_name: null, adapter: null, answer_count: 2, valid_count: 1, request_count: 2, last_seen: now, version_count: 2, distribution: [{ label: 'technical', count: 1 }], mean_value: null, mean_confidence: null };
 const record: RequestRecord = { id: 'request-one', timestamp: now, source: 'Test inbox', provider: 'typesafe', model: 'test-model', requested_model: 'test-model', status: 200, duration_ms: 124, input_tokens: 100, output_tokens: 20, cost_usd: null, cost_basis: null, answer_count: 1, capture_complete: true, sample: false, state_retained: false, state: null, transport_error: null, source_event_id: null, import_format: null, actions: [], labels: [], answers: [{ key: 'department', kind: 'choice', group_id: group.id, definition_id: group.definition_id, presentation_id: group.presentation_id, candidate_id: null, task_version: null, definition: group.definition, value: 'technical', probabilities: { technical: .8, billing: .2 }, confidence: null, valid: true, error: null, family_id: null, family_name: null, adapter: null, instance_ref: null, mapping_reason: null, raw_answer: {} }] };
+
+async function largeTokenHarness(page: Page, input: string, output: string, summary: Record<string, unknown> = {}) {
+  const state = await harness(page);
+  // Keep the decimal lexemes out of JavaScript Numbers until the application
+  // parses the HTTP response. A route.fulfill({ json }) fixture would pre-round.
+  const inputMarker = '__RAW_TOKEN_INPUT__', outputMarker = '__RAW_TOKEN_OUTPUT__';
+  const raw = (value: unknown) => {
+    expect(input).toMatch(/^(null|[0-9]+)$/);
+    expect(output).toMatch(/^(null|[0-9]+)$/);
+    const body = JSON.stringify(value).replaceAll(JSON.stringify(inputMarker), input).replaceAll(JSON.stringify(outputMarker), output);
+    expect(body).toContain(`"input_tokens":${input}`);
+    expect(body).toContain(`"output_tokens":${output}`);
+    return body;
+  };
+  const request = { ...record, input_tokens: inputMarker, output_tokens: outputMarker };
+  const current = { ...group, answer_count: 1, valid_count: 1, request_count: 1, input_tokens: inputMarker, output_tokens: outputMarker,
+    input_tokens_known_requests: input === 'null' ? 0 : 1, output_tokens_known_requests: output === 'null' ? 0 : 1 };
+  const dashboard = { ...state.dashboard, requests: [request], groups: [current], timeline: [], summary: {
+    ...state.dashboard.summary, request_count: 1, answer_count: 1, error_count: 0,
+    input_tokens: inputMarker, output_tokens: outputMarker, input_tokens_overflow: false, output_tokens_overflow: false,
+    input_tokens_known_requests: input === 'null' ? 0 : 1, output_tokens_known_requests: output === 'null' ? 0 : 1, ...summary,
+  } };
+  const other = { ...current, id: 'safe-comparison', request_count: 2, answer_count: 2, valid_count: 2,
+    input_tokens: Number.MAX_SAFE_INTEGER, output_tokens: null, output_tokens_overflow: true,
+    input_tokens_known_requests: 2, output_tokens_known_requests: 2 };
+  await page.route('**/api/dashboard?*', route => route.fulfill({ contentType: 'application/json', body: raw(dashboard) }));
+  await page.route('**/api/requests/*', route => route.fulfill({ contentType: 'application/json', body: raw(request) }));
+  await page.route('**/api/groups/*', route => route.fulfill({ contentType: 'application/json', body: raw({ group: current, versions: [current, other], requests: [], timeline: [], answers: [] }) }));
+  await page.reload();
+  await expect(page.locator('.request-link')).toHaveCount(1);
+}
+
+for (const { literal, displayed, abbreviated } of [
+  { literal: '9007199254740993', displayed: 'About 9,007,199,254,740,992', abbreviated: 'About 9007.2T' },
+  { literal: '9223372036854775807', displayed: 'About 9,223,372,036,854,776,000', abbreviated: 'About 9,223,372T' },
+]) {
+  test(`large token counts mark parsed ${literal} approximate throughout the request view`, async ({ page }) => {
+    await largeTokenHarness(page, literal, '0');
+    const metric = page.getByRole('group', { name: 'Token usage' });
+    await expect(metric.locator('.metric-value')).toHaveText(abbreviated);
+    await expect(metric).toContainText(`${abbreviated} in / 0 out`);
+    await expect(metric).toContainText('Input: 1 / 1 requests');
+    await expect(page.locator('.request-table tbody tr').first().locator('td').nth(4)).toHaveText(displayed);
+    if (literal === '9223372036854775807') {
+      await page.setViewportSize({ width: 390, height: 844 });
+      const containment = await metric.evaluate(element => [...element.querySelectorAll('.metric-value, .metric-foot')].map(child => ({
+        width: child.clientWidth, contentWidth: child.scrollWidth,
+      })));
+      for (const { width, contentWidth } of containment) expect(contentWidth).toBeLessThanOrEqual(width + 1);
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
+    await page.locator('.request-link').first().click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('dt').filter({ hasText: /^Input tokens$/ }).locator('..').locator('dd')).toHaveText(displayed);
+    await expect(dialog.locator('dt').filter({ hasText: /^Output tokens$/ }).locator('..').locator('dd')).toHaveText('0');
+  });
+}
+
+test('large token computed totals mark unsafe sums of safe operands approximate', async ({ page }) => {
+  await largeTokenHarness(page, '9007199254740991', '2');
+  const metric = page.getByRole('group', { name: 'Token usage' });
+  await expect(metric.locator('.metric-value')).toHaveText('About 9007.2T');
+  await expect(metric.locator('.metric-foot').first()).toHaveText('9007.2T in / 2 out');
+  await expect(page.locator('.request-table tbody tr').first().locator('td').nth(4)).toHaveText('About 9,007,199,254,740,992');
+  await page.locator('.request-link').first().click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('dt').filter({ hasText: /^Input tokens$/ }).locator('..').locator('dd')).toHaveText('9,007,199,254,740,991');
+  await expect(dialog.locator('dt').filter({ hasText: /^Output tokens$/ }).locator('..').locator('dd')).toHaveText('2');
+});
+
+for (const { input, output, displayed, abbreviated } of [
+  { input: '9007199254740991', output: '0', displayed: '9,007,199,254,740,991', abbreviated: '9007.2T' },
+  { input: '0', output: '0', displayed: '0', abbreviated: '0' },
+  { input: 'null', output: 'null', displayed: 'Unknown', abbreviated: 'Unknown' },
+]) {
+  test(`large token formatting preserves the ${input} safe or unknown control`, async ({ page }) => {
+    await largeTokenHarness(page, input, output);
+    const metric = page.getByRole('group', { name: 'Token usage' });
+    await expect(metric.locator('.metric-value')).toHaveText(abbreviated);
+    await expect(metric).not.toContainText('About');
+    await expect(page.locator('.request-table tbody tr').first().locator('td').nth(4)).toHaveText(displayed);
+    await page.locator('.request-link').first().click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('dt').filter({ hasText: /^Input tokens$/ }).locator('..').locator('dd')).toHaveText(displayed);
+    await expect(dialog.locator('.detail-grid:not(.compact-fields)')).not.toContainText('About');
+  });
+}
+
+test('large token approximation keeps backend overflow labels and coverage precedence', async ({ page }) => {
+  await largeTokenHarness(page, 'null', '9007199254740993', { input_tokens_overflow: true, input_tokens_known_requests: 1 });
+  const metric = page.getByRole('group', { name: 'Token usage' });
+  await expect(metric.locator('.metric-value')).toHaveText('Total exceeds range');
+  await expect(metric.locator('.metric-foot').first()).toHaveText('Exceeds range in / About 9007.2T out');
+  await expect(metric).toContainText('Input: 1 / 1 requests');
+  await expect(metric).toContainText('Output: 1 / 1 requests');
+});
+
+test('large token version comparisons distinguish approximation from safe counts and overflow', async ({ page }) => {
+  await largeTokenHarness(page, '9007199254740993', '0');
+  await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+  await page.getByLabel('Compare with').selectOption('safe-comparison');
+  const comparison = page.getByLabel('Version outcome comparison');
+  const input = comparison.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Reported input tokens', exact: true }) });
+  const output = comparison.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'Reported output tokens', exact: true }) });
+  await expect(input.getByRole('cell').nth(0)).toHaveText('About 9,007,199,254,740,9921 / 1 requests covered');
+  await expect(input.getByRole('cell').nth(1)).toHaveText('9,007,199,254,740,9912 / 2 requests covered');
+  await expect(output.getByRole('cell').nth(0)).toHaveText('01 / 1 requests covered');
+  await expect(output.getByRole('cell').nth(1)).toHaveText('Total exceeds range2 / 2 requests covered');
+});
 
 async function harness(page: Page, options: { demo?: boolean; settings?: Partial<Settings>; path?: string } = {}) {
   const state = {
@@ -1138,6 +1248,117 @@ for (const unavailable of ['missing', 'denied'] as const) {
   });
 }
 
+for (const reopenBeforeCompletion of [false, true]) {
+  test(`closed deletion preserves failure when Settings reopens ${reopenBeforeCompletion ? 'before' : 'after'} completion`, async ({ page }) => {
+    const state = await harness(page);
+    let finish!: () => void, writes = 0;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    await page.route('**/api/data', async route => {
+      writes += 1;
+      await pending;
+      return route.fulfill({ status: 503, json: { error: 'History could not be deleted' } });
+    });
+    try {
+      await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+      await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+      await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+      await page.getByRole('button', { name: 'Permanently delete history' }).click();
+      await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+      await page.keyboard.press('Escape');
+      if (reopenBeforeCompletion) {
+        await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+        await expect(page.getByLabel('Type DELETE to confirm')).toHaveCount(0);
+      }
+      const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname === '/api/data');
+      finish(); await finished;
+      if (!reopenBeforeCompletion) await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+      await expect(page.getByRole('dialog').getByRole('alert')).toContainText('History could not be deleted');
+      await expect(page.getByRole('button', { name: 'Delete history', exact: true })).toBeEnabled();
+      expect(writes).toBe(1); expect(state.deleted).toBe(false);
+      await page.keyboard.press('Escape');
+      await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeVisible();
+    } finally { finish(); }
+  });
+}
+
+test('reopened pending deletion prevents another write and preserves the new Settings panel on success', async ({ page }) => {
+  const state = await harness(page);
+  let finish!: () => void, writes = 0;
+  state.deletePending = new Promise(resolve => { finish = resolve; });
+  await page.route('**/api/data', route => { writes += 1; return route.fallback(); });
+  try {
+    await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).click();
+    await expect.poll(() => writes).toBe(1);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    const pendingButton = page.getByRole('button', { name: 'Deleting…' });
+    await expect(pendingButton).toBeDisabled();
+    await pendingButton.evaluate(button => (button as HTMLButtonElement).click());
+    await expect(page.getByLabel('Type DELETE to confirm')).toHaveCount(0);
+    expect(writes).toBe(1);
+    finish();
+    await expect(page.locator('.toast')).toContainText('Local history deleted');
+    await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Delete history', exact: true })).toBeEnabled();
+    expect(writes).toBe(1);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { name: 'Your workspace is ready' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
+  } finally { finish(); }
+});
+
+test('deletion retry clears the previous failure and refreshes once after rapid confirmation', async ({ page }) => {
+  const state = await harness(page);
+  let finish!: () => void, writes = 0, detailReads = 0;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  await page.route('**/api/data', async route => {
+    writes += 1;
+    if (writes === 1) return route.fulfill({ status: 503, json: { error: 'History could not be deleted' } });
+    await pending;
+    return route.fallback();
+  });
+  await page.route('**/api/requests/request-one', route => {
+    detailReads += 1;
+    return state.deleted ? route.fulfill({ status: 404, json: { error: 'Record not found' } }) : route.fulfill({ json: state.record });
+  });
+  try {
+    await page.getByRole('button', { name: 'Live updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).click();
+    await expect(page.getByRole('alert')).toContainText('History could not be deleted');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('History could not be deleted');
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Permanently delete history' })).toBeDisabled();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).evaluate(button => {
+      (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click();
+    });
+    await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect.poll(() => writes).toBe(2);
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    await expect(page.locator('.request-detail-id')).toBeVisible();
+    const initialReads = detailReads;
+    finish();
+    await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Record not found');
+    expect(detailReads).toBe(initialReads + 1); expect(writes).toBe(2);
+    await expect(page.locator('.toast')).toContainText('Local history deleted');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Resume live', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Inspect request request-one', { exact: true })).toHaveCount(0);
+  } finally { finish(); }
+});
+
 test('a completed deletion refreshes history without closing a newly opened panel', async ({ page }) => {
   const state = await harness(page);
   let finish!: () => void;
@@ -1233,6 +1454,222 @@ for (const succeeds of [false, true]) {
     await expect(page.getByLabel('Filter by source')).toHaveValue('Test inbox');
   });
 }
+
+for (const outcome of ['success', 'failure'] as const) {
+  test(`closed import ${outcome} retains operation ownership and completion feedback on reopening`, async ({ page }) => {
+    await harness(page);
+    let finish!: () => void, writes = 0, groupReads = 0, imported = false;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const payloads: { text: string; format: string }[] = [];
+    await page.route('**/api/import', async route => {
+      writes += 1;
+      payloads.push(route.request().postDataJSON());
+      if (writes === 1) {
+        await pending;
+        if (outcome === 'failure') return route.fulfill({ status: 400, json: { error: 'Synthetic import rejected atomically' } });
+        imported = true;
+        return route.fulfill({ json: { imported: 7, duplicates: 2 } });
+      }
+      return route.fulfill({ json: { imported: 1, duplicates: 0 } });
+    });
+    await page.route(`**/api/groups/${group.id}*`, route => {
+      groupReads += 1;
+      return route.fulfill({ json: { group: { ...group, answer_count: imported ? 9 : 2 }, versions: [group], requests: [], answers: [], timeline: [] } });
+    });
+    const openImport = page.getByRole('button', { name: 'Import records', exact: true }).first();
+    await openImport.click();
+    const drawer = page.getByRole('dialog');
+    await page.getByLabel('Source format').selectOption('systemone-capture');
+    await page.getByLabel('Or paste records').fill('{"first":true}');
+    // Rapid duplicate activation must still own exactly one pending write.
+    await drawer.getByRole('button', { name: 'Import records', exact: true }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await expect.poll(() => writes).toBe(1);
+    await page.keyboard.press('Escape');
+    await openImport.click();
+    await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
+    for (const field of ['Source format', 'Or paste records', 'Choose import file']) await expect(page.getByLabel(field)).toBeDisabled();
+    await expect(page.getByLabel('Or paste records')).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+    await expect(drawer.locator('.detail-grid').first()).toContainText('1 / 2');
+    const previousReads = groupReads;
+    const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname === '/api/import');
+    finish(); await finished;
+    await expect(drawer.locator('.detail-grid').first()).toContainText(outcome === 'success' ? '1 / 9' : '1 / 2');
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(groupReads).toBe(previousReads + (outcome === 'success' ? 1 : 0));
+    await page.keyboard.press('Escape');
+    await openImport.click();
+    await expect(drawer.getByText(outcome === 'success' ? '7 records imported.' : 'Synthetic import rejected atomically', { exact: true })).toBeVisible();
+    if (outcome === 'success') await expect(drawer.getByRole('status')).toContainText('2 duplicates skipped');
+    await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
+    await expect(page.getByLabel('Or paste records')).toHaveValue('');
+    await expect(page.getByLabel('Or paste records')).toBeEnabled();
+    expect(writes).toBe(1);
+
+    // A deliberate new input clears settled feedback, then a new operation
+    // replaces it without restoring the previous completion on another reopen.
+    await page.getByLabel('Or paste records').fill('{"second":true}');
+    await expect(drawer.getByRole('alert')).toHaveCount(0);
+    await expect(drawer.locator('.success-notice')).toHaveCount(0);
+    await page.getByLabel('Source format').selectOption('jevrouter-receipt');
+    await drawer.getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(drawer.getByRole('status')).toContainText('1 records imported.');
+    await page.keyboard.press('Escape');
+    await openImport.click();
+    await expect(drawer.getByRole('status')).toContainText('1 records imported.');
+    await expect(drawer).not.toContainText('7 records imported.');
+    await expect(drawer.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByLabel('Source format')).toHaveValue('jevrouter-receipt');
+    await expect(page.getByLabel('Or paste records')).toHaveValue('');
+    expect(payloads).toEqual([{ text: '{"first":true}', format: 'systemone-capture' }, { text: '{"second":true}', format: 'jevrouter-receipt' }]);
+  });
+}
+
+test('a closed drawer file read cannot replace a newer import input or completion', async ({ page }) => {
+  await harness(page);
+  await page.evaluate(() => {
+    (window as unknown as { finishOldImportRead: (text: string) => void }).finishOldImportRead = () => {};
+    File.prototype.arrayBuffer = function () { return new Promise<ArrayBuffer>(resolve => {
+      (window as unknown as { finishOldImportRead: (text: string) => void }).finishOldImportRead = text => resolve(new TextEncoder().encode(text).buffer);
+    }); };
+  });
+  const openImport = page.getByRole('button', { name: 'Import records', exact: true }).first();
+  await openImport.click();
+  await page.getByLabel('Choose import file').setInputFiles({ name: 'old.jsonl', mimeType: 'application/json', buffer: Buffer.from('{"old":true}') });
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Reading old.jsonl');
+  await page.keyboard.press('Escape');
+  await openImport.click();
+  await page.getByLabel('Or paste records').fill('{"new":true}');
+  await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('2 records imported.');
+  await page.evaluate(() => (window as unknown as { finishOldImportRead: (text: string) => void }).finishOldImportRead('{"old":true}'));
+  await expect(page.getByLabel('Or paste records')).toHaveValue('{"new":true}');
+  await expect(page.getByRole('dialog').getByRole('status')).toContainText('2 records imported.');
+  await expect(page.getByRole('dialog')).not.toContainText('old.jsonl');
+});
+
+for (const removed of [false, true]) {
+  for (const dismiss of ['Escape', 'close button'] as const) {
+    test(`request drawer focus survives ${removed ? 'deletion of' : 'return to'} its opener after ${dismiss}`, async ({ page }, testInfo) => {
+      const state = await harness(page);
+      let finishDelete!: () => void, writes = 0, missingReads = 0;
+      const deleting = new Promise<void>(resolve => { finishDelete = resolve; });
+      if (removed) {
+        state.deletePending = deleting;
+        await page.route('**/api/data', async route => {
+          if (route.request().method() === 'DELETE') writes += 1;
+          await route.fallback();
+        });
+        await page.route('**/api/requests/request-one', async route => {
+          if (!state.deleted) return route.fallback();
+          missingReads += 1;
+          await route.fulfill({ status: 404, json: { error: 'Record not found' } });
+        });
+      }
+      try {
+        if (removed) {
+          await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+          await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+          await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+          await page.getByRole('button', { name: 'Permanently delete history' }).click();
+          await expect(page.getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+          await expect.poll(() => writes).toBe(1);
+          await page.keyboard.press('Escape');
+        }
+        const opener = page.getByLabel('Inspect request request-one', { exact: true });
+        const originalOpener = await opener.elementHandle();
+        expect(originalOpener).not.toBeNull();
+        await opener.focus();
+        await page.keyboard.press('Enter');
+        const drawer = page.getByRole('dialog');
+        await expect(drawer.locator('.request-detail-id')).toContainText('request-one');
+        if (removed) {
+          finishDelete();
+          await expect(drawer.getByRole('alert')).toContainText('Record not found');
+          await expect.poll(() => originalOpener!.evaluate(element => element.isConnected)).toBe(false);
+          await expect(opener).toHaveCount(0);
+          expect(missingReads).toBe(1);
+          expect(writes).toBe(1);
+        }
+        const scrollBeforeClose = await page.evaluate(() => window.scrollY);
+        if (dismiss === 'Escape') await page.keyboard.press('Escape');
+        else await page.getByRole('button', { name: 'Close detail panel' }).click();
+        await expect(drawer).toHaveCount(0);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const focused = () => page.evaluate(() => {
+          const element = document.activeElement as HTMLElement | null;
+          return {
+            tag: element?.tagName ?? null,
+            role: element?.getAttribute('role') ?? null,
+            label: element?.getAttribute('aria-label') ?? null,
+            text: element?.textContent?.trim().slice(0, 120) ?? '',
+            usable: Boolean(element && element !== document.body && element !== document.documentElement
+              && element.isConnected && element.getClientRects().length && !element.closest('[aria-hidden="true"], [inert]')),
+          };
+        });
+        const afterClose = await focused();
+        if (!removed) await expect(opener).toBeFocused();
+        else {
+          await expect(page.getByRole('main')).toBeFocused();
+          expect(await page.evaluate(() => window.scrollY)).toBe(scrollBeforeClose);
+        }
+        await page.keyboard.press('Tab');
+        const observation = { removed, dismiss, writes, missingReads,
+          originalOpenerConnected: await originalOpener!.evaluate(element => element.isConnected),
+          afterClose, afterTab: await focused() };
+        await testInfo.attach('drawer-opener-focus.json', { body: JSON.stringify(observation, null, 2), contentType: 'application/json' });
+        expect(afterClose.usable, JSON.stringify(observation)).toBe(true);
+        if (removed) await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeFocused();
+      } finally { finishDelete(); }
+    });
+  }
+}
+
+for (const mobileOpener of [true, false]) {
+  test(`closing a drawer after its ${mobileOpener ? 'mobile' : 'desktop'} opener becomes hidden restores dashboard focus`, async ({ page }, testInfo) => {
+    await page.setViewportSize(mobileOpener ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
+    await harness(page);
+    const opener = page.getByRole('button', { name: mobileOpener ? 'Open navigation' : 'Open settings', exact: true, includeHidden: true });
+    await opener.click();
+    if (mobileOpener) await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Settings', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+    await page.setViewportSize(mobileOpener ? { width: 1440, height: 1000 } : { width: 390, height: 844 });
+    await expect(opener).toBeHidden();
+    expect(await opener.evaluate(element => element.isConnected)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const observation = { mobileOpener,
+      active: await page.evaluate(() => ({ tag: document.activeElement?.tagName, id: document.activeElement?.id })),
+      opener: await opener.evaluate(element => ({ connected: element.isConnected, visible: Boolean(element.getClientRects().length) })),
+    };
+    await testInfo.attach('hidden-drawer-opener-focus.json', { body: JSON.stringify(observation, null, 2), contentType: 'application/json' });
+    await expect(page.getByRole('main')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeFocused();
+  });
+}
+
+test('reopening a panel before the close frame keeps focus inside the new panel', async ({ page }) => {
+  await harness(page);
+  const opener = page.getByLabel('Inspect request request-one', { exact: true });
+  await opener.click();
+  await expect(page.getByRole('dialog').locator('.request-detail-id')).toContainText('request-one');
+  // Two user-facing button events in one task leave the close frame pending
+  // until after the new panel has been requested.
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('[aria-label="Close detail panel"]')!.click();
+    document.querySelector<HTMLButtonElement>('[aria-label="Open settings"]')!.click();
+  });
+  await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect.poll(() => page.getByRole('dialog').evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await expect(opener).not.toBeFocused();
+  await expect(page.getByRole('main', { includeHidden: true })).not.toBeFocused();
+});
 
 test('a completed deletion discards an older in-flight detail response', async ({ page }) => {
   const state = await harness(page);
@@ -1601,6 +2038,129 @@ test('reopened review completion preserves a detail timeout and Retry reads the 
   finishRead();
   expect(writes).toBe(1);
 });
+
+test('a committed old review response cannot mark a deleted and reimported raw identity Saved', async ({ page }, testInfo) => {
+  const state = await harness(page);
+  const raw = { id: 'synthetic-review-event', source: 'Test inbox', provider: 'typesafe', timestamp: now, status: 200, capture_complete: true,
+    request: { questions: { department: group.definition, untouched: group.definition } },
+    response: { answers: { department: { type: 'choice', choice: 'technical', probabilities: { technical: .8, billing: .2 } }, untouched: { type: 'choice', choice: 'technical', probabilities: { technical: .8, billing: .2 } } } } };
+  // This is CaptureId::raw_import's canonical original tuple, not a fresh ID
+  // invented on reimport. The API fixture models committed storage separately
+  // from response delivery, as a slow network may delay an already saved POST.
+  const id = 'capture_v1_' + createHash('sha256').update(JSON.stringify([raw.source, raw.provider, raw.id])).digest('hex');
+  const imported = { ...structuredClone(record), id, source_event_id: id, import_format: 'systemone-capture',
+    answers: [structuredClone(record.answers[0]), { ...structuredClone(record.answers[0]), key: 'untouched' }] };
+  const dashboard = structuredClone(state.dashboard);
+  let imports = 0, writes = 0, committed = false, detailReads = 0, release!: () => void;
+  const delivery = new Promise<void>(resolve => { release = resolve; });
+  state.dashboard.requests = [];
+  state.dashboard.summary.request_count = 0;
+  state.deleted = true;
+  await page.route('**/api/import', async route => {
+    const payload = route.request().postDataJSON();
+    expect(payload.format).toBe('systemone-capture');
+    expect(JSON.parse(payload.text)).toEqual(raw);
+    imports += 1;
+    state.record = structuredClone(imported);
+    state.deleted = false;
+    state.dashboard = { ...structuredClone(dashboard), requests: [state.record], summary: { ...dashboard.summary, request_count: 1, answer_count: 2 } };
+    await route.fulfill({ json: { imported: 1, duplicates: 0 } });
+  });
+  await page.route(`**/api/requests/${id}`, async route => {
+    detailReads += 1;
+    await route.fulfill(state.deleted ? { status: 404, json: { error: 'Record not found' } } : { json: state.record });
+  });
+  await page.route(`**/api/requests/${id}/label`, async route => {
+    writes += 1;
+    const payload = route.request().postDataJSON();
+    state.record.labels = [{ key: payload.key, label: payload.label }];
+    committed = true;
+    await delivery;
+    // Do not write again when delivering this old success response.
+    await route.fulfill({ json: { ok: true } });
+  });
+  async function importOriginal() {
+    await page.getByRole('complementary', { name: 'Workspace navigation' }).getByRole('button', { name: 'Import records', exact: true }).click();
+    await page.getByLabel('Source format').selectOption('systemone-capture');
+    await page.getByLabel('Or paste records').fill(JSON.stringify(raw));
+    await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText('1 records imported.');
+    await page.keyboard.press('Escape');
+  }
+  await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+  await importOriginal();
+  await page.getByLabel(`Inspect request ${id}`, { exact: true }).click();
+  await page.getByLabel('Review department', { exact: true }).selectOption('correct');
+  await expect.poll(() => committed).toBe(true);
+  expect(state.record.labels).toEqual([{ key: 'department', label: 'correct' }]);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+  await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+  await page.getByRole('button', { name: 'Permanently delete history' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(state.deleted).toBe(true);
+  await importOriginal();
+  expect(state.record.labels).toEqual([]);
+  await page.getByLabel(`Inspect request ${id}`, { exact: true }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer.getByLabel('Review department', { exact: true })).toHaveAttribute('aria-disabled', 'true');
+  const untouched = drawer.locator('.answer-card').filter({ has: page.getByRole('heading', { name: 'untouched', exact: true }) });
+  await expect(untouched.getByLabel('Review untouched', { exact: true })).toHaveValue('');
+  await expect(untouched.getByRole('status')).toBeEmpty();
+  const priorReads = detailReads;
+  const finished = page.waitForEvent('requestfinished', request => new URL(request.url()).pathname.endsWith('/label'));
+  release(); await finished;
+  await expect.poll(() => detailReads).toBeGreaterThan(priorReads);
+  await expect(drawer.getByLabel('Review department', { exact: true })).toHaveValue('');
+  await expect(drawer.getByLabel('Review department', { exact: true })).toHaveAttribute('aria-disabled', 'false');
+  expect(imports).toBe(2); expect(writes).toBe(1); expect(state.record.labels).toEqual([]);
+  const observed = { imports, writes, detailReads, storedLabels: state.record.labels,
+    selectValue: await drawer.getByLabel('Review department', { exact: true }).inputValue(),
+    statusText: await drawer.locator('.answer-card').first().getByRole('status').textContent() };
+  await testInfo.attach('same-identity-review-observation', { body: JSON.stringify(observed, null, 2), contentType: 'application/json' });
+  await testInfo.attach('same-identity-review', { body: await page.screenshot(), contentType: 'image/png' });
+  await expect(drawer.locator('.answer-card').first().getByRole('status')).toBeEmpty();
+});
+
+for (const refreshedLabel of ['correct', 'incorrect'] as const) {
+  test(`completed review feedback follows an authoritative ${refreshedLabel} label after refresh`, async ({ page }) => {
+    const state = await harness(page);
+    let finishImport!: () => void, imported = false, refreshed = 0, writes = 0;
+    const importing = new Promise<void>(resolve => { finishImport = resolve; });
+    await page.route('**/api/import', async route => {
+      await importing; imported = true;
+      await route.fulfill({ json: { imported: 1, duplicates: 0 } });
+    });
+    await page.route('**/api/requests/request-one', async route => {
+      if (imported) refreshed += 1;
+      await route.fulfill({ json: state.record });
+    });
+    await page.route('**/api/requests/request-one/label', async route => {
+      writes += 1;
+      const { key, label } = route.request().postDataJSON();
+      state.record.labels = [{ key, label }];
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.getByRole('button', { name: 'Import records', exact: true }).click();
+    await page.getByLabel('Or paste records').fill('{"synthetic":true}');
+    await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Importing records…' })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await page.getByLabel('Inspect request request-one', { exact: true }).click();
+    const drawer = page.getByRole('dialog'), review = drawer.getByLabel('Review department', { exact: true });
+    await review.selectOption('correct');
+    await expect(drawer.getByText('Saved', { exact: true })).toBeVisible();
+    // An independent reviewer may replace the label before an unrelated
+    // import completes and refreshes this still-open detail snapshot.
+    state.record.labels = [{ key: 'department', label: refreshedLabel }];
+    finishImport();
+    await expect.poll(() => refreshed).toBe(1);
+    await expect(review).toHaveValue(refreshedLabel);
+    await expect(drawer.locator('.review-status')).toHaveText(refreshedLabel === 'correct' ? 'Saved' : '');
+    expect(writes).toBe(1);
+  });
+}
 
 test('imported actions and unknown transport facts stay distinct', async ({ page }) => {
   const state = await harness(page);
@@ -2438,6 +2998,122 @@ for (const { timezoneId, endDate, lastBucketDate } of [
     });
   });
 }
+
+test.describe('responsive timeline geometry', () => {
+  test.use({ timezoneId: 'UTC', locale: 'en-US' });
+
+  async function readableChart(svg: Locator) {
+    await expect.poll(() => svg.evaluate(element => {
+      const scale = (element as SVGSVGElement).getScreenCTM();
+      return scale ? Math.max(Math.abs(scale.a - 1), Math.abs(scale.d - 1)) : 1;
+    })).toBeLessThan(.01);
+    const geometry = await svg.evaluate(element => {
+      const svg = element as SVGSVGElement, bounds = svg.getBoundingClientRect();
+      const labels = [...svg.querySelectorAll<SVGTextElement>(':scope > .chart-axis')].map(label => {
+        const rect = label.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, height: rect.height };
+      });
+      return { left: bounds.left, right: bounds.right, labels, finite: [...svg.querySelectorAll('rect')].every(rect => ['x', 'y', 'width', 'height'].every(name => Number.isFinite(Number(rect.getAttribute(name))))) };
+    });
+    expect(geometry.finite).toBe(true);
+    for (const [index, label] of geometry.labels.entries()) {
+      expect(label.height).toBeGreaterThanOrEqual(9);
+      expect(label.left).toBeGreaterThanOrEqual(geometry.left - 1);
+      expect(label.right).toBeLessThanOrEqual(geometry.right + 1);
+      if (index) expect(label.left - geometry.labels[index - 1].right).toBeGreaterThan(8);
+    }
+  }
+
+  for (const [metric, values] of [
+    ['Volume', ['1', '2', '3']], ['Latency', ['10 ms', '20 ms', '30 ms']], ['Cost', ['$0.0100', '$0.0200', '$0.0300']],
+  ] as const) {
+    test(`${metric} keeps readable axes and exact data through phone desktop tablet resize`, async ({ page }, testInfo) => {
+      const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+      await page.setViewportSize({ width: 390, height: 1000 });
+      const state = await harness(page);
+      const start = Date.UTC(2026, 9, 21), hour = 3_600_000;
+      state.dashboard.timeline = [0, 6, 12].map((offset, index) => ({ timestamp: start + offset * hour, requests: index + 1, errors: index === 2 ? 1 : 0, mean_latency_ms: (index + 1) * 10, cost_usd: (index + 1) / 100 }));
+      state.dashboard.timeline_meta = { start, end: start + 24 * hour, bucket_width: hour, truncated: false };
+      await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      const activity = page.locator('.activity-panel'), svg = activity.locator('.timeline-chart');
+      await activity.getByRole('button', { name: metric, exact: true }).click();
+      await expect(svg.locator('.chart-bar')).toHaveCount(3);
+      await activity.getByText('View chart data', { exact: true }).click();
+      await page.evaluate(() => document.fonts.ready);
+      const table = activity.locator('.chart-accessible tbody');
+      const originalRows = await table.locator('tr').allTextContents();
+      for (let index = 0; index < 3; index += 1) {
+        await expect(table.locator('tr').nth(index).locator('td').nth(1)).toHaveText(String(index + 1));
+        await expect(table.locator('tr').nth(index).locator('td').nth(2)).toHaveText(index === 2 ? '1' : '0');
+        await expect(table.locator('tr').nth(index).locator('td').nth(3)).toHaveText(`${(index + 1) * 10} ms`);
+        await expect(table.locator('tr').nth(index).locator('td').nth(4)).toHaveText(`$0.0${index + 1}00`);
+      }
+      for (const width of [390, 1440, 768]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await readableChart(svg);
+        await expect(svg.locator(':scope > .chart-axis')).toHaveCount(width === 1440 ? 3 : 2);
+        await expect(svg.locator('.chart-bar')).toHaveCount(3);
+        await expect(svg.locator('.chart-error')).toHaveCount(metric === 'Volume' ? 1 : 0);
+        const relativePositions = await svg.evaluate(element => {
+          const ticks = element.querySelectorAll<SVGTextElement>(':scope > .chart-axis');
+          const left = Number(ticks[0].getAttribute('x')), right = Number(ticks[ticks.length - 1].getAttribute('x'));
+          return [...element.querySelectorAll<SVGRectElement>('.chart-bar')].map(bar => (Number(bar.getAttribute('x')) + Number(bar.getAttribute('width')) / 2 - left) / (right - left));
+        });
+        for (const [index, position] of relativePositions.entries()) expect(position).toBeCloseTo((index * 6 + .5) / 24);
+        const heights = await svg.locator('.chart-bar').evaluateAll(bars => bars.map(bar => Number(bar.getAttribute('height'))));
+        expect(heights[1] / heights[0]).toBeCloseTo(2);
+        expect(heights[2] / heights[0]).toBeCloseTo(3);
+        for (const [index, value] of values.entries()) {
+          const date = await table.locator('tr').nth(index).locator('td').first().textContent();
+          expect(date).toMatch(/Oct 21, 2026, (00|06|12):00:00\.000 GMT/);
+          const point = svg.locator('.chart-bar').nth(index).locator('..');
+          const suffix = metric === 'Volume' ? ` requests, ${index === 2 ? 1 : 0} failures` : '';
+          await expect(point.locator('title')).toHaveText(`${date}: ${value}${suffix}`);
+          await point.hover();
+          await expect(activity.locator('.chart-tooltip > span').first()).toHaveText(date!);
+          await expect(activity.locator('.chart-tooltip strong')).toHaveText(`${value}${metric === 'Volume' ? ' requests' : ''}`);
+        }
+        await expect(table.locator('tr')).toHaveText(originalRows);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        if (metric === 'Volume' && width !== 1440) await activity.screenshot({ path: testInfo.outputPath(`timeline-${width}.png`) });
+      }
+      expect(errors).toEqual([]);
+    });
+  }
+
+  test('empty hidden and compact charts recover usable geometry', async ({ page }) => {
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width: 390, height: 1000 });
+    const state = await harness(page), activity = page.locator('.activity-panel');
+    const timeline = state.dashboard.timeline;
+    state.dashboard.timeline = [];
+    await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+    await expect(activity.locator('.timeline-chart')).toHaveCount(0);
+    await activity.evaluate(element => { element.style.display = 'none'; });
+    state.dashboard.timeline = timeline;
+    await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+    const svg = activity.locator('.timeline-chart');
+    await expect(svg).toHaveCount(1);
+    expect(await svg.getAttribute('viewBox')).not.toMatch(/NaN|Infinity/);
+    await activity.evaluate(element => { element.style.display = ''; });
+    await readableChart(svg);
+    const geometry = await svg.getAttribute('viewBox');
+    await activity.evaluate(element => { element.style.display = 'none'; });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await expect(svg).toHaveAttribute('viewBox', geometry!);
+    await activity.evaluate(element => { element.style.display = ''; });
+    await readableChart(svg);
+    await page.getByLabel('Inspect group department', { exact: true }).click();
+    const compactChart = page.getByRole('dialog').locator('.timeline-chart');
+    await readableChart(compactChart);
+    await expect(compactChart.locator('.chart-bar')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(compactChart).toHaveCount(0);
+    await page.setViewportSize({ width: 768, height: 1000 });
+    await readableChart(svg);
+    expect(errors).toEqual([]);
+  });
+});
 
 test('a partial timeline bucket keeps the selected exclusive range end', async ({ page }) => {
   const state = await harness(page);
