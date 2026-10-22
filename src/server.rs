@@ -2191,6 +2191,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn credential_matching_generated_envelope_key_preserves_forwarding_and_capture() {
+        let request_body =
+            br#"{"questions":{"q":{"type":"noul","instructions":"Eligible?"}},"echo":"id"}"#;
+        let response_body = br#"{"answers":{"q":{"type":"noul","noul":0.8}},"echo":"id"}"#;
+        let (url, task) = mock(Router::new().route(
+            "/v1/systemone",
+            post(move |request: Request| async move {
+                assert_eq!(request.headers()[header::AUTHORIZATION], "Bearer id");
+                assert_eq!(
+                    to_bytes(request.into_body(), 4096).await.unwrap().as_ref(),
+                    request_body
+                );
+                response_body.as_slice()
+            }),
+        ))
+        .await;
+        let fixture = fixture(&url, 4096, false);
+        let mut request = native(request_body.as_slice());
+        request
+            .headers_mut()
+            .insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer id"));
+        request
+            .headers_mut()
+            .insert("x-observer-source", HeaderValue::from_static("source-id"));
+        let response = router(fixture.state.clone())
+            .oneshot(request)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            to_bytes(response.into_body(), 4096).await.unwrap().as_ref(),
+            response_body
+        );
+        fixture.state.collector.shutdown().await;
+        task.abort();
+        let health = fixture.state.collector.health();
+        assert_eq!(health["persisted"], 1);
+        assert_eq!(health["dropped"], 0);
+        assert_eq!(health["write_failures"], 0);
+        let record = saved(&fixture).await;
+        assert_eq!(record["source"], "source-[REDACTED]");
+        assert_eq!(record["request_extra"]["echo"], "[REDACTED]");
+        assert_eq!(record["response_extra"]["echo"], "[REDACTED]");
+        assert_eq!(record["answers"][0]["valid"], true);
+        assert_eq!(record["answers"][0]["definition_redacted"], true);
+        assert_eq!(record["capture_complete"], true);
+    }
+
+    #[tokio::test]
     async fn bearer_whitespace_keeps_normalized_echoes_out_of_history() {
         let expected = br#"{"answers":{},"echo":"spaced-secret"}"#;
         let (url, task) = mock(Router::new().route(
