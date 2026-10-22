@@ -1193,7 +1193,7 @@ fn invalid_filter(filter: &Filter) -> Option<&'static str> {
     if [filter.from, filter.to]
         .into_iter()
         .flatten()
-        .any(|time| !(-8_640_000_000_000_000..=8_640_000_000_000_000).contains(&time))
+        .any(|time| !model::valid_timestamp(time))
     {
         return Some("Date bounds must be valid epoch milliseconds");
     }
@@ -1343,15 +1343,15 @@ async fn import(State(state): State<AppState>, request: Request) -> Response {
                 model::import_records(&body.text, &body.format, &options).map_err(|error| {
                     if error.is::<model::ImportLimitError>() {
                         import_failure(StatusCode::PAYLOAD_TOO_LARGE)
-                    } else if error.is::<model::ImportIdentityError>() {
-                        LocalError(
-                            StatusCode::BAD_REQUEST,
-                            model::IMPORT_IDENTITY_ERROR_MESSAGE,
-                        )
                     } else if error.is::<model::RedactionCollisionError>() {
                         LocalError(
                             StatusCode::BAD_REQUEST,
                             model::IMPORT_REDACTION_COLLISION_MESSAGE,
+                        )
+                    } else if error.is::<model::ImportIdentityError>() {
+                        LocalError(
+                            StatusCode::BAD_REQUEST,
+                            model::IMPORT_IDENTITY_ERROR_MESSAGE,
                         )
                     } else if error.is::<model::RedactionValidationError>() {
                         LocalError(

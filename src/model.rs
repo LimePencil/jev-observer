@@ -49,6 +49,11 @@ impl std::fmt::Display for RedactionCollisionError {
 
 impl std::error::Error for RedactionCollisionError {}
 
+/// Match the dashboard's JavaScript Date domain and HTTP date filters.
+pub fn valid_timestamp(timestamp: i64) -> bool {
+    (-8_640_000_000_000_000..=8_640_000_000_000_000).contains(&timestamp)
+}
+
 const REDACTION_VALIDATION_MESSAGE: &str = "Credential redaction changed answer validation information; request and response content were not retained";
 pub const IMPORT_REDACTION_VALIDATION_MESSAGE: &str = "Import rejected because credential redaction changes answer validation fields or the provider profile.";
 
@@ -62,11 +67,6 @@ impl std::fmt::Display for RedactionValidationError {
 }
 
 impl std::error::Error for RedactionValidationError {}
-
-/// Match the dashboard's JavaScript Date domain and HTTP date filters.
-pub fn valid_timestamp(timestamp: i64) -> bool {
-    (-8_640_000_000_000_000..=8_640_000_000_000_000).contains(&timestamp)
-}
 
 #[derive(Debug)]
 pub struct ImportLimitError(&'static str);
