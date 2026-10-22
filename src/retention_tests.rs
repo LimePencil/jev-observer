@@ -400,11 +400,11 @@ struct RetentionTrace {
     steps: i64,
 }
 
-fn traced_retention(
+fn traced_operation<T>(
     store: &Store,
     connection: &mut Connection,
-    force: bool,
-) -> (Result<bool>, RetentionTrace) {
+    operation: impl FnOnce(&mut Connection) -> Result<T>,
+) -> (Result<T>, RetentionTrace) {
     struct Work {
         reader: Connection,
         expected: Vec<i64>,
@@ -479,9 +479,19 @@ fn traced_retention(
         );
     }
     let trace = Trace(handle);
-    let result = store.maintenance(connection, force);
+    let result = operation(connection);
     drop(trace);
     (result, work.observed)
+}
+
+fn traced_retention(
+    store: &Store,
+    connection: &mut Connection,
+    force: bool,
+) -> (Result<bool>, RetentionTrace) {
+    traced_operation(store, connection, |connection| {
+        store.maintenance(connection, force)
+    })
 }
 
 #[test]
@@ -642,5 +652,201 @@ fn forced_orphan_batches_handle_retained_prefix_and_extreme_rowids() {
         .collect::<Vec<_>>();
     assert_eq!(groups, [256, 256, 256, 256, 5]);
     assert_eq!(store.request("kept").unwrap(), kept);
+    assert_no_orphans(&connection);
+}
+
+#[test]
+fn delete_all_batches_are_atomic_and_preserve_metadata_and_future_capture() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("delete-all.sqlite");
+    let store = Store::open(&path, 7, 2048).unwrap();
+    let mut connection = store.writer_connection().unwrap();
+    let now = Utc::now().timestamp_millis();
+    let records = (0..1025)
+        .map(|index| record(&format!("r{index:04}"), now, 1))
+        .collect::<Vec<_>>();
+    store.write_batch(&mut connection, &records).unwrap();
+    store
+        .set_credential_approval(Some("synthetic-approved-hash"))
+        .unwrap();
+    let marker = last_pruned(&connection);
+    let sequence: i64 = connection
+        .query_row(
+            "SELECT seq FROM sqlite_sequence WHERE name='requests'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    connection
+        .execute_batch("UPDATE requests SET seq=-seq-10000; UPDATE groups SET rowid=-rowid-10000;")
+        .unwrap();
+    for (id, seq) in [
+        ("r0000", i64::MIN),
+        ("r0001", -1),
+        ("r0002", 0),
+        ("r1024", i64::MAX),
+    ] {
+        connection
+            .execute("UPDATE requests SET seq=? WHERE id=?", params![seq, id])
+            .unwrap();
+    }
+    for (index, rowid) in [i64::MIN, -1, 0, i64::MAX].into_iter().enumerate() {
+        let id = (index != 0).then(|| format!("orphan-{index}"));
+        connection.execute("INSERT INTO groups(rowid,id,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter) SELECT ?,?,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter FROM groups WHERE id='r0000-q0'", params![rowid,id]).unwrap();
+    }
+    let (result, trace) =
+        traced_operation(&store, &mut connection, Store::delete_all_from_connection);
+    result.unwrap();
+    assert!(!trace.changed_snapshot);
+    assert_eq!(counts(&connection), [0, 0, 0, 0]);
+    for (kind, expected) in [("groups", 1029), ("requests", 1025)] {
+        let batches = trace
+            .deletes
+            .iter()
+            .filter(|(table, _)| *table == kind)
+            .map(|(_, changed)| *changed)
+            .collect::<Vec<_>>();
+        assert!(
+            batches.iter().all(|changed| (0..=256).contains(changed)),
+            "{kind}: {batches:?}"
+        );
+        assert_eq!(batches.iter().sum::<i32>(), expected);
+        assert!(batches.len() >= 5);
+    }
+    assert_eq!(last_pruned(&connection), marker);
+    assert_eq!(
+        store.credential_approval().unwrap().as_deref(),
+        Some("synthetic-approved-hash")
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT seq FROM sqlite_sequence WHERE name='requests'",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+        sequence
+    );
+    assert_eq!(
+        std::fs::metadata(format!("{}-wal", path.display()))
+            .unwrap()
+            .len(),
+        0
+    );
+    // Exercise the public path too, both while empty and after a future capture.
+    store.delete_all().unwrap();
+    store
+        .write_batch(&mut connection, &[record("future", now, 1)])
+        .unwrap();
+    assert_eq!(counts(&connection), [1, 1, 1, 1]);
+    assert_eq!(
+        connection
+            .query_row("SELECT seq FROM requests WHERE id='future'", [], |row| row
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+        sequence + 1
+    );
+    let future = store.request("future").unwrap().unwrap();
+    assert_eq!(future["answers"].as_array().unwrap().len(), 1);
+    assert_eq!(future["labels"].as_array().unwrap().len(), 1);
+    assert_eq!(last_pruned(&connection), marker);
+    assert_no_orphans(&connection);
+    store.delete_all().unwrap();
+    assert_eq!(counts(&connection), [0, 0, 0, 0]);
+    assert_eq!(
+        store.credential_approval().unwrap().as_deref(),
+        Some("synthetic-approved-hash")
+    );
+}
+
+#[test]
+fn delete_all_later_batch_failure_rolls_back_every_table_and_allows_retry() {
+    for failure_table in ["requests", "groups"] {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("delete-all-failure.sqlite"), 7, 2048).unwrap();
+        let mut connection = store.writer_connection().unwrap();
+        let now = Utc::now().timestamp_millis();
+        let records = (0..769)
+            .map(|index| record(&format!("r{index:04}"), now, 1))
+            .collect::<Vec<_>>();
+        store.write_batch(&mut connection, &records).unwrap();
+        store
+            .set_credential_approval(Some("synthetic-approved-hash"))
+            .unwrap();
+        let marker = last_pruned(&connection);
+        let first = store.request("r0000").unwrap();
+        let last = store.request("r0768").unwrap();
+        connection.execute_batch(&format!("CREATE TABLE deleted_audit(id TEXT); CREATE TRIGGER late_delete_all_failure BEFORE DELETE ON {failure_table} BEGIN SELECT CASE WHEN (SELECT count(*) FROM deleted_audit)>=600 THEN RAISE(ABORT,'synthetic later-delete-all failure') END; INSERT INTO deleted_audit VALUES(OLD.id); END;")).unwrap();
+        let (result, trace) =
+            traced_operation(&store, &mut connection, Store::delete_all_from_connection);
+        assert!(result.is_err());
+        assert!(!trace.changed_snapshot);
+        assert!(
+            trace
+                .deletes
+                .iter()
+                .filter(|(kind, changed)| *kind == failure_table && *changed == 256)
+                .count()
+                >= 2,
+            "{failure_table}: {:?}",
+            trace.deletes
+        );
+        assert_eq!(counts(&connection), [769, 769, 769, 769]);
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM deleted_audit", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(last_pruned(&connection), marker);
+        assert_eq!(
+            store.credential_approval().unwrap().as_deref(),
+            Some("synthetic-approved-hash")
+        );
+        assert_eq!(store.request("r0000").unwrap(), first);
+        assert_eq!(store.request("r0768").unwrap(), last);
+        assert_no_orphans(&connection);
+        connection
+            .execute_batch("DROP TRIGGER late_delete_all_failure")
+            .unwrap();
+        store.delete_all().unwrap();
+        assert_eq!(counts(&connection), [0, 0, 0, 0]);
+        assert_eq!(last_pruned(&connection), marker);
+        assert_eq!(
+            store.credential_approval().unwrap().as_deref(),
+            Some("synthetic-approved-hash")
+        );
+    }
+}
+
+#[test]
+fn delete_all_still_rejects_groups_referenced_by_orphaned_legacy_answers() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("delete-all-unconditional.sqlite"), 7, 100).unwrap();
+    let mut connection = store.writer_connection().unwrap();
+    store
+        .write_batch(
+            &mut connection,
+            &[record("kept", Utc::now().timestamp_millis(), 1)],
+        )
+        .unwrap();
+    let kept = store.request("kept").unwrap();
+    let marker = last_pruned(&connection);
+    // Emulate corrupt legacy data. An orphan-only group pass would silently
+    // retain this answer/group and incorrectly report successful deletion.
+    connection.execute_batch("PRAGMA foreign_keys=OFF; INSERT INTO answers SELECT 'missing-parent',key,group_id,kind,valid,value_num,value_text,confidence,data FROM answers; PRAGMA foreign_keys=ON;").unwrap();
+    assert!(store.delete_all().is_err());
+    assert_eq!(counts(&connection), [1, 2, 1, 1]);
+    assert_eq!(store.request("kept").unwrap(), kept);
+    assert_eq!(last_pruned(&connection), marker);
+    connection
+        .execute("DELETE FROM answers WHERE request_id='missing-parent'", [])
+        .unwrap();
+    store.delete_all().unwrap();
+    assert_eq!(counts(&connection), [0, 0, 0, 0]);
     assert_no_orphans(&connection);
 }
