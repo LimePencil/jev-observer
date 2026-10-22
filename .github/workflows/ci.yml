@@ -128,6 +128,71 @@ jobs:
             ${{ runner.temp }}/keyring-compatibility.json
             ui/test-results/
             ui/test-results-integration/
+      - name: Prepare verified integration executables and provenance
+        if: success() && github.event_name == 'workflow_dispatch'
+        timeout-minutes: 5
+        run: |
+          cargo build --release --locked --example upgrade_probe
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, platform, shutil, subprocess, sys
+          root = pathlib.Path.cwd()
+          base = "a400c814f0531b9bcc783f972934974bb411f7f8"
+          expected = "fa30ff2fb68bc9475b5f6216d5ac52cf403a6cc1ad8cc12e1b4fead5afc90a94"
+          def command(*argv):
+              return subprocess.check_output(argv, text=True).strip()
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+          head = command("git", "rev-parse", "HEAD")
+          assert head == os.environ["GITHUB_SHA"]
+          parents = [line.split()[1] for line in command("git", "cat-file", "-p", "HEAD").splitlines() if line.startswith("parent ")]
+          assert parents == [base], "verification commit must be the sole child of frozen source"
+          assert not command("git", "status", "--porcelain", "--untracked-files=no"), "tracked source changed during CI"
+          files = []
+          for line in command("git", "ls-tree", "-r", "HEAD").splitlines():
+              metadata, name = line.split("\t")
+              mode, kind, oid = metadata.split()
+              path = root / name
+              assert kind == "blob" and mode in ("100644", "100755") and path.is_file() and not path.is_symlink()
+              files.append({"path": name, "git_mode": mode, "bytes": path.stat().st_size, "sha256": digest(path)})
+          files.sort(key=lambda item: item["path"])
+          production = [entry for entry in files if entry["path"] != ".github/workflows/ci.yml"]
+          actual = hashlib.sha256(json.dumps(production, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+          assert actual == expected, "production source differs from frozen integration"
+          dist = []
+          for path in sorted((root / "ui/dist").rglob("*")):
+              assert not path.is_symlink()
+              if path.is_file():
+                  dist.append({"path": str(path.relative_to(root)), "bytes": path.stat().st_size, "sha256": digest(path)})
+          assert dist and len(dist) <= 64 and sum(item["bytes"] for item in dist) <= 16777216
+          out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "cohort11-verified"
+          out.mkdir(mode=0o700)
+          binaries = {}
+          for source, name in [("target/release/jev-observer", "observer-integration-cohort11-remote"), ("target/release/examples/upgrade_probe", "upgrade-probe-cohort11-remote")]:
+              path = root / source
+              assert path.is_file() and not path.is_symlink() and 0 < path.stat().st_size <= 67108864
+              destination = out / name
+              shutil.copyfile(path, destination)
+              assert digest(destination) == digest(path)
+              binaries[name] = {"source": source, "bytes": destination.stat().st_size, "sha256": digest(destination)}
+          report = {"schema": 1, "source_commit": base, "verification_commit": head,
+                    "production_manifest_sha256": actual, "excluded_only": ".github/workflows/ci.yml",
+                    "tracked_source": files, "embedded_ui": dist, "binaries": binaries,
+                    "run_id": os.environ["GITHUB_RUN_ID"], "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                    "repository": os.environ["GITHUB_REPOSITORY"], "runner_os": os.environ["RUNNER_OS"], "runner_arch": os.environ["RUNNER_ARCH"],
+                    "platform": {"system": platform.system(), "machine": platform.machine(), "libc": platform.libc_ver()},
+                    "toolchains": {"rustc": command("rustc", "-Vv"), "cargo": command("cargo", "--version"), "node": command("node", "--version"), "npm": command("npm", "--version"), "python": sys.version},
+                    "scope": "Generated only after all preceding combined CI checks succeeded. Successful workflow conclusion and exact artifact hashes must be verified separately before use."}
+          (out / "provenance.json").write_text(json.dumps(report, indent=2) + "\n")
+          PY
+      - name: Retain verified integration executables
+        if: success() && github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cohort11-verified-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          path: ${{ runner.temp }}/cohort11-verified/
       - name: Save Rust dependencies and build outputs
         if: success() && github.ref == 'refs/heads/main' && steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
