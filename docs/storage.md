@@ -49,6 +49,8 @@ Raw request state and recognized envelope media fields (`images`, `image`, `audi
 
 Persisted provider-key rotation stages a new operating-system credential entry before switching SQLite's approval digest. A failed approval leaves the previously approved entry available; obsolete entries are removed after the switch. Removing a credential revokes approval before operating-system cleanup. Version 0.2.0 can load older workspace entries, but version 0.1.0 cannot load the new entry layout after rotation. See [upgrade and downgrade guidance](installation.md#history-backups-and-downgrades).
 
+On Unix, provider credential accounts hash the canonical database path's native bytes. Valid UTF-8 paths retain their previous accounts. Paths containing invalid UTF-8 require provider re-registration after the native-path update; the new account leaves ambiguous old entries untouched. See the same upgrade guidance for rollback behavior. Non-Unix account naming is unchanged.
+
 
 Windows uses Ctrl-C or Ctrl-Break for graceful shutdown. The default `.jev-observer` directory receives a private inheritable current-user ACL before database creation. Custom Windows database directories must already restrict access to the current user, SYSTEM and administrators. Dashboard token files use protected current-user ACLs; permissive files and reparse points are rejected.
 
