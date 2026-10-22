@@ -207,7 +207,15 @@ main() {
         install_dir=$HOME/.local/bin
     fi
     [ -n "$install_dir" ] || fail '--install-dir must not be empty'
-    case $install_dir in /*) ;; *) install_dir=$(pwd -P)/$install_dir ;; esac
+    # Command substitution strips trailing newlines. Append a sentinel after
+    # pwd, then remove only pwd's final newline and that sentinel, not path bytes.
+    case $install_dir in
+        /*) ;;
+        *)
+            current_dir=$(pwd -P && printf '.') || fail 'Could not resolve the current directory'
+            install_dir=${current_dir%??}/$install_dir
+            ;;
+    esac
     destination=$install_dir/jev-observer
     [ ! -d "$destination" ] || fail 'The install target jev-observer is a directory (or a symlink to one). Choose another --install-dir.'
 
@@ -247,7 +255,8 @@ main() {
         fail 'Install curl, GNU wget, or an authenticated GitHub CLI to download a release.'
     fi
 
-    temp_root=$(CDPATH='' cd -P "${TMPDIR:-/tmp}" && pwd -P) || fail 'The temporary directory is unavailable'
+    temp_root=$(CDPATH='' cd -P "${TMPDIR:-/tmp}" && pwd -P && printf '.') || fail 'The temporary directory is unavailable'
+    temp_root=${temp_root%??}
     work_dir=$(mktemp -d "$temp_root/jev-observer.XXXXXXXX") || fail 'Could not create a private temporary directory'
     tag=latest
     if [ "$version_given" = 1 ]; then tag=v$requested_version; fi
@@ -308,7 +317,8 @@ main() {
     fi
 
     mkdir -p "$install_dir" || fail 'Could not create the install directory; choose a writable --install-dir'
-    install_dir=$(CDPATH='' cd -P "$install_dir" && pwd -P) || fail 'Could not access the install directory'
+    install_dir=$(CDPATH='' cd -P "$install_dir" && pwd -P && printf '.') || fail 'Could not access the install directory'
+    install_dir=${install_dir%??}
     destination=$install_dir/jev-observer
     stage_dir=$(mktemp -d "$install_dir/.jev-observer-install.XXXXXXXX") || fail 'Could not stage a binary in the install directory; choose a writable --install-dir'
     # Write only the validated member's bytes, ignoring archive ownership,
