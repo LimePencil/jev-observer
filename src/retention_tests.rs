@@ -90,7 +90,7 @@ fn measured_maintenance(store: &Store, connection: &mut Connection) -> (bool, i6
             work.steps += i64::from(rusqlite::ffi::sqlite3_stmt_status(
                 statement,
                 rusqlite::ffi::SQLITE_STMTSTATUS_VM_STEP,
-                0,
+                1,
             ));
         }
         0
@@ -391,4 +391,256 @@ fn large_cap_reductions_keep_the_newest_parent_metadata() {
         assert_eq!(counts(&connection), [kept, kept * 2, kept * 2, kept * 2]);
         assert_no_orphans(&connection);
     }
+}
+
+#[derive(Default)]
+struct RetentionTrace {
+    deletes: Vec<(&'static str, i32)>,
+    changed_snapshot: bool,
+    steps: i64,
+}
+
+fn traced_retention(
+    store: &Store,
+    connection: &mut Connection,
+    force: bool,
+) -> (Result<bool>, RetentionTrace) {
+    struct Work {
+        reader: Connection,
+        expected: Vec<i64>,
+        expected_marker: i64,
+        observed: RetentionTrace,
+    }
+    struct Trace(*mut rusqlite::ffi::sqlite3);
+    impl Drop for Trace {
+        fn drop(&mut self) {
+            unsafe {
+                rusqlite::ffi::sqlite3_trace_v2(self.0, 0, None, std::ptr::null_mut());
+            }
+        }
+    }
+    unsafe extern "C" fn observe(
+        _: u32,
+        context: *mut std::ffi::c_void,
+        statement: *mut std::ffi::c_void,
+        _: *mut std::ffi::c_void,
+    ) -> i32 {
+        unsafe {
+            let statement = statement.cast::<rusqlite::ffi::sqlite3_stmt>();
+            let work = &mut *context.cast::<Work>();
+            work.observed.steps += i64::from(rusqlite::ffi::sqlite3_stmt_status(
+                statement,
+                rusqlite::ffi::SQLITE_STMTSTATUS_VM_STEP,
+                1,
+            ));
+            let sql = rusqlite::ffi::sqlite3_sql(statement);
+            if sql.is_null() {
+                return 0;
+            }
+            let sql = std::ffi::CStr::from_ptr(sql).to_bytes();
+            let kind = if sql.starts_with(b"DELETE FROM requests") {
+                "requests"
+            } else if sql.starts_with(b"DELETE FROM groups") {
+                "groups"
+            } else {
+                return 0;
+            };
+            work.observed.deletes.push((
+                kind,
+                rusqlite::ffi::sqlite3_changes(rusqlite::ffi::sqlite3_db_handle(statement)),
+            ));
+            // One SELECT on an independent WAL reader checks each completed
+            // DELETE boundary. Never unwind through the C callback on failure.
+            let visible: rusqlite::Result<(Vec<i64>, i64)> = work.reader.query_row(
+                "SELECT (SELECT count(*) FROM requests),(SELECT count(*) FROM answers),(SELECT count(*) FROM groups),(SELECT count(*) FROM labels),(SELECT value FROM maintenance WHERE key='pruned_at')",
+                [],
+                |row| Ok((vec![row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?], row.get::<_, i64>(4)?)),
+            );
+            if !matches!(visible, Ok((counts, marker)) if counts == work.expected && marker == work.expected_marker)
+            {
+                work.observed.changed_snapshot = true;
+            }
+        }
+        0
+    }
+    let mut work = Work {
+        reader: store.reader().unwrap(),
+        expected: counts(connection),
+        expected_marker: last_pruned(connection),
+        observed: RetentionTrace::default(),
+    };
+    let handle = unsafe { connection.handle() };
+    unsafe {
+        rusqlite::ffi::sqlite3_trace_v2(
+            handle,
+            rusqlite::ffi::SQLITE_TRACE_PROFILE,
+            Some(observe),
+            std::ptr::from_mut(&mut work).cast(),
+        );
+    }
+    let trace = Trace(handle);
+    let result = store.maintenance(connection, force);
+    drop(trace);
+    (result, work.observed)
+}
+
+#[test]
+fn retention_batches_preserve_exact_metadata_and_reader_atomicity() {
+    for mode in ["age", "count", "age_then_count"] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("batch-retention.sqlite"), 7, 2048).unwrap();
+        let mut connection = store.writer_connection().unwrap();
+        let now = Utc::now().timestamp_millis();
+        let records = (0..1029)
+            .map(|index| {
+                let expired = match mode {
+                    "age" => index < 1024,
+                    "age_then_count" => index < 513,
+                    _ => false,
+                };
+                record(
+                    &format!("r{index:04}"),
+                    if expired { now - 8 * 86_400_000 } else { now },
+                    2,
+                )
+            })
+            .collect::<Vec<_>>();
+        store.write_batch(&mut connection, &records).unwrap();
+        let retained = (1024..1029)
+            .map(|index| store.request(&format!("r{index:04}")).unwrap())
+            .collect::<Vec<_>>();
+        if mode != "age" {
+            store.max_records = 5;
+        }
+        make_due(&connection);
+        let (result, trace) = traced_retention(&store, &mut connection, false);
+        assert!(result.unwrap());
+        assert!(!trace.changed_snapshot, "{mode}");
+        assert_eq!(counts(&connection), [5, 10, 10, 10]);
+        assert_eq!(
+            (1024..1029)
+                .map(|index| store.request(&format!("r{index:04}")).unwrap())
+                .collect::<Vec<_>>(),
+            retained,
+            "{mode}"
+        );
+        for (kind, expected) in [("requests", 1024), ("groups", 2048)] {
+            let batches = trace
+                .deletes
+                .iter()
+                .filter(|(table, _)| *table == kind)
+                .map(|(_, changed)| *changed)
+                .collect::<Vec<_>>();
+            assert!(
+                batches.iter().all(|changed| (0..=256).contains(changed)),
+                "{mode} {kind}: {batches:?}"
+            );
+            assert_eq!(batches.iter().sum::<i32>(), expected, "{mode} {kind}");
+            assert!(batches.len() >= expected as usize / 256);
+        }
+        let completed = last_pruned(&connection);
+        assert!(completed >= now);
+        assert!(!store.maintenance(&mut connection, false).unwrap());
+        assert_eq!(last_pruned(&connection), completed);
+        assert_no_orphans(&connection);
+    }
+}
+
+#[test]
+fn later_retention_batch_failure_rolls_back_all_rows_and_bookkeeping() {
+    for failure_table in ["requests", "groups"] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("late-failure.sqlite"), 7, 2048).unwrap();
+        let mut connection = store.writer_connection().unwrap();
+        let now = Utc::now().timestamp_millis();
+        let records = (0..1025)
+            .map(|index| record(&format!("r{index:04}"), now, 1))
+            .collect::<Vec<_>>();
+        store.write_batch(&mut connection, &records).unwrap();
+        let kept = store.request("r1024").unwrap();
+        store.max_records = 1;
+        make_due(&connection);
+        connection.execute_batch(&format!(
+            "CREATE TABLE deleted_audit(id TEXT); CREATE TRIGGER late_failure BEFORE DELETE ON {failure_table} BEGIN SELECT CASE WHEN (SELECT count(*) FROM deleted_audit)>=600 THEN RAISE(ABORT,'synthetic later-batch failure') END; INSERT INTO deleted_audit VALUES(OLD.id); END;"
+        )).unwrap();
+        let (result, trace) = traced_retention(&store, &mut connection, false);
+        assert!(result.is_err(), "{failure_table}");
+        assert!(!trace.changed_snapshot, "{failure_table}");
+        assert!(
+            trace
+                .deletes
+                .iter()
+                .filter(|(table, changed)| *table == failure_table && *changed == 256)
+                .count()
+                >= 2,
+            "{failure_table}: {:?}",
+            trace.deletes
+        );
+        assert_eq!(counts(&connection), [1025, 1025, 1025, 1025]);
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM deleted_audit", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(last_pruned(&connection), 0);
+        assert_eq!(store.request("r1024").unwrap(), kept);
+        assert!(store.request("r0000").unwrap().is_some());
+        assert_no_orphans(&connection);
+        connection
+            .execute_batch("DROP TRIGGER late_failure")
+            .unwrap();
+        assert!(store.maintenance(&mut connection, false).unwrap());
+        assert_eq!(counts(&connection), [1, 1, 1, 1]);
+        assert_eq!(store.request("r1024").unwrap(), kept);
+        assert_no_orphans(&connection);
+    }
+}
+
+#[test]
+fn forced_orphan_batches_handle_retained_prefix_and_extreme_rowids() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("orphan-cursor.sqlite"), 7, 2048).unwrap();
+    let mut connection = store.writer_connection().unwrap();
+    let now = Utc::now().timestamp_millis();
+    store
+        .write_batch(&mut connection, &[record("kept", now, 768)])
+        .unwrap();
+    let kept = store.request("kept").unwrap();
+    for (index, rowid) in [i64::MIN, -10, -1, 0, i64::MAX]
+        .into_iter()
+        .chain(1000..2024)
+        .enumerate()
+    {
+        // NULL primary-key values are legal in legacy rowid tables. Their
+        // orphan cleanup must not rely on a non-null or positive group ID.
+        let id = if index == 0 {
+            None
+        } else {
+            Some(format!("orphan-{index}"))
+        };
+        connection.execute("INSERT INTO groups(rowid,id,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter) SELECT ?,?,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter FROM groups WHERE id='kept-q0'", params![rowid, id]).unwrap();
+    }
+    let marker = last_pruned(&connection);
+    assert!(!store.maintenance(&mut connection, false).unwrap());
+    assert_eq!(last_pruned(&connection), marker);
+    let (result, trace) = traced_retention(&store, &mut connection, true);
+    assert!(result.unwrap());
+    assert!(!trace.changed_snapshot);
+    assert!(
+        (1..250_000).contains(&trace.steps),
+        "Orphan cursor used {} VM steps",
+        trace.steps
+    );
+    assert_eq!(counts(&connection), [1, 768, 768, 768]);
+    let groups = trace
+        .deletes
+        .iter()
+        .filter(|(kind, _)| *kind == "groups")
+        .map(|(_, count)| *count)
+        .collect::<Vec<_>>();
+    assert_eq!(groups, [256, 256, 256, 256, 5]);
+    assert_eq!(store.request("kept").unwrap(), kept);
+    assert_no_orphans(&connection);
 }

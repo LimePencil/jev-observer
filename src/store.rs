@@ -11,6 +11,8 @@ use std::{
     time::Duration,
 };
 
+const RETENTION_DELETE_BATCH: i64 = 256;
+
 #[derive(Clone)]
 pub struct Store {
     path: Arc<PathBuf>,
@@ -674,6 +676,42 @@ impl Store {
         Ok(ran)
     }
 
+    fn delete_request_batches(tx: &Connection, query: &str, cutoff: i64) -> Result<usize> {
+        let mut statement = tx.prepare_cached(query)?;
+        let mut removed = 0;
+        loop {
+            let changed = statement.execute([cutoff, RETENTION_DELETE_BATCH])?;
+            removed += changed;
+            if changed < RETENTION_DELETE_BATCH as usize {
+                return Ok(removed);
+            }
+        }
+    }
+
+    fn prune_orphaned_groups(tx: &Connection) -> Result<()> {
+        // Cursor by rowid, including negative values and legacy NULL group IDs.
+        // Advancing past each batch avoids rescanning a surviving group prefix.
+        // Only integer boundaries are selected; definitions remain in the DB.
+        let mut first = tx.prepare_cached("SELECT min(seq),max(seq) FROM (SELECT rowid AS seq FROM groups WHERE NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id) ORDER BY rowid LIMIT ?)")?;
+        let mut next = tx.prepare_cached("SELECT min(seq),max(seq) FROM (SELECT rowid AS seq FROM groups WHERE rowid>? AND NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id) ORDER BY rowid LIMIT ?)")?;
+        let mut delete = tx.prepare_cached("DELETE FROM groups WHERE rowid BETWEEN ? AND ? AND NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id)")?;
+        let bounds = |row: &rusqlite::Row<'_>| {
+            Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
+        };
+        let mut after = None;
+        loop {
+            let range = match after {
+                Some(after) => next.query_row([after, RETENTION_DELETE_BATCH], bounds)?,
+                None => first.query_row([RETENTION_DELETE_BATCH], bounds)?,
+            };
+            let (Some(low), Some(high)) = range else {
+                return Ok(());
+            };
+            delete.execute([low, high])?;
+            after = Some(high);
+        }
+    }
+
     fn prune_in_transaction(&self, tx: &Connection, force: bool) -> Result<bool> {
         let now = Utc::now().timestamp_millis();
         let last: i64 = tx
@@ -685,9 +723,13 @@ impl Store {
             .optional()?
             .unwrap_or(0);
         if force || now < last || now - last >= 30_000 {
-            let expired = tx.execute(
-                "DELETE FROM requests WHERE timestamp < ?",
-                [now - i64::from(self.retention_days) * 86_400_000],
+            // Expression indexes and foreign keys can require a RAM statement
+            // journal. Finish bounded DELETE statements while retaining the
+            // existing outer transaction and fixed cutoffs for atomicity.
+            let expired = Self::delete_request_batches(
+                tx,
+                "DELETE FROM requests WHERE seq IN (SELECT seq FROM requests WHERE timestamp < ? ORDER BY timestamp,seq LIMIT ?)",
+                now - i64::from(self.retention_days) * 86_400_000,
             )?;
             // Distinct positive row IDs cannot outnumber their inclusive span.
             // Two endpoint lookups avoid walking the whole retained history
@@ -741,15 +783,24 @@ impl Store {
                     // Preserve the existing cutoff for legacy nonpositive IDs.
                     -1
                 };
-                tx.execute("DELETE FROM requests WHERE seq <= ?", [cutoff])?
+                Self::delete_request_batches(
+                    tx,
+                    "DELETE FROM requests WHERE seq IN (SELECT seq FROM requests WHERE seq <= ? ORDER BY seq LIMIT ?)",
+                    cutoff,
+                )?
             } else {
-                tx.execute("DELETE FROM requests WHERE seq <= COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?),-1)", [self.max_records as i64])?
+                let cutoff = tx.query_row("SELECT COALESCE((SELECT seq FROM requests ORDER BY seq DESC LIMIT 1 OFFSET ?),-1)", [self.max_records as i64], |row| row.get(0))?;
+                Self::delete_request_batches(
+                    tx,
+                    "DELETE FROM requests WHERE seq IN (SELECT seq FROM requests WHERE seq <= ? ORDER BY seq LIMIT ?)",
+                    cutoff,
+                )?
             };
             // Parent/answer/group writes and cascading deletions are atomic.
             // A periodic pass that removed no parents cannot orphan a group.
             // Forced startup maintenance still repairs pre-existing orphans.
             if force || expired > 0 || excess > 0 {
-                tx.execute("DELETE FROM groups WHERE NOT EXISTS(SELECT 1 FROM answers a WHERE a.group_id=groups.id)", [])?;
+                Self::prune_orphaned_groups(tx)?;
             }
             tx.execute(
                 "INSERT OR REPLACE INTO maintenance(key,value) VALUES('pruned_at',?)",
