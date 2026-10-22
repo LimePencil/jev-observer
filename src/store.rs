@@ -736,7 +736,9 @@ impl Store {
         )?;
         self.apply_key(&conn)?;
         conn.busy_timeout(Duration::from_secs(2))?;
-        conn.execute_batch("PRAGMA cache_size=-8192;")?;
+        // A read snapshot can also sort retained definitions and metadata.
+        // Keep all such temporary payloads in RAM, including demo readers.
+        conn.execute_batch("PRAGMA temp_store=MEMORY; PRAGMA cache_size=-8192;")?;
         Ok(conn)
     }
 
@@ -1182,12 +1184,10 @@ impl Store {
         {
             return Ok((predicate, args));
         }
-        // The main database remains read-only. Keep only integer IDs in a
-        // connection-local temporary table, with a small pager cache target.
-        conn.execute_batch(
-            "PRAGMA temp_store=FILE; PRAGMA temp.cache_size=-2048;
-             CREATE TEMP TABLE dashboard_request_ids(seq INTEGER PRIMARY KEY);",
-        )?;
+        // Keep the integer selection in the reader's MEMORY temp store.
+        // Later queries on this same snapshot can sort retained text, so
+        // switching the connection to FILE here would also spill payloads.
+        conn.execute_batch("CREATE TEMP TABLE dashboard_request_ids(seq INTEGER PRIMARY KEY);")?;
         // All predicate fields live in these indexes. Reading the request body
         // table here would pull large saved JSON pages into every search poll.
         let index = if filter.window.as_deref() == Some("all") && !narrow_date_scope {
@@ -2759,6 +2759,98 @@ mod tests {
     }
     fn record(id: &str) -> Value {
         json!({"schema_version":1,"id":id,"timestamp":Utc::now().timestamp_millis(),"source":"test","model":"jev-test","status":200,"duration_ms":4.0,"cost_usd":0.1,"cost_basis":"synthetic","input_tokens":100,"output_tokens":3,"capture_complete":true,"sample":true,"answers":[{"key":"urgent","kind":"noul","group_id":"g","definition_id":"d","presentation_id":"p","definition":{"type":"noul","instructions":"Urgent?"},"valid":true,"value":0.8}]})
+    }
+
+    fn dashboard_temp_storage_case(encrypted: bool) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("temporary-payload.sqlite");
+        let store = if encrypted {
+            Store::open_encrypted(&path, "d".repeat(64), 7, 100).unwrap()
+        } else {
+            Store::open_demo(&path, 7, 100).unwrap()
+        };
+        let mut saved = record("synthetic-large-definition");
+        saved["answers"][0]["definition"]["instructions"] =
+            json!("SYNTHETIC_DASHBOARD_TEMP_MARKER_Q7Z9 ".repeat(95_000));
+        store
+            .write_batch(&mut store.writer_connection().unwrap(), &[saved.clone()])
+            .unwrap();
+        let base = Filter {
+            window: Some("all".into()),
+            as_of: saved["timestamp"].as_i64(),
+            ..Default::default()
+        };
+        let expected = store.dashboard(&base).unwrap();
+        let expected_detail = store.group("g", &base).unwrap().unwrap();
+        assert_eq!(expected["groups"].as_array().unwrap().len(), 1);
+        assert_eq!(expected["requests"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            expected["groups"][0]["definition"],
+            saved["answers"][0]["definition"]
+        );
+        for filter in [
+            base.clone(),
+            Filter {
+                search: Some("test".into()),
+                ..base.clone()
+            },
+            Filter {
+                group: Some("g".into()),
+                ..base.clone()
+            },
+            Filter {
+                search: Some("test".into()),
+                group: Some("g".into()),
+                ..base.clone()
+            },
+        ] {
+            let mut connection = store.reader().unwrap();
+            assert_eq!(
+                connection
+                    .pragma_query_value(None, "temp_store", |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+            // Search/group selection and subsequent full-definition metadata
+            // sorting share one connection and must preserve its privacy mode.
+            let dashboard = Store::dashboard_from(&mut connection, &filter).unwrap();
+            assert_eq!(dashboard, expected);
+            assert_eq!(
+                connection
+                    .pragma_query_value(None, "temp_store", |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+            let transaction = connection.transaction().unwrap();
+            let detail = Store::group_from(&transaction, "g", &filter)
+                .unwrap()
+                .unwrap();
+            assert_eq!(detail, expected_detail);
+            assert_eq!(
+                transaction
+                    .pragma_query_value(None, "temp_store", |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+        }
+        assert_eq!(
+            store
+                .request("synthetic-large-definition")
+                .unwrap()
+                .unwrap()["answers"][0]["definition"],
+            saved["answers"][0]["definition"]
+        );
+        assert_eq!(plaintext_database(&path).unwrap(), !encrypted);
+    }
+
+    #[test]
+    fn encrypted_dashboard_temporary_payloads_stay_in_memory() {
+        dashboard_temp_storage_case(true);
+    }
+
+    #[test]
+    fn demo_dashboard_temporary_payloads_stay_in_memory() {
+        dashboard_temp_storage_case(false);
     }
 
     #[test]

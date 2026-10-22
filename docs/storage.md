@@ -24,6 +24,8 @@ Unknown usage, cost, confidence and outcomes remain unknown. Version comparisons
 
 ## Storage and operating limits
 
+Dashboard and detail queries keep temporary selections and payload sorting in memory, so retained text is not written to SQLite temporary files. Large filtered histories can therefore use additional memory; this is not a process-memory cap.
+
 | Setting | Default |
 |---|---|
 | Listener | `127.0.0.1:8765`; change the port with `--port` |
