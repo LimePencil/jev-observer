@@ -135,6 +135,135 @@ struct TimelineBucket {
     cost: Mean,
 }
 
+#[derive(Default)]
+struct GroupAnswers<'a> {
+    count: i64,
+    valid: i64,
+    requests: i64,
+    last: Option<i64>,
+    previous_request: Option<&'a str>,
+    values: Mean,
+    confidence: Mean,
+    numeric_bins: BTreeMap<i64, i64>,
+    choice_bins: BTreeMap<String, i64>,
+}
+
+struct AnswerValues<'a> {
+    valid: bool,
+    number: Option<f64>,
+    confidence: Option<f64>,
+    choice: Option<&'a str>,
+}
+
+impl<'a> GroupAnswers<'a> {
+    fn add(
+        &mut self,
+        kind: &str,
+        request: &'a str,
+        timestamp: i64,
+        answer: AnswerValues<'_>,
+    ) -> Result<()> {
+        self.count += 1;
+        if self.previous_request != Some(request) {
+            self.requests += 1;
+            self.previous_request = Some(request);
+        }
+        self.last = Some(self.last.map_or(timestamp, |last| last.max(timestamp)));
+        if !answer.valid {
+            return Ok(());
+        }
+        self.valid += 1;
+        if let Some(number) = answer.number {
+            self.values.add(number);
+        }
+        if let Some(confidence) = answer.confidence {
+            self.confidence.add(confidence);
+        }
+        if kind == "choice" {
+            let choice = answer.choice.context("Valid choice value is missing")?;
+            if let Some(count) = self.choice_bins.get_mut(choice) {
+                *count += 1;
+            } else {
+                self.choice_bins.insert(choice.to_owned(), 1);
+            }
+        } else {
+            let number = answer.number.context("Valid numeric value is missing")?;
+            let bin = if kind == "noul" {
+                ((number * 10.0) as i64).min(9)
+            } else {
+                number as i64
+            };
+            *self.numeric_bins.entry(bin).or_default() += 1;
+        }
+        Ok(())
+    }
+
+    fn finish(self, kind: &str) -> Value {
+        let bins: Vec<_> = if kind == "choice" {
+            self.choice_bins.into_iter().collect()
+        } else {
+            self.numeric_bins
+                .into_iter()
+                .map(|(bin, count)| (bin.to_string(), count))
+                .collect()
+        };
+        json!({
+            "answer_count":self.count,"valid_count":self.valid,"request_count":self.requests,
+            "last_seen":self.last,"mean_value":self.values.value(),
+            "mean_confidence":self.confidence.value(),
+            "distribution":bins.into_iter().map(|(bin,count)| json!({"label":bin,"count":count})).collect::<Vec<_>>()
+        })
+    }
+}
+
+struct SparseAnswer<'a> {
+    group: String,
+    group_kind: String,
+    request: &'a str,
+    timestamp: i64,
+    kind: String,
+    valid: i64,
+    number: Option<f64>,
+    choice: Option<String>,
+    confidence: Option<f64>,
+}
+
+fn sqlite_number_order(left: Option<f64>, right: Option<f64>) -> std::cmp::Ordering {
+    match (left, right) {
+        // SQLite treats signed zeros as equal and stores NaN as NULL.
+        (Some(left), Some(right)) => left
+            .partial_cmp(&right)
+            .unwrap_or(std::cmp::Ordering::Equal),
+        _ => left.is_some().cmp(&right.is_some()),
+    }
+}
+
+fn retain_dashboard_group(
+    selected: &mut Vec<(String, Value)>,
+    id: String,
+    stats: GroupAnswers<'_>,
+    kind: &str,
+    after: &Option<(i64, String)>,
+) {
+    let Some(last) = stats.last else {
+        return;
+    };
+    if after
+        .as_ref()
+        .is_some_and(|(time, cursor_id)| last > *time || (last == *time && id <= *cursor_id))
+    {
+        return;
+    }
+    let position = selected.partition_point(|(other_id, other)| {
+        other["last_seen"].as_i64().unwrap() > last
+            || (other["last_seen"] == last && other_id < &id)
+    });
+    if position < 101 {
+        selected.insert(position, (id, stats.finish(kind)));
+        selected.truncate(101);
+    }
+}
+
 const DASHBOARD_SELECTION: &str = "r.seq IN (SELECT seq FROM temp.dashboard_request_ids)";
 const GROUP_SELECTION: &str = "r.seq IN (SELECT seq FROM temp.group_request_ids)";
 const GROUP_TIMELINE_SELECTION: &str = "r.timestamp BETWEEN (SELECT min(timestamp) FROM temp.group_request_ids) AND (SELECT max(timestamp) FROM temp.group_request_ids) AND r.seq IN (SELECT seq FROM temp.group_request_ids)";
@@ -145,6 +274,8 @@ const FAILED: &str = "(r.status>=400 OR json_extract(r.data,'$.transport_error')
 // every remaining index column/order for deterministic floating-point sums.
 // Built-in SQL functions keep the additive index writable by v0.3.0 too.
 const STRICT_ANSWER_QUERY: &str = "SELECT request_id,valid,value_num,confidence,value_text FROM answers INDEXED BY answer_overview WHERE (CASE WHEN length(group_id)=73 AND length(CAST(group_id AS BLOB))=73 AND substr(group_id,1,9)='group_v1_' AND substr(group_id,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(group_id,10)) ELSE group_id END)=(CASE WHEN length(?1)=73 AND length(CAST(?1 AS BLOB))=73 AND substr(?1,1,9)='group_v1_' AND substr(?1,10) NOT GLOB '*[^0-9a-f]*' THEN unhex(substr(?1,10)) ELSE ?1 END) ORDER BY request_id";
+
+const SPARSE_ANSWER_QUERY: &str = "SELECT a.group_id,g.kind,a.kind,a.valid,a.value_num,a.value_text,a.confidence,g.id IS NOT NULL AND g.family_id IS NULL AND instr(lower(g.key || ' ' || g.source || ' ' || g.kind || ' ' || g.id || ' ' || coalesce(g.task_version,'')),lower(?1))>0 FROM answers a INDEXED BY sqlite_autoindex_answers_1 LEFT JOIN groups g ON g.id=a.group_id WHERE a.request_id=?2 LIMIT ?3";
 
 const DASHBOARD_INDEX: &str = "CREATE INDEX request_dashboard ON requests(timestamp,source,model,status,event_kind,answer_count,input_tokens,output_tokens,cost_usd,sample,capture_complete,duration_ms,json_extract(data,'$.timestamp'),id,json_extract(data,'$.transport_error'))";
 
@@ -1493,8 +1624,8 @@ impl Store {
         })
     }
 
-    /// Read each strict group's answers once, accumulating both its metrics and
-    /// bins. Ordering by parent ID makes distinct-request counting constant-space.
+    /// Use bounded parent lookups for sparse scopes and the covering group
+    /// index for broad scopes. Both keep the same answer accumulation order.
     fn strict_dashboard_groups(
         conn: &Connection,
         parents: &HashMap<String, i64>,
@@ -1503,6 +1634,143 @@ impl Store {
         if parents.is_empty() {
             return Ok(Vec::new());
         }
+        if let Some(groups) = Self::sparse_dashboard_groups(conn, parents, filter)? {
+            return Ok(groups);
+        }
+        Self::broad_dashboard_groups(conn, parents, filter)
+    }
+
+    /// A sparse selection should not visit every retained group and answer.
+    /// Bound the probe, copied text and answer count independently. The broad
+    /// covering-index path remains preferable for large or dense selections.
+    fn sparse_dashboard_groups(
+        conn: &Connection,
+        parents: &HashMap<String, i64>,
+        filter: &Filter,
+    ) -> Result<Option<Vec<(String, Value)>>> {
+        if parents.len() > 512 {
+            return Ok(None);
+        }
+        let sparse: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM requests INDEXED BY request_time LIMIT 1 OFFSET ?)",
+            [(parents.len() * 4) as i64],
+            |row| row.get(0),
+        )?;
+        if !sparse {
+            return Ok(None);
+        }
+        let mut statement = conn.prepare(SPARSE_ANSWER_QUERY)?;
+        let mut answers = Vec::new();
+        let mut visited = 0;
+        let mut copied_bytes = 0;
+        for (request, &timestamp) in parents {
+            let mut rows = statement.query(params![
+                filter.group_search.as_deref().unwrap_or(""),
+                request,
+                4097 - visited
+            ])?;
+            while let Some(row) = rows.next()? {
+                visited += 1;
+                if visited > 4096 {
+                    return Ok(None);
+                }
+                // Count before applying family/search eligibility so even an
+                // ineligible large parent cannot turn this into an open scan.
+                if !row.get::<_, bool>(7)? {
+                    continue;
+                }
+                let group = row.get_ref(0)?.as_str()?;
+                let group_kind = row.get_ref(1)?.as_str()?;
+                let Ok(kind) = row.get_ref(2)?.as_str() else {
+                    // The original plan does not decode answer kinds. Keep
+                    // unusual SQLite storage classes on that existing path.
+                    return Ok(None);
+                };
+                let valid: i64 = row.get(3)?;
+                let (number, choice, confidence) = if valid != 0 {
+                    (
+                        row.get::<_, Option<f64>>(4)?,
+                        match row.get_ref(5)?.as_str_or_null() {
+                            Ok(choice) => choice,
+                            Err(_) => return Ok(None),
+                        },
+                        row.get::<_, Option<f64>>(6)?,
+                    )
+                } else {
+                    (None, None, None)
+                };
+                // Choice labels and legacy IDs can be large. Do not copy an
+                // unbounded record into the in-memory ordering buffer.
+                for bytes in [
+                    group.len(),
+                    group_kind.len(),
+                    kind.len(),
+                    choice.map_or(0, str::len),
+                ] {
+                    if bytes > 1024 * 1024 - copied_bytes {
+                        return Ok(None);
+                    }
+                    copied_bytes += bytes;
+                }
+                answers.push(SparseAnswer {
+                    group: group.to_owned(),
+                    group_kind: group_kind.to_owned(),
+                    request,
+                    timestamp,
+                    kind: kind.to_owned(),
+                    valid,
+                    number,
+                    choice: choice.map(str::to_owned),
+                    confidence,
+                });
+            }
+        }
+        // Match answer_overview's complete tie order, including malformed
+        // legacy groups with several keys/kinds in one parent. Sorting only
+        // request IDs would change compensated sums and some exact means.
+        answers.sort_by(|left, right| {
+            left.group
+                .cmp(&right.group)
+                .then_with(|| left.request.cmp(right.request))
+                .then_with(|| left.kind.cmp(&right.kind))
+                .then_with(|| left.valid.cmp(&right.valid))
+                .then_with(|| sqlite_number_order(left.number, right.number))
+                .then_with(|| left.choice.cmp(&right.choice))
+                .then_with(|| sqlite_number_order(left.confidence, right.confidence))
+        });
+        let after = Self::group_cursor(filter)?;
+        let mut selected = Vec::new();
+        for group in answers.chunk_by(|left, right| left.group == right.group) {
+            let mut stats = GroupAnswers::default();
+            for answer in group {
+                stats.add(
+                    &answer.group_kind,
+                    answer.request,
+                    answer.timestamp,
+                    AnswerValues {
+                        valid: answer.valid != 0,
+                        number: answer.number,
+                        confidence: answer.confidence,
+                        choice: answer.choice.as_deref(),
+                    },
+                )?;
+            }
+            retain_dashboard_group(
+                &mut selected,
+                group[0].group.clone(),
+                stats,
+                &group[0].group_kind,
+                &after,
+            );
+        }
+        Ok(Some(selected))
+    }
+
+    fn broad_dashboard_groups(
+        conn: &Connection,
+        parents: &HashMap<String, i64>,
+        filter: &Filter,
+    ) -> Result<Vec<(String, Value)>> {
         let mut ids = conn.prepare("SELECT id,kind FROM groups WHERE family_id IS NULL AND instr(lower(key || ' ' || source || ' ' || kind || ' ' || id || ' ' || coalesce(task_version,'')),lower(?))>0 ORDER BY id")?;
         let after = Self::group_cursor(filter)?;
         let mut answers = conn.prepare(STRICT_ANSWER_QUERY)?;
@@ -1512,81 +1780,40 @@ impl Store {
         })? {
             let (id, kind) = row?;
             let mut rows = answers.query([&id])?;
-            let (mut count, mut valid, mut requests) = (0_i64, 0_i64, 0_i64);
-            let (mut values, mut confidence) = (Mean::default(), Mean::default());
-            let mut last = i64::MIN;
-            let mut previous_request = "";
-            let mut numeric_bins = std::collections::BTreeMap::<i64, i64>::new();
-            let mut choice_bins = std::collections::BTreeMap::<String, i64>::new();
+            let mut stats = GroupAnswers::default();
             while let Some(row) = rows.next()? {
                 let Some((request, &timestamp)) = parents.get_key_value(row.get_ref(0)?.as_str()?)
                 else {
                     continue;
                 };
-                count += 1;
-                if count == 1 || request != previous_request {
-                    requests += 1;
-                    previous_request = request;
-                }
-                last = last.max(timestamp);
-                if !row.get::<_, bool>(1)? {
-                    continue;
-                }
-                valid += 1;
-                let number: Option<f64> = row.get(2)?;
-                if let Some(number) = number {
-                    values.add(number);
-                }
-                if let Some(value) = row.get::<_, Option<f64>>(3)? {
-                    confidence.add(value);
-                }
-                if kind == "choice" {
-                    let bin = row.get_ref(4)?.as_str()?;
-                    if let Some(count) = choice_bins.get_mut(bin) {
-                        *count += 1;
-                    } else {
-                        choice_bins.insert(bin.to_owned(), 1);
-                    }
+                let valid = row.get::<_, bool>(1)?;
+                let (number, confidence, choice) = if valid {
+                    (
+                        row.get(2)?,
+                        row.get(3)?,
+                        if kind == "choice" {
+                            Some(row.get_ref(4)?.as_str()?)
+                        } else {
+                            None
+                        },
+                    )
                 } else {
-                    let number = number.context("Valid numeric value is missing")?;
-                    let bin = if kind == "noul" {
-                        ((number * 10.0) as i64).min(9)
-                    } else {
-                        number as i64
-                    };
-                    *numeric_bins.entry(bin).or_default() += 1;
-                }
+                    (None, None, None)
+                };
+                stats.add(
+                    &kind,
+                    request,
+                    timestamp,
+                    AnswerValues {
+                        valid,
+                        number,
+                        confidence,
+                        choice,
+                    },
+                )?;
             }
-            if count == 0
-                || after.as_ref().is_some_and(|(time, cursor_id)| {
-                    last > *time || (last == *time && id <= *cursor_id)
-                })
-            {
-                continue;
-            }
-            let bins: Vec<_> = if kind == "choice" {
-                choice_bins.into_iter().collect()
-            } else {
-                numeric_bins
-                    .into_iter()
-                    .map(|(bin, count)| (bin.to_string(), count))
-                    .collect()
-            };
-            let stats = json!({
-                "answer_count":count,"valid_count":valid,"request_count":requests,"last_seen":last,
-                "mean_value":values.value(),
-                "mean_confidence":confidence.value(),
-                "distribution":bins.into_iter().map(|(bin,count)| json!({"label":bin,"count":count})).collect::<Vec<_>>()
-            });
             // Retain one page plus lookahead, even for high-cardinality data.
-            let position = selected.partition_point(|(other_id, other)| {
-                other["last_seen"].as_i64().unwrap() > last
-                    || (other["last_seen"] == last && other_id < &id)
-            });
-            if position < 101 {
-                selected.insert(position, (id, stats));
-                selected.truncate(101);
-            }
+            retain_dashboard_group(&mut selected, id, stats, &kind, &after);
         }
         Ok(selected)
     }
