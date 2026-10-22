@@ -43,6 +43,10 @@ mod response_deadline_tests {
     include!("response_deadline_tests.rs");
 }
 
+mod protocol_tests {
+    include!("server_protocol_tests.rs");
+}
+
 struct Fixture {
     _directory: tempfile::TempDir,
     state: AppState,

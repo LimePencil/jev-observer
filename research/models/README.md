@@ -1,4 +1,6 @@
-# Current Jev-like models: research and coverage
+# October 3 Jev-like model research snapshot
+
+This historical snapshot remains unchanged in scope. The [October 23 addendum](2026-10-23.md) records new and re-reviewed contracts; the live catalog carries per-entry review dates so these 38 entries are not all represented as newly audited.
 
 Checked **October 3, 2026**. This survey identifies models that make bounded decisions over supplied candidates, conditions or ordered rubrics. The dashboard catalog contains **38 families and serving integrations**: 22 compatible HTTP paths and 16 paths through mapped capture imports. A family includes its size variants, revisions and aliases; provider gateways and runtimes are listed separately because their connection and credential requirements differ.
 

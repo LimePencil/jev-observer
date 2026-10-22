@@ -48,12 +48,24 @@ fn normalize_import(
     import_secrets: &[String],
     budget: &mut ImportRecordBudget<'_>,
     charge_input: bool,
+    native_wire: bool,
 ) -> Result<Value> {
     // Imported Observer envelopes may contain the additional wrappers our
     // own output adds. Never silently replace their reconstructed bodies with
     // null because a raw-provider parser has a smaller recursion allowance.
-    let raw_request = crate::normalized_json::from_slice(&capture.request)?;
-    let response = crate::normalized_json::from_slice(&capture.response)?;
+    let mut raw_request = crate::normalized_json::from_slice(&capture.request)?;
+    let mut response = crate::normalized_json::from_slice(&capture.response)?;
+    if native_wire && options.protocol == super::types::Protocol::OpenaiDecisions {
+        ensure!(
+            super::decisions::valid_wire_shape(
+                &raw_request,
+                &response,
+                (200..300).contains(&capture.status)
+            ),
+            "Decisions requires ordered question and answer arrays"
+        );
+        super::decisions::ordinal_maps(&mut raw_request, &mut response);
+    }
     let (raw_request, safe) = prepare_values(
         capture,
         options,
@@ -75,11 +87,23 @@ fn normalize_import(
         "normalization work",
     )?;
     let context_redacted = context_redacted(capture, &safe);
+    let semantic_assets = super::identity::semantic_asset_questions(&raw_request);
     let isolation = budget.size(&safe["id"])?;
-    for key in answer_keys(&safe["request"], &safe["response"]) {
+    let response = if options.protocol == super::types::Protocol::CloudflareSystemone {
+        &safe["response"]["result"]
+    } else {
+        &safe["response"]
+    };
+    for key in answer_keys(&safe["request"], response) {
         budget.charge(context)?;
-        if definition_redacted(&raw_request, &safe, key, context_redacted) {
+        if definition_redacted(&raw_request, &safe, key, context_redacted)
+            || semantic_assets.contains(key)
+        {
             budget.charge(isolation)?;
+        }
+        if options.model_profile.is_some() || options.protocol != super::types::Protocol::Systemone
+        {
+            budget.charge(options.profile_name().len() + 128)?;
         }
     }
     Ok(normalize_prepared(capture, options, &raw_request, &safe))
@@ -226,8 +250,10 @@ pub(super) fn import_capture(
         .as_bool()
         .context("capture_complete must be a boolean")?;
     ensure!(
-        record["request"].is_object() && record["request"]["questions"].is_object(),
-        "request must contain named System One questions"
+        record["request"].is_object()
+            && (record["request"]["questions"].is_object()
+                || record["request"]["questions"].is_array()),
+        "request must contain questions"
     );
     ensure!(record["response"].is_object(), "response must be an object");
     for key in ["transport_error", "task_version"] {
@@ -253,9 +279,39 @@ pub(super) fn import_capture(
     };
     let mut imported_options = options.clone();
     imported_options.provider = Some(provider.to_ascii_lowercase());
+    ensure!(
+        record["model_profile"].is_null() || record["model_profile"].is_string(),
+        "model_profile must be a string or null"
+    );
+    imported_options.model_profile = record["model_profile"].as_str().map(str::to_owned);
+    ensure!(
+        imported_options
+            .model_profile
+            .as_deref()
+            .is_none_or(crate::catalog::known_profile),
+        "Unknown model_profile"
+    );
+    imported_options.protocol = if record["protocol"].is_null() {
+        super::types::Protocol::default()
+    } else {
+        serde_json::from_value(record["protocol"].clone())
+            .context("Unsupported capture protocol")?
+    };
+    ensure!(
+        imported_options.protocol == super::types::Protocol::OpenaiDecisions
+            || record["request"]["questions"].is_object(),
+        "System One requires named questions"
+    );
     let mut import_secrets = Vec::new();
     collect_secrets(record, options, &mut import_secrets);
-    let mut out = normalize_import(&capture, &imported_options, &import_secrets, budget, true)?;
+    let mut out = normalize_import(
+        &capture,
+        &imported_options,
+        &import_secrets,
+        budget,
+        true,
+        true,
+    )?;
     // The generated fingerprint retains no caller text. Preserve it through
     // privacy filtering so distinct calls cannot become false duplicates.
     out["source_event_id"] = out["id"].clone();
