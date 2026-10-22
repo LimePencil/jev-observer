@@ -365,12 +365,33 @@ fn ordered_unique_secrets(secrets: &[String]) -> Vec<&str> {
     unique
 }
 
-fn privacy(value: &Value, options: &NormalizeOptions, explicit: &[&str]) -> Value {
+fn privacy_secrets(value: &Value, options: &NormalizeOptions, explicit: &[&str]) -> Vec<String> {
     let mut secrets = Vec::new();
     for secret in explicit {
         collect_secret_string(secret, &mut secrets);
     }
     collect_secrets(value, options, &mut secrets);
+    secrets
+}
+
+fn privacy(value: &Value, options: &NormalizeOptions, explicit: &[&str]) -> Value {
+    let secrets = privacy_secrets(value, options, explicit);
+    scrub(value, options, &ordered_unique_secrets(&secrets))
+}
+
+fn privacy_with_input_filter(
+    value: &mut Value,
+    options: &NormalizeOptions,
+    explicit: &[&str],
+    filter_inputs: impl FnOnce(&mut Value),
+) -> Value {
+    // Discover every original secret, in the same explicit-first order, before
+    // discarding inputs. Omitted credentials must still redact retained echoes.
+    let secrets = privacy_secrets(value, options, explicit);
+    if !options.capture_state {
+        // Match known input paths before scrub can rename their keys or parents.
+        filter_inputs(value);
+    }
     scrub(value, options, &ordered_unique_secrets(&secrets))
 }
 
@@ -696,10 +717,16 @@ pub fn normalize(capture: &Capture, options: &NormalizeOptions) -> Value {
 fn clear_input_fields(value: &mut Value) {
     if let Some(map) = value.as_object_mut() {
         for field in INPUT_FIELDS {
-            if let Some(input) = map.get_mut(field) {
-                *input = Value::Null;
-            }
+            map.remove(field);
         }
+    }
+}
+
+fn clear_response_input_fields(response: &mut Value) {
+    clear_input_fields(response);
+    // Legacy envelope inputs, not arbitrary nested question/result semantics.
+    if let Some(metadata) = response.get_mut("original_metadata") {
+        clear_input_fields(metadata);
     }
 }
 
@@ -775,28 +802,18 @@ fn prepare_values(
     .flatten()
     .chain(import_secrets.iter().map(String::as_str))
     .collect();
-    let mut safe = {
+    let safe = {
         let mut envelope = json!({
             "request": raw_request, "response": null, "id": capture.id,
             "source": capture.source, "task_version": capture.task_version,
             "transport_error": capture.transport_error
         });
         envelope["response"] = response;
-        privacy(&envelope, options, &explicit_secrets)
+        privacy_with_input_filter(&mut envelope, options, &explicit_secrets, |envelope| {
+            clear_input_fields(&mut envelope["request"]);
+            clear_response_input_fields(&mut envelope["response"]);
+        })
     };
-    // Only the actual input snapshot is opt-in. A structured question can
-    // legitimately contain a field named `state`; that is part of its rule.
-    if !options.capture_state {
-        for envelope in ["request", "response"] {
-            clear_input_fields(&mut safe[envelope]);
-        }
-        // Earlier capture-decision converters nested response envelope inputs
-        // here. Apply the same preference to those saved captures and exports,
-        // without recursively removing fields from question/result semantics.
-        if let Some(metadata) = safe["response"].get_mut("original_metadata") {
-            clear_input_fields(metadata);
-        }
-    }
     (raw_request, safe)
 }
 
@@ -1063,6 +1080,27 @@ fn remove_receipt_inputs(receipt: &mut Value) {
             if let Some(response) = stage.get_mut("response") {
                 remove_receipt_response_inputs(response);
             }
+        }
+    }
+}
+
+fn clear_observer_inputs(record: &mut Value) {
+    // Preserve required-field validation: do not insert state when absent.
+    if let Some(state) = record.get_mut("state") {
+        *state = Value::Null;
+    }
+    if let Some(request) = record.get_mut("request_extra") {
+        clear_input_fields(request);
+    }
+    if let Some(response) = record.get_mut("response_extra") {
+        clear_response_input_fields(response);
+    }
+    if let Some(receipt) = record.get_mut("receipt") {
+        remove_receipt_inputs(receipt);
+    }
+    if let Some(actions) = record.get_mut("actions").and_then(Value::as_array_mut) {
+        for action in actions {
+            remove_receipt_inputs(action);
         }
     }
 }
@@ -1391,8 +1429,8 @@ fn import_receipt(
     let source = "jevrouter";
     let provider = &record["provenance"]["jev_provider"];
     // The original receipt and its action retain overlapping provenance. Charge
-    // the second copy before cloning, including discarded input fields (a safe
-    // conservative bound), then charge envelope extensions retained a third time.
+    // the second copy before cloning, then charge envelope extensions retained
+    // a third time. Opted-out inputs were already removed before privacy scrub.
     budget.value(record)?;
     if let Some(raw) = record["raw_jev"].as_object() {
         for (key, value) in raw {
@@ -1609,7 +1647,7 @@ fn import_records_with_limits(
         normalized: 0,
     };
     values
-        .iter()
+        .iter_mut()
         .enumerate()
         .map(|(index, record)| {
             let mut budget = ImportRecordBudget {
@@ -1627,7 +1665,13 @@ fn import_records_with_limits(
             }
             // Scrub before normalization so all recomputed identities describe the
             // retained definition, and credential echoes cannot leak into metadata.
-            let mut safe = privacy(record, options, &[]);
+            let mut safe = privacy_with_input_filter(record, options, &[], |record| {
+                if format == "observer-jsonl" {
+                    clear_observer_inputs(record);
+                } else {
+                    remove_receipt_inputs(record);
+                }
+            });
             // Before reconstruction/cloning, bound even privacy-expanded input.
             // Observer derived answer fields are not retained wholesale: its
             // reconstructed input and provenance are charged by import_observer.
@@ -3070,3 +3114,7 @@ mod import_budget_tests;
 #[cfg(test)]
 #[path = "receipt_privacy_tests.rs"]
 mod receipt_privacy_tests;
+
+#[cfg(test)]
+#[path = "input_opt_out_tests.rs"]
+mod input_opt_out_tests;
