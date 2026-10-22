@@ -70,7 +70,7 @@ export function Distribution({ group }: { group: Group }) {
   const [expanded, setExpanded] = useState(false);
   const distribution = group.distribution ?? [];
   if (group.kind === 'box') return <p className="caption box-distribution-note">Box answers retain individual geometry. Inspect observations for coordinates and reported confidence; no scalar mean or histogram is computed.</p>;
-  const label = (item: Group['distribution'][number]) => typeof item.value === 'string' || typeof item.value === 'boolean' ? typedChoiceLabel(item.value) : choiceLabel(item.key ?? item.label, group.definition);
+  const label = (item: Group['distribution'][number]) => group.adapter !== 'openai-decisions-v1' ? item.label : typeof item.value === 'string' || typeof item.value === 'boolean' ? typedChoiceLabel(item.value) : choiceLabel(item.key ?? item.label, group.definition, true);
   if (!group.valid_count || !distribution.length) return <div className="chart-empty">No valid answers in this window</div>;
   const sorted = [...distribution].sort(group.kind === 'choice' ? (a, b) => b.count - a.count : (a, b) => parseFloat(a.label) - parseFloat(b.label));
   const items = sorted.slice(0, expanded ? sorted.length : group.kind === 'choice' ? 8 : 20);

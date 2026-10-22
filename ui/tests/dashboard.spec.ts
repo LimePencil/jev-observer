@@ -3418,7 +3418,7 @@ test('typed decisions retain Boolean and String choice identities in winners pro
   const key = (value: string | boolean) => `choice:v1:${JSON.stringify(value)}`;
   const probabilities = Object.fromEntries(values.map(value => [key(value), .2]));
   const answers = values.map((value, index) => ({ ...record.answers[0], key: `question:${index}`, definition, value, choice_key: key(value), probabilities, raw_answer: { type: 'choice', value } }));
-  const current = { ...group, definition, valid_count: 5, distribution: values.map(value => ({ key: key(value), label: String(value), value, count: 1 })) };
+  const current = { ...group, adapter: 'openai-decisions-v1', definition, valid_count: 5, distribution: values.map(value => ({ key: key(value), label: String(value), value, count: 1 })) };
   await typedDecisionHarness(page, answers, current);
   const labels = ['true (boolean)', '"true"', 'false (boolean)', '"false"', '""'];
   await expect(page.locator('.selected-distribution .distribution-label > span:first-child')).toHaveText(labels);
@@ -3434,7 +3434,7 @@ test('typed decisions retain Boolean and String choice identities in winners pro
 });
 
 test('typed decisions derive old typed bin labels from native choices without parsing opaque keys', async ({ page }) => {
-  const current = { ...group, definition: { choices: [{ value: false, description: 'False' }, { value: 'false', description: 'String false' }] }, distribution: [{ label: 'choice:v1:false', count: 2 }, { label: 'choice:v1:"false"', count: 1 }, { label: 'choice:v1:unrecognized', count: 1 }] };
+  const current = { ...group, adapter: 'openai-decisions-v1', definition: { choices: [{ value: false, description: 'False' }, { value: 'false', description: 'String false' }] }, distribution: [{ label: 'choice:v1:false', count: 2 }, { label: 'choice:v1:"false"', count: 1 }, { label: 'choice:v1:unrecognized', count: 1 }] };
   await typedDecisionHarness(page, [], current);
   await expect(page.locator('.selected-distribution .distribution-label > span:first-child')).toHaveText(['false (boolean)', '"false"', 'choice:v1:unrecognized']);
 });
@@ -3493,4 +3493,23 @@ test('typed decisions catalog separates selected profile protocol and credential
   await expect(page.getByLabel('Source format')).toHaveValue('systemone-capture');
   await expect(page.getByRole('option', { name: 'Decision request/response capture' })).toHaveAttribute('value', 'systemone-capture');
   await expect(page.getByRole('dialog')).toContainText('include protocol: openai-decisions or cloudflare-systemone');
+});
+
+
+test('typed decisions preserve legacy canonical-looking labels and unrelated choices extensions', async ({ page }) => {
+  const literal = 'choice:v1:true';
+  const definition = { ...group.definition as object, criteria: { [literal]: 'A literal legacy label', other: 'Other' }, choices: [{ value: true, description: 'Unrelated extension' }] };
+  const current: Group = { ...group, adapter: null, definition, distribution: [{ label: literal, count: 1 }] };
+  const answer = { ...record.answers[0], definition, value: literal, probabilities: { [literal]: .8, other: .2 } };
+  const state = await typedDecisionHarness(page, [answer], current);
+  state.record.protocol = 'systemone';
+  await expect(page.locator('.selected-distribution .distribution-label > span:first-child')).toHaveText([literal]);
+  await page.locator('.request-link').click();
+  await expect(page.locator('.answer-value')).toHaveText(literal);
+  await expect(page.locator('.probability-row > span:first-child')).toHaveText([literal, 'other']);
+  await expect(page.getByRole('dialog')).not.toContainText('true (boolean)');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+  await expect(page.getByRole('dialog').locator('.distribution-label > span:first-child')).toHaveText([literal]);
+  await expect(page.getByRole('dialog').getByRole('row').filter({ has: page.getByRole('button', { name: 'department', exact: true }) }).locator('td').nth(1)).toHaveText(literal);
 });

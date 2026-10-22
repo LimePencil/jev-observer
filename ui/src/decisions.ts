@@ -16,8 +16,8 @@ export function typedChoiceLabel(value: ChoiceValue): string {
 
 // Native definitions retain their ordered choices. Canonical IDs are only a
 // lookup key: never parse a key back into a potentially different typed value.
-export function choiceLabel(key: string, definition: unknown): string {
-  if (!definition || typeof definition !== 'object' || !('choices' in definition)
+export function choiceLabel(key: string, definition: unknown, typed = false): string {
+  if (!typed || !definition || typeof definition !== 'object' || !('choices' in definition)
     || !Array.isArray(definition.choices)) return key;
   const choice = definition.choices.find(item => item && typeof item === 'object'
     && (typeof item.value === 'string' || typeof item.value === 'boolean')
