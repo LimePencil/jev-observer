@@ -1867,6 +1867,57 @@ test('committing a group search preserves request pagination history', async ({ 
   await expect(page.locator('.group-row')).toContainText('department first');
 });
 
+for (const section of ['requests', 'groups'] as const) {
+  for (const direction of ['Older', 'Newer'] as const) {
+    test(`group search during pending ${direction} ${section} preserves request history and resets groups`, async ({ page }) => {
+      await page.clock.install({ time: new Date(now) });
+      await page.clock.pauseAt(new Date(now + 1000));
+      await paginatedSearchHarness(page);
+      for (const current of ['requests', 'groups'] as const) {
+        await page.getByRole('button', { name: `Older ${current}`, exact: true }).click();
+        await expectHistoryPage(page, current, 'second');
+        if (current !== section || direction === 'Newer') {
+          await page.getByRole('button', { name: `Older ${current}`, exact: true }).click();
+          await expectHistoryPage(page, current, 'third');
+        }
+      }
+      const target = direction === 'Older' ? 'third' : 'second';
+      let release!: () => void, started = false;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      await page.route('**/api/dashboard?**', async route => {
+        const params = new URL(route.request().url()).searchParams;
+        if (!started && !params.has('group_search') && params.get(section === 'requests' ? 'request_cursor' : 'group_cursor') === target) {
+          started = true;
+          await pending;
+        }
+        return route.fallback();
+      });
+      try {
+        await page.getByRole('button', { name: `${direction} ${section}`, exact: true }).click();
+        await expect.poll(() => started).toBe(true);
+        await page.getByLabel('Find a question group').fill('department');
+        await page.clock.runFor(300);
+        await expectHistoryPage(page, 'requests', section === 'requests' ? target : 'third');
+        await expectHistoryPage(page, 'groups', 'first');
+        await expect(page.getByRole('button', { name: 'Newer groups', exact: true })).toBeDisabled();
+        release();
+        await page.clock.runFor(100);
+        // The superseded response cannot restore the old group page or cursor stack.
+        const previousRequests = section === 'requests' && direction === 'Newer' ? ['first'] : ['second', 'first'];
+        for (const cursor of previousRequests) {
+          await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+          await expectHistoryPage(page, 'requests', cursor);
+        }
+        await page.getByRole('button', { name: 'Older groups', exact: true }).click();
+        await expectHistoryPage(page, 'groups', 'second');
+        await page.getByRole('button', { name: 'Newer groups', exact: true }).click();
+        await expectHistoryPage(page, 'groups', 'first');
+        await expect(page.getByRole('alert')).toHaveCount(0);
+      } finally { release(); }
+    });
+  }
+}
+
 async function failingPageHarness(page: Page) {
   await page.clock.install({ time: new Date(now) });
   await page.clock.pauseAt(new Date(now + 1000));
@@ -1893,6 +1944,56 @@ async function expectHistoryPage(page: Page, section: 'requests' | 'groups', cur
   if (section === 'requests') await expect(page.getByLabel(`Inspect request request-${cursor}`, { exact: true })).toBeVisible();
   else await expect(page.locator('.group-row')).toContainText(`department ${cursor}`);
   await expect.poll(() => new URL(page.url()).searchParams.get(section === 'requests' ? 'request_cursor' : 'group_cursor') || 'first').toBe(cursor);
+}
+
+for (const direction of ['Older', 'Newer'] as const) {
+  test(`failed pending ${direction} requests after group search rolls back and retries in the new group scope`, async ({ page }) => {
+    const { failures } = await failingPageHarness(page);
+    await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+    await expectHistoryPage(page, 'requests', 'second');
+    if (direction === 'Newer') {
+      await page.getByRole('button', { name: 'Older requests', exact: true }).click();
+      await expectHistoryPage(page, 'requests', 'third');
+    }
+    await openThirdPage(page, 'groups');
+    const target = direction === 'Older' ? 'third' : 'second';
+    const previous = direction === 'Older' ? 'second' : 'third';
+    let release!: () => void, started = false;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/dashboard?**', async route => {
+      const params = new URL(route.request().url()).searchParams;
+      if (!started && !params.has('group_search') && params.get('request_cursor') === target) {
+        started = true;
+        await pending;
+      }
+      return route.fallback();
+    });
+    try {
+      failures.add(`requests:${target}`);
+      await page.getByRole('button', { name: `${direction} requests`, exact: true }).click();
+      await expect.poll(() => started).toBe(true);
+      await page.getByLabel('Find a question group').fill('department');
+      await page.clock.runFor(300);
+      await expect(page.getByRole('alert')).toContainText('Showing the last successfully loaded page');
+      await expectHistoryPage(page, 'requests', previous);
+      await expectHistoryPage(page, 'groups', 'first');
+      await expect(page.getByRole('status').filter({ hasText: 'Loading history…' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Newer groups', exact: true })).toBeDisabled();
+      release();
+      await page.clock.runFor(1000);
+      await expect(page.getByRole('alert')).toContainText('Showing the last successfully loaded page');
+      failures.clear();
+      await page.getByRole('button', { name: 'Retry', exact: true }).click();
+      await expectHistoryPage(page, 'requests', target);
+      await expectHistoryPage(page, 'groups', 'first');
+      expect(new URL(page.url()).searchParams.get('group_search')).toBe('department');
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      for (const cursor of direction === 'Older' ? ['second', 'first'] : ['first']) {
+        await page.getByRole('button', { name: 'Newer requests', exact: true }).click();
+        await expectHistoryPage(page, 'requests', cursor);
+      }
+    } finally { release(); }
+  });
 }
 
 for (const section of ['requests', 'groups'] as const) {
