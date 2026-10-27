@@ -170,6 +170,15 @@ def map_answers(request, response, dialect, state_id=None):
         elif kind == 'choice':
             choice = raw.get('choice', raw.get('answer', raw.get('value')))
             if choice is None and dialect == 'semif' and isinstance(dist, dict):
+                # Deriving a winner requires every original option and numeric
+                # evidence. Preserve explicit provider answers for downstream
+                # validation, but never invent one from a partial/invalid map.
+                criteria = question.get('criteria')
+                if (not isinstance(criteria, dict) or not criteria or dist.keys() != criteria.keys()
+                        or any(type(value) not in (int, float) or not 0 <= value <= 1
+                               for value in dist.values())):
+                    raise ValueError('SemIf argmax requires the complete original option IDs '
+                                     'and finite numeric probabilities between zero and one')
                 choice = max(dist, key=dist.get)
                 answer['mapping_note'] = 'Choice is argmax of the complete reported option distribution'
             if choice is None and dialect != 'omnijev':
