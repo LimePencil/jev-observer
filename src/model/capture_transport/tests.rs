@@ -124,6 +124,37 @@ fn compression_decodes_exactly_one_complete_bounded_body() {
 }
 
 #[test]
+fn decoded_output_growth_respects_non_power_of_two_limits_and_short_reads() {
+    struct Chunks<'a> {
+        remaining: &'a [u8],
+        size: usize,
+    }
+    impl Read for Chunks<'_> {
+        fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+            let count = output.len().min(self.size);
+            self.remaining.read(&mut output[..count])
+        }
+    }
+    for length in [8191, 8192, 8193, 16_385, 65_535] {
+        let original: Vec<_> = (0..length).map(|index| (index % 251) as u8).collect();
+        for size in [1, 17, 8192] {
+            let mut reader = Chunks {
+                remaining: &original,
+                size,
+            };
+            let output = bounded_read(&mut reader, length).unwrap();
+            assert_eq!(output, original);
+            assert!(output.capacity() <= length);
+            let mut reader = Chunks {
+                remaining: &original,
+                size,
+            };
+            assert!(bounded_read(&mut reader, length - 1).is_err());
+        }
+    }
+}
+
+#[test]
 fn compression_validates_checksums_and_zstd_window_before_acceptance() {
     let original = vec![b'a'; 2048];
     let mut bad = gzip(&original);
