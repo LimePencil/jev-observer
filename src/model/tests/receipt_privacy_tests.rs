@@ -212,3 +212,68 @@ fn receipt_redacted_provenance_survives_storage_and_observer_roundtrip() {
         }
     }
 }
+
+#[test]
+fn receipt_provider_redaction_preserves_original_sample_classification() {
+    for provider in ["demo", "jevrouter-demo", "typesafe", "fixture-live"] {
+        for private in [false, true] {
+            let mut receipt = receipt_with_inputs();
+            receipt["provenance"]["jev_provider"] = json!(provider);
+            let options = NormalizeOptions {
+                redact_keys: if private {
+                    vec!["jev_provider".into()]
+                } else {
+                    vec![]
+                },
+                ..Default::default()
+            };
+            let records =
+                import_records(&receipt.to_string(), "jevrouter-receipt", &options).unwrap();
+            assert_eq!(
+                records[0]["sample"],
+                matches!(provider, "demo" | "jevrouter-demo")
+            );
+            assert_eq!(
+                records[0]["provider"],
+                if private { REDACTED } else { provider }
+            );
+            let roundtrip =
+                import_records(&records[0].to_string(), "observer-jsonl", &options).unwrap();
+            assert_eq!(roundtrip[0]["sample"], records[0]["sample"]);
+        }
+    }
+}
+
+#[test]
+fn receipt_privacy_cannot_repair_an_invalid_original_provider() {
+    for provider in [
+        Value::Null,
+        json!(123),
+        json!(true),
+        json!([]),
+        json!({}),
+        json!(""),
+    ] {
+        let mut receipt = receipt_with_inputs();
+        receipt["provenance"]["jev_provider"] = provider;
+        for private in [false, true] {
+            let result = import_records(
+                &receipt.to_string(),
+                "jevrouter-receipt",
+                &NormalizeOptions {
+                    redact_keys: if private {
+                        vec!["jev_provider".into()]
+                    } else {
+                        vec![]
+                    },
+                    ..Default::default()
+                },
+            );
+            assert!(
+                result.is_err(),
+                "Privacy repaired original provider {}",
+                receipt["provenance"]["jev_provider"]
+            );
+        }
+    }
+}

@@ -415,6 +415,14 @@ pub(super) fn import_records_with_limits(
             }
             // Scrub before normalization so all recomputed identities describe the
             // retained definition, and credential echoes cannot leak into metadata.
+            let receipt_sample = if format == "jevrouter-receipt" {
+                // Provider privacy must not promote demo actions into live data,
+                // or repair an invalid original provider into a valid marker.
+                receipt::original_sample(record)
+                    .with_context(|| format!("Invalid record {}", index + 1))?
+            } else {
+                false
+            };
             let mut safe = if format == "observer-jsonl" {
                 // Privacy must not repair malformed context or make different
                 // original versions appear consistent through a shared marker.
@@ -458,7 +466,7 @@ pub(super) fn import_records_with_limits(
             let result = if format == "observer-jsonl" {
                 import_observer(&safe, options, &mut budget)
             } else {
-                import_receipt(&safe, options, &mut budget)
+                import_receipt(&safe, receipt_sample, options, &mut budget)
             };
             let out = result.with_context(|| format!("Invalid record {}", index + 1))?;
             budget.finish(&out)?;
