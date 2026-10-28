@@ -2324,6 +2324,73 @@ test('mobile section navigation reaches the selected section after closing the m
   await expect(page.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
 });
 
+for (const action of ['request metric', 'group filter'] as const) {
+  test(`${action} navigation reaches the request stream after its filtered snapshot loads`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 600 });
+    const state = await harness(page, { path: '/?status=error' });
+    let release!: () => void;
+    state.dashboardPending = new Promise<void>(resolve => { release = resolve; });
+    try {
+      if (action === 'request metric') await page.locator('.metrics .metric').first().click();
+      else {
+        await page.getByRole('button', { name: 'Inspect group', exact: true }).click();
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.getByRole('button', { name: 'Filter overview', exact: true }).click();
+      }
+      await expect(page.getByRole('heading', { name: 'Request stream' })).toHaveCount(0);
+      // Keep the target absent until the original scroll animation has finished.
+      await page.waitForTimeout(1500);
+      release();
+      await expect(page.getByRole('heading', { name: 'Request stream' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+      const loaded = state.dashboardQueries.length;
+      await expect.poll(() => state.dashboardQueries.length).toBeGreaterThan(loaded);
+      await expect(page.getByRole('heading', { name: 'Request stream' })).not.toBeInViewport();
+    } finally { release(); }
+  });
+}
+
+for (const action of ['overview navigation', 'settings panel', 'browser history'] as const) {
+  test(`${action} cancels pending filtered request navigation`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 600 });
+    const state = await harness(page, { path: '/?status=error' });
+    let release!: () => void;
+    state.dashboardPending = new Promise<void>(resolve => { release = resolve; });
+    try {
+      await page.locator('.metrics .metric').first().click();
+      await expect(page.getByRole('heading', { name: 'Request stream' })).toHaveCount(0);
+      if (action === 'overview navigation') {
+        await page.getByRole('button', { name: 'Open navigation' }).click();
+        await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Overview', exact: true }).click();
+      } else if (action === 'browser history') {
+        await page.evaluate(() => {
+          window.history.pushState(null, '', '/?window=7d');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        });
+      } else {
+        await page.getByRole('button', { name: 'Open navigation' }).click();
+        await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Settings', exact: true }).click();
+        await expect(page.getByRole('heading', { name: 'Local by design.' })).toBeVisible();
+      }
+      release();
+      await expect(page.locator('#requests h2')).toBeVisible();
+      if (action === 'settings panel') await page.getByRole('button', { name: 'Close detail panel' }).click();
+      const loaded = state.dashboardQueries.length;
+      await expect.poll(() => state.dashboardQueries.length).toBeGreaterThan(loaded);
+      await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeInViewport();
+      await expect(page.getByRole('heading', { name: 'Request stream' })).not.toBeInViewport();
+    } finally { release(); }
+  });
+}
+
+test('the Requests metric navigates when its filters are already current', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  await harness(page);
+  await page.locator('.metrics .metric').first().click();
+  await expect(page.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
+});
+
 test('mobile navigation contains focus, closes with Escape, and returns focus from details', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await harness(page);

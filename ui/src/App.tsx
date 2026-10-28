@@ -1,6 +1,6 @@
 import { Aperture, ArrowDown, ArrowRight, CaretDown, Clock, DownloadSimple, Pause, Play, UploadSimple, WarningCircle } from '@phosphor-icons/react';
 import * as Dropdown from '@radix-ui/react-dropdown-menu';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { downloadExport } from './api';
 import { Empty, ErrorNotice, Loading } from './components';
 import { DetailBoundary, DetailFallback } from './DetailBoundary';
@@ -18,16 +18,17 @@ const Details = lazy(() => import('./Details'));
 export default function App() {
   const shell = useAppShell();
   const workspace = useDashboardWorkspace(shell.panel !== null);
-  const { panel, setPanel, notify, mainRef, exportRef, searchRef, navigate } = shell;
+  const { panel, setPanel, notify, mainRef, exportRef, searchRef, navigate, finishNavigation } = shell;
   const { filters, historyRevision, historyChanged, invalidate, data, health, sample, includesSamples, error, connectionText, paused, setPaused, gap, pageFailure, navigatePage, slow, frozen, pending, setFilter } = workspace;
   const controllers = useWorkspaceControllers(panel, historyRevision, invalidate, historyChanged, notify);
+  useEffect(() => { if (data) finishNavigation(); }, [data, finishNavigation]);
   async function exportData(format: 'jsonl' | 'csv') {
     try { downloadExport(filters, format); notify(`${format.toUpperCase()} export requested. Your browser handles the download; server errors open separately.`); }
     catch (error) { notify(error instanceof Error ? error.message : 'Export failed.'); }
   }
 
   return <WorkspaceShell state={shell} data={data} sample={sample} includesSamples={includesSamples} error={error} connectionText={connectionText}
-    details={panel && <DetailBoundary close={() => setPanel(null)}><Suspense fallback={<DetailFallback close={() => setPanel(null)} />}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} {...controllers} historyRevision={historyRevision} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests'); }} /></Suspense></DetailBoundary>}>
+    details={panel && <DetailBoundary close={() => setPanel(null)}><Suspense fallback={<DetailFallback close={() => setPanel(null)} />}><Details health={health} panel={panel} setPanel={setPanel} filters={filters} {...controllers} historyRevision={historyRevision} filterGroup={id => { setFilter('group', id); setPanel(null); navigate('requests', true); }} /></Suspense></DetailBoundary>}>
       <main id="main" ref={mainRef} tabIndex={-1}><section id="overview" className="overview-header"><div><div className="eyebrow">YOUR DECISION WORKSPACE</div><h1>Workspace overview</h1><p>Follow your questions. Understand every request.</p></div><div className="overview-actions"><Dropdown.Root><Dropdown.Trigger ref={exportRef} className="button"><DownloadSimple size={16} />Export<CaretDown size={13} /></Dropdown.Trigger><Dropdown.Portal><Dropdown.Content className="dropdown-content" align="end" sideOffset={6}><Dropdown.Label className="dropdown-label">Export current filters</Dropdown.Label><Dropdown.Item onSelect={() => void exportData('jsonl')}><DownloadSimple size={15} />JSONL records<span>Full detail</span></Dropdown.Item><Dropdown.Item onSelect={() => void exportData('csv')}><DownloadSimple size={15} />CSV spreadsheet</Dropdown.Item><Dropdown.Separator /><Dropdown.Item onSelect={() => setPanel({ type: 'import' }, exportRef.current)}><UploadSimple size={15} />Import local records</Dropdown.Item></Dropdown.Content></Dropdown.Portal></Dropdown.Root><button className={`button ${paused ? 'paused-button' : 'live-button'}`} onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? <Play size={14} weight="fill" /> : <Pause size={14} weight="fill" />}{paused ? 'Resume live' : 'Live updates'}</button></div></section>
 
       {includesSamples && <div className="sample-notice"><span className="sample-mark"><Aperture size={16} weight="bold" /></span><span><strong>{sample ? 'A workspace to explore.' : 'Sample records included.'}</strong> {sample ? 'These are synthetic records; forwarding is disabled until you restart without --demo.' : 'This window includes synthetic observations. Their costs are not real charges.'}</span><button className="text-button" onClick={() => setPanel({ type: 'connect' })}>{sample ? 'See live setup' : 'Connect your app'}<ArrowRight size={14} /></button></div>}

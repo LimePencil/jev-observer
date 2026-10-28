@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Panel } from '../details/types';
 
 export function useAppShell() {
@@ -6,6 +6,7 @@ export function useAppShell() {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'light');
   const [toast, setToast] = useState(''), [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeNav, setActiveNav] = useState('overview');
+  const [deferredNavigation, setDeferredNavigation] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -24,6 +25,11 @@ export function useAppShell() {
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
   }, [panel]);
+  useEffect(() => {
+    const cancelNavigation = () => setDeferredNavigation(null);
+    window.addEventListener('popstate', cancelNavigation);
+    return () => window.removeEventListener('popstate', cancelNavigation);
+  }, []);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   useEffect(() => () => { if (restoreFocusFrame.current !== null) cancelAnimationFrame(restoreFocusFrame.current); }, []);
   useEffect(() => {
@@ -39,7 +45,7 @@ export function useAppShell() {
     restoreFocusFrame.current = null;
     if (value && !panel) openerRef.current = opener ?? (sidebarOpen ? mobileMenuRef.current : document.activeElement instanceof HTMLElement ? document.activeElement : null);
     updatePanel(value);
-    if (value) setSidebarOpen(false);
+    if (value) { setSidebarOpen(false); setDeferredNavigation(null); }
     if (!value) restoreFocusFrame.current = requestAnimationFrame(() => {
       restoreFocusFrame.current = null;
       const opener = openerRef.current;
@@ -47,8 +53,27 @@ export function useAppShell() {
       if (document.activeElement !== opener) mainRef.current?.focus({ preventScroll: true });
     });
   }
-  function navigate(section: string) { setActiveNav(section); setSidebarOpen(false); document.getElementById(section)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }); }
-  return { panel, setPanel, theme, setTheme, toast, setToast, sidebarOpen, setSidebarOpen, activeNav, navigate, notify, searchRef, mainRef, exportRef, mobileMenuRef };
+  function navigate(section: string, afterRefresh = false) {
+    setActiveNav(section); setSidebarOpen(false);
+    setDeferredNavigation(afterRefresh ? section : null);
+    if (!afterRefresh) scrollToSection(section);
+  }
+  const finishNavigation = useCallback(() => {
+    if (!deferredNavigation || panel || sidebarOpen || !document.getElementById(deferredNavigation)) return;
+    // Closing a group drawer may still have a focus-restoration frame queued.
+    // Keep that frame from scrolling back to its old opener after navigation.
+    if (restoreFocusFrame.current !== null) {
+      cancelAnimationFrame(restoreFocusFrame.current); restoreFocusFrame.current = null;
+      mainRef.current?.focus({ preventScroll: true });
+    }
+    scrollToSection(deferredNavigation);
+    setDeferredNavigation(null);
+  }, [deferredNavigation, panel, sidebarOpen]);
+  return { panel, setPanel, theme, setTheme, toast, setToast, sidebarOpen, setSidebarOpen, activeNav, navigate, finishNavigation, notify, searchRef, mainRef, exportRef, mobileMenuRef };
 }
 
 export type AppShell = ReturnType<typeof useAppShell>;
+
+function scrollToSection(section: string) {
+  document.getElementById(section)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+}
