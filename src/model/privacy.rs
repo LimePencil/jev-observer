@@ -490,7 +490,13 @@ impl<'a> PrivacyContext<'a> {
             }
             Self::TypedOption(_) | Self::DecisionLevel(_, _) => key == "description",
             Self::ObserverAnswer(_, _) => {
-                matches!(key, "definition_present" | "raw_answer_present")
+                matches!(
+                    key,
+                    "definition_present"
+                        | "raw_answer_present"
+                        | "task_version"
+                        | "definition_redacted"
+                )
             }
             _ => false,
         }
