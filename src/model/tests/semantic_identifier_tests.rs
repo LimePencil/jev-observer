@@ -156,6 +156,77 @@ fn semantic_identifier_aliases_cannot_pair_distinct_question_and_answer_keys() {
 }
 
 #[test]
+fn semantic_identifier_aliases_cannot_reattach_or_merge_imported_reviews() {
+    let options = NormalizeOptions::default();
+    for (answer_key, label_keys, known) in [
+        ("q", vec!["q-X", "q-Y"], vec!["X", "Y"]),
+        ("q-X", vec!["q-Y"], vec!["X", "Y"]),
+        ("q-X", vec!["q-[REDACTED]"], vec!["X"]),
+        ("q-[REDACTED]", vec!["q-X"], vec!["X"]),
+    ] {
+        let mut record = normalize(&capture(json!({"yes":null}), "yes", "yes"), &options);
+        record["answers"][0]["key"] = json!(answer_key);
+        record["labels"] = json!(
+            label_keys
+                .iter()
+                .map(|key| json!({
+                    "key":key,"label":"incorrect","reason":"Review of its original question"
+                }))
+                .collect::<Vec<_>>()
+        );
+        // An unrelated or missing question's review is permitted as provenance
+        // until redaction would make its identity indistinguishable.
+        let unchanged = import_records(&record.to_string(), "observer-jsonl", &options).unwrap();
+        assert_eq!(
+            unchanged[0]["labels"].as_array().unwrap().len(),
+            label_keys.len()
+        );
+        record["request_extra"]["credentials"] = json!(known);
+        collision(import_records(&record.to_string(), "observer-jsonl", &options).unwrap_err());
+    }
+}
+
+#[test]
+fn semantic_identifier_imported_reviews_keep_matching_keys_and_provenance() {
+    let options = NormalizeOptions::default();
+    let mut record = normalize(&capture(json!({"yes":null}), "yes", "yes"), &options);
+    record["answers"][0]["key"] = json!("q-X");
+    record["request_extra"]["credentials"] = json!(["X"]);
+    record["labels"] = json!([
+        {"key":"q-X","label":"correct","reason":"First assessment","source":"reviewer"},
+        {"key":"q-X","label":"incorrect","reason":"Updated assessment","source":"reviewer"}
+    ]);
+    let imported = import_records(&record.to_string(), "observer-jsonl", &options).unwrap();
+    let again = import_records(&imported[0].to_string(), "observer-jsonl", &options).unwrap();
+    assert_eq!(imported[0]["answers"][0]["key"], "q-[REDACTED]");
+    for (index, label) in imported[0]["labels"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(label["key"], imported[0]["answers"][0]["key"]);
+        for field in ["label", "reason", "source"] {
+            assert_eq!(label[field], record["labels"][index][field]);
+        }
+    }
+    assert_eq!(again[0]["labels"], imported[0]["labels"]);
+}
+
+#[test]
+fn semantic_identifier_private_review_keys_cannot_repair_invalid_types() {
+    let options = NormalizeOptions {
+        redact_keys: vec!["key".into()],
+        ..Default::default()
+    };
+    for key in [Value::Null, json!(false), json!(1), json!([]), json!({})] {
+        let mut record = normalize(
+            &capture(json!({"yes":null}), "yes", "yes"),
+            &NormalizeOptions::default(),
+        );
+        record["answers"][0]["key"] = json!("opaque-question");
+        record["labels"] = json!([{"key":key,"label":"correct"}]);
+        let error = import_records(&record.to_string(), "observer-jsonl", &options).unwrap_err();
+        assert!(error.is::<RedactionValidationError>(), "{error:#}");
+    }
+}
+
+#[test]
 fn semantic_identifier_repeated_originals_and_separate_questions_remain_valid() {
     let options = NormalizeOptions::default();
     let mut item = capture(json!({"option-X":null}), "option-X", "option-X");
