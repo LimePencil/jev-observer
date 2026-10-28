@@ -65,7 +65,7 @@
 
 @layer layout {
   .app-shell { display: flex; min-height: 100dvh; }
-  .sidebar { width: 208px; flex-shrink: 0; background: var(--sidebar); border-right: 1px solid var(--border); position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; flex-direction: column; padding: 26px 14px 14px; }
+  .sidebar { width: 208px; flex-shrink: 0; background: var(--sidebar); border-right: 1px solid var(--border); position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; flex-direction: column; padding: 26px 14px 14px; overflow-y: auto; scrollbar-width: thin; scroll-padding-block: 12px; }
   .main-shell { flex: 1; min-width: 0; margin-left: 208px; }
   .topbar { height: 58px; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
   main { padding: 29px 32px 0; max-width: 1800px; margin: auto; }
@@ -105,7 +105,7 @@
   .local-note > svg { color: var(--accent); margin-bottom: 8px; }
   .local-note strong { display: block; font-size: 11px; font-weight: 550; margin-bottom: 5px; }
   .local-note p { font-size: 10px; color: var(--text-secondary); line-height: 1.7; }
-  .sidebar-connect { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 5px; padding: 9px 7px; font-size: 10px; }
+  .sidebar-connect { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 5px; padding: 9px 7px; font-size: 10px; scroll-margin-block: 12px; }
   .sidebar-connect:hover { border-color: var(--accent); }
   .sidebar-foot { display: flex; align-items: center; gap: 7px; padding: 17px 7px 0; color: var(--text-secondary); font-size: 9px; }
   .connection-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
@@ -468,6 +468,12 @@
     .filter-select select { max-width: 115px; }
     .time-select { padding-left: 8px; }
     .toast { left: calc(50% + 32px); }
+  }
+  @media (min-width: 561px) and (max-width: 860px) {
+    .sidebar-bottom { display: block; width: 100%; padding-top: 24px; }
+    .sidebar-bottom .local-note, .sidebar-foot { display: none; }
+    .sidebar-connect { width: 44px; height: 42px; padding: 12px; font-size: 0; justify-content: center; }
+    .sidebar-connect > svg:last-child { display: none; }
   }
   @media (max-width: 720px) {
     .explorer-grid { grid-template-columns: 1fr; }
