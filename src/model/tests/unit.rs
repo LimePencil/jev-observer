@@ -947,6 +947,7 @@ fn observer_import_matches_privacy_evidence_by_key_when_answers_reorder() {
     let answers = record["answers"].as_array_mut().unwrap();
     answers[0]["definition_redacted"] = json!(true);
     answers[1]["definition"] = Value::Null;
+    answers[1]["definition_present"] = json!(false);
     answers[2]["definition_redacted"] = json!(true);
     answers.rotate_left(1);
     let imported = import_records(

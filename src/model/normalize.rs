@@ -263,7 +263,8 @@ pub(super) fn normalize_prepared(
             "key": key, "kind": kind, "group_id": group_id,
             "definition_id": definition_id, "presentation_id": presentation_id,
             "candidate_id": candidate_id, "task_version": task,
-            "definition": definition, "definition_redacted": definition_redacted, "value": value,
+            "definition": definition, "definition_present": questions.is_some_and(|questions| questions.contains_key(key)),
+            "definition_redacted": definition_redacted, "value": value,
             "choice_key": if options.protocol == Protocol::OpenaiDecisions && kind == "choice" { super::decisions::choice_key(&value) } else { None },
             "probabilities": if kind == "box" { Value::Null } else if options.protocol == Protocol::OpenaiDecisions && matches!(kind,"choice"|"score") { super::decisions::probabilities(raw,kind) } else { raw.get("probabilities").filter(|v| v.is_object()).cloned().unwrap_or(Value::Null) },
             "confidence": if matches!(kind, "choice" | "score" | "box") { probability(&raw["confidence"]) } else { None },
@@ -274,7 +275,7 @@ pub(super) fn normalize_prepared(
             "adapter": if options.protocol == Protocol::OpenaiDecisions { json!("openai-decisions-v1") } else if family.is_null() { Value::Null } else { json!("jgrep-v1") },
             "instance_ref": family["instance_ref"],
             "mapping_reason": if semantic_assets.contains(key) { json!("Question references external media; its semantic content is not in the retained definition, so this observation is isolated without hashing private input") } else if definition_redacted { json!("Definition or grouping context was redacted; equivalence cannot be established, so this observation is isolated and family pooling is disabled") } else { family["reason"].clone() },
-            "raw_answer": raw
+            "raw_answer": raw, "raw_answer_present": raw_answers.is_some_and(|answers| answers.contains_key(key))
         })
     }).collect();
     let input_tokens = token_count(&response["usage"]["input_tokens"]);
