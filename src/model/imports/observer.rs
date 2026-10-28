@@ -15,6 +15,23 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
+fn original_present(answer: &Value, field: &str, presence: &str, legacy: bool) -> Result<bool> {
+    let present = answer
+        .get(presence)
+        .map(|value| {
+            value
+                .as_bool()
+                .with_context(|| format!("{presence} must be a boolean when supplied"))
+        })
+        .transpose()?
+        .unwrap_or(legacy);
+    ensure!(
+        present || answer[field].is_null(),
+        "{presence}=false cannot discard a non-null {field}"
+    );
+    Ok(present)
+}
+
 pub(super) fn import_observer(
     record: &Value,
     options: &NormalizeOptions,
@@ -134,18 +151,30 @@ pub(super) fn import_observer(
             answer.get("definition").is_some() && answer.get("raw_answer").is_some(),
             "Answer must retain definition and raw_answer (null allowed)"
         );
-        // Captures retain malformed question values as evidence. Revalidation
-        // below keeps them invalid while preserving their JSON and identity.
-        if !answer["definition"].is_null() {
+        // A supplied null and an absent map entry are different evidence,
+        // especially for ordered Decisions question/answer counts. Older
+        // exports did not distinguish them, so retain their previous fallback.
+        let definition_present = original_present(
+            answer,
+            "definition",
+            "definition_present",
+            !answer["definition"].is_null() || answer["raw_answer"].is_null(),
+        )?;
+        let raw_answer_present = original_present(
+            answer,
+            "raw_answer",
+            "raw_answer_present",
+            !answer["raw_answer"].is_null(),
+        )?;
+        ensure!(
+            definition_present || raw_answer_present,
+            "Answer must retain an original question or answer entry"
+        );
+        if definition_present {
             questions.insert(key.to_owned(), answer["definition"].clone());
         }
-        if !answer["raw_answer"].is_null() {
+        if raw_answer_present {
             raw_answers.insert(key.to_owned(), answer["raw_answer"].clone());
-        }
-        // Preserve missing-answer placeholders so a definition-less imported
-        // observation is not silently discarded.
-        if answer["definition"].is_null() && answer["raw_answer"].is_null() {
-            questions.insert(key.to_owned(), Value::Null);
         }
     }
     let mut request = record
