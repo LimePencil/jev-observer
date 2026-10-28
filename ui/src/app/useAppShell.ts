@@ -47,7 +47,7 @@ export function useAppShell() {
       if (document.activeElement !== opener) mainRef.current?.focus({ preventScroll: true });
     });
   }
-  function navigate(section: string) { setActiveNav(section); setSidebarOpen(false); document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  function navigate(section: string) { setActiveNav(section); setSidebarOpen(false); document.getElementById(section)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }); }
   return { panel, setPanel, theme, setTheme, toast, setToast, sidebarOpen, setSidebarOpen, activeNav, navigate, notify, searchRef, mainRef, exportRef, mobileMenuRef };
 }
 

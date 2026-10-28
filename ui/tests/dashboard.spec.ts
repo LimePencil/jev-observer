@@ -2243,6 +2243,28 @@ for (const dismiss of ['Escape', 'close button']) {
   });
 }
 
+test('workspace navigation respects a changed reduced-motion preference immediately', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 500 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await harness(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const top = await page.getByRole('complementary', { name: 'Workspace navigation' }).getByRole('button', { name: 'Requests', exact: true }).evaluate(button => {
+    (button as HTMLButtonElement).click();
+    return document.getElementById('requests')!.getBoundingClientRect().top;
+  });
+  expect(top).toBeLessThan(500);
+  await expect(page.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
+});
+
+test('mobile section navigation reaches the selected section after closing the menu', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  await harness(page);
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Requests', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Workspace navigation' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
+});
+
 test('mobile navigation contains focus, closes with Escape, and returns focus from details', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await harness(page);
