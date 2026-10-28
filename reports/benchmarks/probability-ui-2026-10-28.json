@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-28",
+  "scope": "Local Chromium production-preview drawer rendering diagnostic; not forwarding capacity or a cross-platform guarantee.",
+  "baseline_ui_commit": "16c6d4e3ff7d3c80a58e791c45335142594808be",
+  "fixture": {
+    "origin": "Synthetic OpenAI Decisions capture accepted through release v0.4.0 POST /api/import, then fetched from GET /api/requests/:id. Both browser variants received that same JSON.",
+    "normalizer_binary_sha256": "1cc7c22cafff47f6cebfa4c20d31619039f0783a9182f7ac52beec81941e256b",
+    "capture_sha256": "325fd31c9e04c851a84cedbe21408e6d363a78397a9ff20ab641de91ac1e12e2",
+    "normalized_sha256": "dbcc5e0f496dbc2052fdbef614a6f54540e1efde72e45833ea6db9f7a8e5a67b",
+    "capture_bytes": 241318,
+    "normalized_bytes": 386898,
+    "valid_answers": 10,
+    "options_per_answer": 255,
+    "options": "true, false, then strings candidate-002 through candidate-254",
+    "probabilities": "0.5 for true, 0.2 for false, 0.3/253 for each string; selected answer true",
+    "instructions": "Choose the matching synthetic category.",
+    "unsupported_control": "50 questions with 255 choices exceeded the normalizer import-work budget and was not used for this benchmark."
+  },
+  "measurement": {
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "runs": 5,
+    "open_ms": "performance.now() before Playwright clicks the first request through two animation frames after all ten cards mount. Includes local fetch, JSON parse, rendering, and automation overhead. Shared host; timings are diagnostic.",
+    "added_elements": "document.querySelectorAll(\"*\").length after opening minus before opening",
+    "js_heap_bytes": "Chromium Performance.getMetrics JSHeapUsedSize after opening; garbage collection is uncontrolled",
+    "browser": "Chromium 153.0.8010.12"
+  },
+  "before": [
+    {
+      "open_ms": 1658,
+      "added_elements": 13066,
+      "probability_rows": 2550,
+      "js_heap_bytes": 14728376
+    },
+    {
+      "open_ms": 1781,
+      "added_elements": 13066,
+      "probability_rows": 2550,
+      "js_heap_bytes": 13829392
+    },
+    {
+      "open_ms": 1407,
+      "added_elements": 13066,
+      "probability_rows": 2550,
+      "js_heap_bytes": 13820292
+    },
+    {
+      "open_ms": 1354,
+      "added_elements": 13066,
+      "probability_rows": 2550,
+      "js_heap_bytes": 17523372
+    },
+    {
+      "open_ms": 1666,
+      "added_elements": 13066,
+      "probability_rows": 2550,
+      "js_heap_bytes": 17422776
+    }
+  ],
+  "after": [
+    {
+      "open_ms": 827,
+      "added_elements": 1606,
+      "probability_rows": 250,
+      "js_heap_bytes": 7025032
+    },
+    {
+      "open_ms": 902,
+      "added_elements": 1606,
+      "probability_rows": 250,
+      "js_heap_bytes": 7310556
+    },
+    {
+      "open_ms": 896,
+      "added_elements": 1606,
+      "probability_rows": 250,
+      "js_heap_bytes": 7344796
+    },
+    {
+      "open_ms": 798,
+      "added_elements": 1606,
+      "probability_rows": 250,
+      "js_heap_bytes": 7038964
+    },
+    {
+      "open_ms": 812,
+      "added_elements": 1606,
+      "probability_rows": 250,
+      "js_heap_bytes": 6807388
+    }
+  ],
+  "summary": {
+    "median_open_ms_before": 1658,
+    "median_open_ms_after": 827,
+    "probability_rows_before": 2550,
+    "probability_rows_after": 250,
+    "added_elements_before": 13066,
+    "added_elements_after": 1606
+  }
+}

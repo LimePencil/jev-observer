@@ -237,6 +237,65 @@ test('valid numeric probabilities keep their sorted bars and percentages', async
   await expect(card.getByText('Inspect raw answer', { exact: true })).toHaveCount(0);
 });
 
+test('wide typed probability lists bound mounted rows and keep every option reachable by keyboard', async ({ page }) => {
+  const state = await harness(page);
+  const values = [true, false, 'true', 'choice:v1:true', ...Array.from({ length: 251 }, (_, index) => `candidate-${index}`)];
+  const definition = { type: 'choice', instructions: 'Choose the matching synthetic category.', choices: values.map(value => ({ value })) };
+  const probabilities = Object.fromEntries(values.map((value, index) => [`choice:v1:${JSON.stringify(value)}`, index === 0 ? .5 : index === 1 ? .2 : .3 / 253]));
+  const labels = values.map(value => typeof value === 'boolean' ? `${value} (boolean)` : JSON.stringify(value));
+  state.record.protocol = 'openai-decisions';
+  state.record.answers = Array.from({ length: 10 }, (_, index) => ({ ...record.answers[0], key: `question:${index}`, definition, probabilities, value: true, choice_key: 'choice:v1:true', adapter: 'openai-decisions-v1' }));
+  await page.getByLabel('Inspect request request-one', { exact: true }).click();
+  const cards = page.getByRole('dialog').locator('.answer-card');
+  await expect(cards).toHaveCount(10);
+  await expect(page.locator('.probability-row')).toHaveCount(250);
+  const card = cards.first(), next = card.getByRole('button', { name: 'Next probabilities', exact: true });
+  const previous = card.getByRole('button', { name: 'Previous probabilities', exact: true });
+  await expect(previous).toHaveAttribute('aria-disabled', 'true');
+  for (let start = 0; start < values.length; start += 25) {
+    const end = Math.min(start + 25, values.length);
+    await expect(card.locator('.probability-row > span:first-child')).toHaveText(labels.slice(start, end));
+    await expect(card.getByRole('status').filter({ hasText: 'Probabilities' })).toHaveText(`Probabilities ${start + 1}–${end} of 255`);
+    expect(await page.locator('.probability-row').count()).toBeLessThanOrEqual(250);
+    if (end < values.length) {
+      await next.focus();
+      await page.keyboard.press('Enter');
+      await expect(next).toBeFocused();
+    }
+  }
+  await expect(next).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('Enter');
+  await expect(card.locator('.probability-row')).toHaveCount(5);
+  await previous.focus();
+  await page.keyboard.press('Enter');
+  await expect(previous).toBeFocused();
+  await expect(card.locator('.probability-row > span:first-child')).toHaveText(labels.slice(225, 250));
+  await card.getByLabel('Review question:0', { exact: true }).selectOption('correct');
+  await expect(card.getByText('Saved', { exact: true })).toBeVisible();
+  await expect(card.locator('.probability-row > span:first-child')).toHaveText(labels.slice(225, 250));
+  await page.setViewportSize({ width: 390, height: 844 });
+  const navigation = card.getByRole('navigation', { name: 'Probability pages for question:0', exact: true });
+  expect(await navigation.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+});
+
+test('paged probabilities retain malformed values and the complete raw answer', async ({ page }) => {
+  const state = await harness(page);
+  const probabilities = { ...Object.fromEntries(Array.from({ length: 25 }, (_, index) => [`option-${index}`, index === 0 ? 1 : 0])), malformed: { toString: 'not a number' } };
+  const raw = { choice: 'option-0', probabilities };
+  state.record.answers = [{ ...record.answers[0], valid: false, value: 'option-0', probabilities, raw_answer: raw }];
+  await page.getByLabel('Inspect request request-one', { exact: true }).click();
+  const card = page.getByRole('dialog').locator('.answer-card');
+  await expect(card.locator('.probability-row')).toHaveCount(25);
+  await expect(card.locator('.probability-row > .mono').first()).toHaveText('100.0%');
+  await card.getByRole('button', { name: 'Next probabilities', exact: true }).click();
+  await expect(card.locator('.probability-row')).toHaveCount(1);
+  await expect(card.locator('.probability-row > span:first-child')).toHaveText('malformed');
+  await expect(card.locator('.probability-row > .mono')).toHaveText('Invalid');
+  await expect(card.locator('.probability-track > span')).toHaveCount(0);
+  await card.getByText('Inspect raw answer', { exact: true }).click();
+  await expect(card.locator('.raw-answer-details .json-view')).toHaveText(JSON.stringify(raw, null, 2));
+});
+
 test('JSON disclosures release closed content and retain keyboard focus across reviews', async ({ page }) => {
   const state = await harness(page);
   state.record.state_retained = true;

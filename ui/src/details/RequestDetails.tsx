@@ -1,14 +1,15 @@
 import { ArrowRight, Fingerprint, Info, ShieldCheck, WarningCircle } from '@phosphor-icons/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useResource } from '../api';
 import { Definition, Empty, ErrorNotice, KindBadge, LazyDetails, Loading, StatusBadge } from '../components';
 import { costBasis, dateTime, money, ms, number, percent, shortId, tokens } from '../format';
 import { BoxValue } from '../components/BoxValue';
-import { boxGeometry, choiceLabel, decisionValue } from '../decisions';
+import { boxGeometry, choiceLabeler, decisionValue } from '../decisions';
 import type { ReviewController, ReviewState } from '../reviews';
 import type { Answer, Label, RequestRecord } from '../types';
 
 import { DetailHeading, Field } from './shared';
+import { ReportedProbabilities } from './ReportedProbabilities';
 import type { DetailProps } from './types';
 
 const DECISIONS_PER_PAGE = 50;
@@ -54,9 +55,12 @@ function AnswerDetail({ answer, record, onGroup, review: { pending, error, saved
   const currentLabel = [...(record.labels ?? [])].reverse().find(item => (item.key ?? item.answer_key) === answer.key)?.label;
   // A successful response may belong to a row deleted before it arrived.
   const saved = savedLabel !== null && savedLabel === currentLabel;
-  const probabilities = Object.entries(answer.probabilities ?? {}).map(([key, value]) => ({
-    key, value: typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null,
-  })).sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
+  const probabilities = useMemo(() => {
+    const label = choiceLabeler(answer.definition, record.protocol === 'openai-decisions');
+    return Object.entries(answer.probabilities ?? {}).map(([key, value]) => ({
+      key, label: label(key), value: typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null,
+    })).sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
+  }, [answer.probabilities, answer.definition, record.protocol]);
   const invalidProbabilities = probabilities.some(item => item.value === null);
   const invalidGeometry = answer.kind === 'box' && !boxGeometry(answer.value);
   return <section className="answer-card"><div className="answer-heading"><h4>{answer.key}</h4><KindBadge kind={answer.kind} /></div>
@@ -64,7 +68,7 @@ function AnswerDetail({ answer, record, onGroup, review: { pending, error, saved
     {!answer.valid && <p className="error-text">{answer.error ?? 'Excluded from answer distributions.'}</p>}
     {answer.warnings?.map(warning => <div className="warning-notice" key={warning}><WarningCircle size={17} /><span>{warning}</span></div>)}
     {answer.confidence != null && <p className="caption">Reported confidence {percent(answer.confidence)} · not measured accuracy</p>}
-    {probabilities.length > 0 && <div className="probability-list" aria-label="Reported probabilities">{probabilities.map(({ key, value }) => <div key={key} className="probability-row"><span title={choiceLabel(key, answer.definition, record.protocol === 'openai-decisions')}>{choiceLabel(key, answer.definition, record.protocol === 'openai-decisions')}</span><div className="probability-track">{value !== null && <span style={{ width: `${value * 100}%` }} />}</div><span className="mono">{value === null ? 'Invalid' : percent(value)}</span></div>)}</div>}
+    {probabilities.length > 0 && <ReportedProbabilities values={probabilities} answerKey={answer.key} />}
     {(!answer.valid || invalidProbabilities || invalidGeometry || answer.kind === 'box' || Boolean(answer.choice_key)) && <LazyDetails className="raw-answer-details" summary="Inspect raw answer"><Definition value={answer.raw_answer} /></LazyDetails>}
     <div className="answer-actions"><button className="text-button" onClick={onGroup}>View recurring group <ArrowRight size={14} /></button><div className="review-control"><span className="review-status" role="status">{pending ? 'Saving…' : saved ? 'Saved' : ''}</span><label className="label-control"><span>Review</span><select aria-label={`Review ${answer.key}`} value={pending ?? currentLabel ?? ''} aria-disabled={pending !== null} onPointerDown={event => { if (pending) event.preventDefault(); }} onKeyDown={event => { if (pending && ['ArrowUp', 'ArrowDown', 'Home', 'End', ' ', 'Enter'].includes(event.key)) event.preventDefault(); }} onChange={event => { if (event.target.value && !pending) onReview(event.target.value as Label); }}><option value="" disabled>Not labeled</option><option value="correct">Correct</option><option value="incorrect">Incorrect</option><option value="unknown">Unknown</option></select></label></div></div>
     {error && <ErrorNotice message={error} />}
