@@ -201,6 +201,36 @@ class CaptureTests(unittest.TestCase):
         raw['id'] = 'other'
         with self.assertRaises(ValueError): capture.map_answers(original, raw, 'semif')
 
+    def test_semif_derived_choice_requires_complete_numeric_probabilities(self):
+        original = {'questions': {'route': {'type': 'choice', 'criteria': {'a': 'A', 'b': 'B'}}}}
+        for distribution in ({'a': 1}, {'a': .2, 'b': .3, 'other': .5}, {},
+                             {'a': '0.2', 'b': '0.8'}, {'a': False, 'b': True},
+                             {'a': -.1, 'b': 1.1}, {'a': float('nan'), 'b': .8},
+                             {'a': .2, 'b': float('inf')}):
+            with self.subTest(distribution=distribution):
+                with self.assertRaisesRegex(ValueError, 'SemIf argmax requires'):
+                    capture.map_answers(original, {'id': 'route', 'probabilities': distribution}, 'semif')
+        # Named and array distributions preserve correspondence, including
+        # reordered IDs. Ties retain the existing first-reported winner.
+        for raw, expected in (({'probabilities': {'b': .8, 'a': .2}}, 'b'),
+                              ({'option_ids': ['b', 'a'], 'probabilities': [.8, .2]}, 'b'),
+                              ({'probabilities': {'b': .5, 'a': .5}}, 'b'),
+                              ({'probabilities': {'a': 0, 'b': 1}}, 'b'),
+                              ({'probabilities': {'a': 1, 'b': 0}}, 'a')):
+            self.assertEqual(capture.map_answers(original, raw, 'semif')['route']['choice'], expected)
+        for criteria in (None, {}, [], 'a,b'):
+            with self.subTest(criteria=criteria):
+                malformed = {'questions': {'route': {'type': 'choice', 'criteria': criteria}}}
+                with self.assertRaisesRegex(ValueError, 'SemIf argmax requires'):
+                    capture.map_answers(malformed, {'probabilities': {'a': .2, 'b': .8}}, 'semif')
+        # Explicit provider answers remain inspectable, even if malformed;
+        # Observer's downstream validation still owns their validity.
+        raw = {'choice': 'a', 'probabilities': {'a': .2}}
+        answer = capture.map_answers(original, raw, 'semif')['route']
+        self.assertEqual(answer['choice'], 'a')
+        self.assertEqual(answer['original_result'], raw)
+        self.assertNotIn('mapping_note', answer)
+
     def test_converter_does_not_turn_custom_usage_counts_into_billed_tokens(self):
         original = request(); original['questions'] = {'route': original['questions']['route']}
         raw = {'answers': {'route': {'choice': 'a', 'distribution': {'a': .8, 'b': .2}}}, 'usage': {'questions': 1}}
@@ -278,6 +308,20 @@ class CaptureCliTests(unittest.TestCase):
         result = self.run_cli()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.output_path.read_bytes(), previous)
+
+    def test_incomplete_semif_distribution_fails_before_creating_output(self):
+        original = {'questions': {'route': {'type': 'choice', 'criteria': {'a': 'A', 'b': 'B'}}}}
+        self.write_inputs(original, {'id': 'route', 'option_ids': ['a'], 'probabilities': [1]})
+        result = self.run_cli('--dialect', 'semif')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b'SemIf argmax requires', result.stderr)
+        self.assertNotIn(b'Traceback', result.stderr)
+        self.assertFalse(self.output_path.exists())
+        self.write_inputs(original, {'id': 'route', 'option_ids': ['a', 'b'], 'probabilities': [.2, .8]})
+        result = self.run_cli('--dialect', 'semif')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(self.output_path.read_text(encoding='utf-8'))
+        self.assertEqual(record['response']['answers']['route']['choice'], 'b')
 
     def test_malformed_roots_and_answers_fail_cleanly_without_reserving_output(self):
         valid_request = {'questions': {'q': {'type': 'noul', 'instructions': 'Check'}}}

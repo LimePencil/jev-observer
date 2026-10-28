@@ -74,7 +74,7 @@ Other mappings are explicit application work:
 | Result format | Mapping to a capture |
 |---|---|
 | AnyJev | `probability` → Noul, `answer` plus `distribution` → Choice. Preserve calibration `level`. Numeric bin centers must be mapped explicitly to ordinal indices before recording a Score. |
-| SemIf | `option_ids` plus the complete probability array → named Choice distribution; the converter marks the derived argmax and retains probability-status metadata. |
+| SemIf | `option_ids` plus the complete probability array → named Choice distribution; the converter marks the derived argmax and retains probability-status metadata. Before deriving a choice, it requires exactly the original option IDs and finite numeric probabilities from zero to one; missing/extra IDs or invalid probability values fail before output. Explicit provider answers and sum-to-one validation remain subject to downstream Observer validation. |
 | AutoTrust | `options` plus the complete probability array → named distribution; retain the reported choice. Map non-Choice results to Noul/ordinal Score using the original question contract. |
 | Tev1 / Jev-Style GGUF | Map answer letters to semantic option IDs using the original prompt. A selected letter alone, or a capped `top_logprobs`, cannot supply the full distribution. |
 | NeoHorse / Intern-Decision / FRIDA / vLLM Semantic Router | Map runtime results by question ID, preserving the original candidate order. Preserve any checkpoint/revision and probability-status metadata as extensions. FRIDA ranking results are outside these three views. |
