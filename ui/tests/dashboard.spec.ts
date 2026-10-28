@@ -2644,6 +2644,29 @@ test('key-protected Laya keeps client authentication and longer SDK timeouts', a
   await expect(page.getByRole('dialog')).toContainText('Python: seconds; JavaScript: milliseconds');
 });
 
+for (const { name, upstream, local } of [
+  { name: 'localhost', upstream: 'http://localhost:8000/v1/systemone', local: true },
+  { name: 'IPv6 loopback', upstream: 'http://[::1]:8000/v1/systemone', local: true },
+  { name: 'HTTPS 127/8 loopback', upstream: 'https://127.42.0.1/v1/systemone', local: true },
+  { name: 'loopback default port', upstream: 'http://127.0.0.1/v1/systemone', local: true },
+  { name: 'loopback-looking remote hostname', upstream: 'https://127.0.0.1.example.com/v1/systemone', local: false },
+]) {
+  test(`key-protected ${name} onboarding keeps authentication and the appropriate SDK timeout`, async ({ page }) => {
+    await harness(page, { settings: { provider: 'custom', upstream_auth: 'bearer', upstream } });
+    await page.getByRole('button', { name: 'Connect an application' }).click();
+    await expect(page.getByRole('button', { name: 'Register key' })).toBeVisible();
+    const snippet = page.getByLabel('SDK connection example');
+    await expect(snippet).toContainText('JEV_OBSERVER_CLIENT_TOKEN');
+    await expect(snippet).not.toContainText('JEV_OBSERVER_ACCESS_TOKEN');
+    if (local) await expect(snippet).toContainText('timeout=180,');
+    else await expect(snippet).not.toContainText('timeout');
+    await page.getByRole('button', { name: 'JavaScript', exact: true }).click();
+    await expect(snippet).toContainText('apiKey: process.env.JEV_OBSERVER_CLIENT_TOKEN');
+    if (local) await expect(snippet).toContainText('timeout: 180000,');
+    else await expect(snippet).not.toContainText('timeout');
+  });
+}
+
 async function paginatedSearchHarness(page: Page) {
   const state = await harness(page);
   await page.route('**/api/dashboard?**', async route => {

@@ -3,6 +3,17 @@ import type { Protocol } from './types';
 export const protocolLabel = (protocol: Protocol) => ({ systemone: 'System One', 'openai-decisions': 'OpenAI Decisions', 'cloudflare-systemone': 'Cloudflare System One' })[protocol];
 export const protocolEndpoint = (protocol: Protocol) => protocol === 'openai-decisions' ? '/v1/decisions' : '/v1/systemone';
 
+// Match the backend's HTTP(S) loopback recognition for example timeouts.
+// Authentication remains controlled separately by upstream_auth.
+export function isLoopbackUpstream(endpoint: string | undefined): boolean {
+  if (!endpoint) return false;
+  try {
+    const url = new URL(endpoint), host = url.hostname;
+    return (url.protocol === 'http:' || url.protocol === 'https:')
+      && (host === 'localhost' || host === '[::1]' || /^127(?:\.\d{1,3}){3}$/.test(host));
+  } catch { return false; }
+}
+
 export function connectionSnippet(language: 'python' | 'javascript', origin: string, local: boolean, model: string, longTimeout = local, protocol: Protocol = 'systemone'): string {
   const token = local ? 'JEV_OBSERVER_ACCESS_TOKEN' : 'JEV_OBSERVER_CLIENT_TOKEN';
   const chosenModel = model.trim() || 'YOUR_MODEL_NAME';
