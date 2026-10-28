@@ -67,7 +67,30 @@ impl Store {
         id: &str,
         version_counts: &mut VersionCounts,
     ) -> Result<Option<Value>> {
-        let meta = conn.query_row("SELECT id,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter FROM groups WHERE id=? OR family_id=? ORDER BY id LIMIT 1",params![id,id], |r| Ok(json!({"id":id,"key":r.get::<_,String>(1)?,"name":r.get::<_,String>(1)?,"kind":r.get::<_,String>(2)?,"source":r.get::<_,String>(3)?,"definition_id":r.get::<_,String>(4)?,"presentation_id":r.get::<_,String>(5)?,"definition":parse(r.get(6)?)?,"task_version":r.get::<_,Option<String>>(7)?,"family_id":r.get::<_,Option<String>>(8)?,"family_name":r.get::<_,Option<String>>(9)?,"adapter":r.get::<_,Option<String>>(10)?}))).optional()?;
+        Self::group_metadata_with_reuse(conn, id, version_counts, false)
+    }
+
+    pub(super) fn group_metadata_with_reuse(
+        conn: &Connection,
+        id: &str,
+        version_counts: &mut VersionCounts,
+        reuse: bool,
+    ) -> Result<Option<Value>> {
+        let query = "SELECT id,key,kind,source,definition_id,presentation_id,definition,task_version,family_id,family_name,adapter FROM groups WHERE id=? OR family_id=? ORDER BY id LIMIT 1";
+        let metadata = |r: &rusqlite::Row<'_>| {
+            Ok(
+                json!({"id":id,"key":r.get::<_,String>(1)?,"name":r.get::<_,String>(1)?,"kind":r.get::<_,String>(2)?,"source":r.get::<_,String>(3)?,"definition_id":r.get::<_,String>(4)?,"presentation_id":r.get::<_,String>(5)?,"definition":parse(r.get(6)?)?,"task_version":r.get::<_,Option<String>>(7)?,"family_id":r.get::<_,Option<String>>(8)?,"family_name":r.get::<_,Option<String>>(9)?,"adapter":r.get::<_,Option<String>>(10)?}),
+            )
+        };
+        // A caller already knows whether this bounded loop repeats the query.
+        // Single metadata reads keep their original preparation path.
+        let meta = if reuse {
+            conn.prepare_cached(query)?
+                .query_row(params![id, id], metadata)
+        } else {
+            conn.query_row(query, params![id, id], metadata)
+        }
+        .optional()?;
         let Some(mut result) = meta else {
             return Ok(None);
         };
@@ -89,11 +112,16 @@ impl Store {
             std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let (_, source, selector) = entry.key();
-                let count = conn.query_row(
-                    Self::version_count_query(family),
-                    params![source, selector],
-                    |r| r.get::<_, i64>(0),
-                )?;
+                let count = if reuse {
+                    conn.prepare_cached(Self::version_count_query(family))?
+                        .query_row(params![source, selector], |r| r.get::<_, i64>(0))?
+                } else {
+                    conn.query_row(
+                        Self::version_count_query(family),
+                        params![source, selector],
+                        |r| r.get::<_, i64>(0),
+                    )?
+                };
                 *entry.insert(count)
             }
         };
@@ -379,13 +407,16 @@ impl Store {
                 row.get::<_, String>(0)
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        let reuse_metadata = ids.iter().filter(|id| group["id"] != **id).take(2).count() > 1;
         let mut versions = Vec::new();
         for id in ids {
             if group["id"] == id {
                 versions.push(group.clone());
                 continue;
             }
-            if let Some(metadata) = Self::group_metadata(conn, &id, &mut version_counts)? {
+            if let Some(metadata) =
+                Self::group_metadata_with_reuse(conn, &id, &mut version_counts, reuse_metadata)?
+            {
                 let (version, _) = Self::group_summary(conn, &id, filter, lookup_limit, metadata)?;
                 versions.push(version);
             }

@@ -544,8 +544,11 @@ impl Store {
         };
         let mut groups = Vec::new();
         let mut version_counts = VersionCounts::new();
+        let reuse_metadata = stats.len() > 1;
         for (id, stats) in &stats {
-            if let Some(mut group) = Self::group_metadata(&tx, id, &mut version_counts)? {
+            if let Some(mut group) =
+                Self::group_metadata_with_reuse(&tx, id, &mut version_counts, reuse_metadata)?
+            {
                 group
                     .as_object_mut()
                     .unwrap()
