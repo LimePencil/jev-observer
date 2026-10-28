@@ -1288,6 +1288,28 @@ test('mobile and dark theme remain navigable without horizontal page overflow', 
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
+for (const viewport of [{ width: 1440, height: 600 }, { width: 768, height: 600 }, { width: 568, height: 400 }]) {
+  test(`sidebar connection controls remain keyboard reachable at ${viewport.width} by ${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await harness(page);
+    const sidebar = page.getByRole('complementary', { name: 'Workspace navigation' });
+    const connect = sidebar.getByRole('button', { name: 'Connect an application' });
+    await expect(connect).toBeVisible();
+    await sidebar.getByRole('link', { name: 'Jev Observer overview' }).focus();
+    for (let step = 0; step < 12 && !await connect.evaluate(button => button === document.activeElement); step += 1) await page.keyboard.press('Tab');
+    await expect(connect).toBeFocused();
+    await expect(connect).toBeInViewport({ ratio: 1 });
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('heading', { name: 'Your next request, visible.' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(connect).toBeFocused();
+    await expect(connect).toBeInViewport({ ratio: 1 });
+    await sidebar.getByRole('link', { name: 'Jev Observer overview' }).focus();
+    await expect(sidebar.getByRole('link', { name: 'Jev Observer overview' })).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+}
+
 for (const unavailable of ['missing', 'denied'] as const) {
   test(`copying the local URL handles ${unavailable} clipboard access without an uncaught error`, async ({ page }) => {
     const errors: string[] = [];
