@@ -136,6 +136,28 @@ class CaptureTests(unittest.TestCase):
             self.assertNotIn(key, out['answers']['q']['original_result'])
         self.assertEqual(out['answers']['q']['original_result']['extension'], raw['extension'])
 
+    def test_flat_semif_and_autotrust_inputs_do_not_duplicate_into_raw_answer(self):
+        original = {'questions': {'q': {'type': 'choice', 'instructions': 'Choose',
+                                       'criteria': {'a': 'A', 'b': 'B'}}}}
+        inputs = {key: ['synthetic envelope input'] for key in capture.INPUT_FIELDS}
+        raw = {'id': 'q', 'option_ids': ['a', 'b'], 'probabilities': [.2, .8], 'choice': 'b',
+               'extension': {'input': 'semantic result extension'}, **inputs}
+        before = json.dumps(raw)
+        for dialect in ('semif', 'autotrust'):
+            with self.subTest(dialect=dialect):
+                out = self.convert(original, raw, dialect)['response']
+                for key, value in inputs.items():
+                    self.assertEqual(out[key], value)
+                    self.assertNotIn(key, out['original_metadata'])
+                    self.assertNotIn(key, out['answers']['q']['original_result'])
+                self.assertEqual(out['answers']['q']['original_result']['extension'], raw['extension'])
+                self.assertEqual(out['answers']['q']['probabilities'], {'a': .2, 'b': .8})
+                self.assertEqual(out['answers']['q']['choice'], 'b')
+                self.assertEqual(json.dumps(raw), before)
+                # A named answer's extension fields are not root snapshots.
+                nested = self.convert(original, {'answers': {'q': raw}}, dialect)['response']
+                self.assertEqual(nested['answers']['q']['original_result'], raw)
+
     def test_converter_keeps_input_fields_in_the_capture_envelope(self):
         original = {'questions': {'check': {'type': 'noul', 'instructions': 'Check'}}}
         inputs = {'state': 'private text', 'images': ['private images'],
