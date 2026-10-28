@@ -2336,6 +2336,44 @@ for (const section of [
   });
 }
 
+for (const width of [390, 1440]) {
+  test(`connection return navigation reaches and focuses Requests at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 600 : 1000 });
+    await harness(page);
+    if (width === 390) {
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+      await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Connect an application' }).click();
+    } else await page.getByRole('button', { name: 'Connect an application' }).click();
+    await page.getByRole('link', { name: 'Back to your workspace' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const destination = page.locator('#requests');
+    await expect(destination.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
+    await expect(destination).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(destination.getByRole('button', { name: 'Failures', exact: true })).toBeFocused();
+    await expect(page.locator('.sidebar').first().getByRole('button', { name: 'Requests', exact: true, includeHidden: true })).toHaveClass('active');
+  });
+}
+
+test('connection return navigation waits for a missing request stream to finish loading', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const state = await harness(page);
+  let release!: () => void;
+  state.dashboardPending = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await page.getByLabel('Filter by source').selectOption('Test inbox');
+    await expect(page.locator('#requests')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Connect an application' }).click();
+    await page.getByRole('link', { name: 'Back to your workspace' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    release();
+    await expect(page.locator('#requests')).toBeFocused();
+    await expect(page.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
+  } finally { release(); }
+});
+
 test('mobile Overview navigation remains available when dashboard history cannot load', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 600 });
   const state = await harness(page);

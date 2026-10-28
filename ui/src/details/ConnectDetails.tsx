@@ -10,7 +10,7 @@ import type { Health, Settings } from '../types';
 
 import { DetailHeading, Field } from './shared';
 
-export function ConnectDetails({ health, controller, importCaptures }: { health?: Health; controller: CredentialController; importCaptures: () => void }) {
+export function ConnectDetails({ health, controller, importCaptures, returnToWorkspace }: { health?: Health; controller: CredentialController; importCaptures: () => void; returnToWorkspace: () => void }) {
   const baseUrl = import.meta.env.DEV ? 'http://127.0.0.1:8765' : window.location.origin;
   const [copyStatus, setCopyStatus] = useState('');
   const [language, setLanguage] = useState<'python' | 'javascript'>('python');
@@ -74,6 +74,6 @@ export function ConnectDetails({ health, controller, importCaptures }: { health?
     <div className="inline-notice"><ShieldCheck size={19} /><span>The proxy is local. A hosted application cannot reach this machine’s loopback address. Import its exported records instead.</span></div>
     <p className="caption">Collection pressure does not intentionally hold up forwarding. Any missing captures are shown in collection health.</p>
     </>}
-    <a className="text-button" href="#requests" onClick={() => document.querySelector<HTMLButtonElement>('.drawer-close')?.click()}><ArrowLeft size={14} />Back to your workspace</a>
+    <a className="text-button" href="#requests" onClick={event => { event.preventDefault(); returnToWorkspace(); }}><ArrowLeft size={14} />Back to your workspace</a>
   </div></>;
 }

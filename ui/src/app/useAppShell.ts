@@ -54,6 +54,11 @@ export function useAppShell() {
       if (document.activeElement !== opener) mainRef.current?.focus({ preventScroll: true });
     });
   }
+  function returnToWorkspace() {
+    setPanel(null);
+    setActiveNav('requests');
+    setDeferredNavigation({ section: 'requests', focus: true });
+  }
   function navigate(section: string, afterRefresh = false) {
     setActiveNav(section); setSidebarOpen(false);
     menuNavigation.current = sidebarOpen ? section : null;
@@ -79,7 +84,7 @@ export function useAppShell() {
     scrollToSection(deferredNavigation.section, deferredNavigation.focus);
     setDeferredNavigation(null);
   }, [deferredNavigation, panel, sidebarOpen]);
-  return { panel, setPanel, theme, setTheme, toast, setToast, sidebarOpen, setSidebarOpen, activeNav, navigate, finishNavigation, finishMenuNavigation, notify, searchRef, mainRef, exportRef, mobileMenuRef };
+  return { panel, setPanel, theme, setTheme, toast, setToast, sidebarOpen, setSidebarOpen, activeNav, navigate, returnToWorkspace, finishNavigation, finishMenuNavigation, notify, searchRef, mainRef, exportRef, mobileMenuRef };
 }
 
 export type AppShell = ReturnType<typeof useAppShell>;
