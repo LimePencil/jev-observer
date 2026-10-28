@@ -137,7 +137,13 @@ def map_answers(request, response, dialect, state_id=None):
         kind = question['type']
         if kind not in ('choice', 'score', 'noul'):
             raise ValueError('Use choice, score or noul definitions')
-        answer = {'type': kind, 'original_result': copy.deepcopy(raw)}
+        # Flat SemIf/AutoTrust results are the response envelope itself. Its
+        # input snapshots are retained once by convert(), where Observer can
+        # apply capture-state policy; a duplicate here would bypass that policy.
+        # Named answers keep their own extension fields, including input names.
+        answer = {'type': kind, 'original_result': {
+            name: copy.deepcopy(value) for name, value in raw.items()
+            if raw is not response or name not in INPUT_FIELDS}}
         if dialect == 'omnijev':
             for field in ('abstain', 'valid'):
                 if field in raw:
