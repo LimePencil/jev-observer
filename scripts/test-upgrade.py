@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Published 0.1.0 to candidate upgrade, rollback and backup checks; loopback only."""
+"""Published-release upgrade, rollback and backup checks; loopback only."""
 import argparse
 import base64
 import csv
@@ -176,7 +176,8 @@ class Upgrade:
             binary = getattr(self.args, name)
             result = subprocess.run([str(binary), "--version"], capture_output=True, env=self.environment, timeout=10, check=True)
             self.report[name] = {"version": result.stdout.decode().strip(), "sha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
-        self.check(self.report["baseline"]["version"] == "jev-observer 0.1.0", "published_baseline_version")
+        self.check(self.report["baseline"]["version"] == "jev-observer " + self.args.baseline_version, "published_baseline_version")
+        legacy_token = self.args.baseline_version == "0.1.0"
         server = ThreadingHTTPServer(("127.0.0.1", 0), Mock)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -188,10 +189,10 @@ class Upgrade:
                 self.database = self.directory / "history.sqlite"
                 try:
                     self.phase = "baseline"
-                    self.start(self.args.baseline, legacy_token=True)
+                    self.start(self.args.baseline, legacy_token=legacy_token)
                     baseline_token = self.token
-                    legacy_path = self.token_path
-                    legacy_bytes = legacy_path.read_bytes()
+                    baseline_token_path = self.token_path
+                    baseline_token_bytes = baseline_token_path.read_bytes()
                     credential = self.api("/api/credentials", "PUT", {"api_key": KEY, "persist": False})
                     self.api("/v1/systemone", "POST", REQUEST, {"Authorization": "Bearer " + credential["client_token"], "X-Observer-Source": "upgrade-fixture"})
                     for _ in range(200):
@@ -218,16 +219,20 @@ class Upgrade:
                     self.start(self.args.candidate)
                     candidate_token = self.token
                     self.check(self.token_path == Path(str(self.database) + ".token"), "candidate_uses_complete_filename_token")
-                    self.check(candidate_token != baseline_token, "upgrade_rotates_workspace_access_token")
-                    self.check(legacy_path.read_bytes() == legacy_bytes, "upgrade_leaves_legacy_token_unchanged")
-                    old_auth = "Basic " + base64.b64encode(("observer:" + baseline_token).encode()).decode()
-                    try:
-                        self.request("/api/health", headers={"Authorization": old_auth})
-                    except urllib.error.HTTPError as error:
-                        with error:
-                            self.check(error.code == 401, "candidate_rejects_legacy_workspace_token")
+                    if legacy_token:
+                        self.check(candidate_token != baseline_token, "upgrade_rotates_workspace_access_token")
+                        self.check(baseline_token_path.read_bytes() == baseline_token_bytes, "upgrade_leaves_legacy_token_unchanged")
+                        old_auth = "Basic " + base64.b64encode(("observer:" + baseline_token).encode()).decode()
+                        try:
+                            self.request("/api/health", headers={"Authorization": old_auth})
+                        except urllib.error.HTTPError as error:
+                            with error:
+                                self.check(error.code == 401, "candidate_rejects_legacy_workspace_token")
+                        else:
+                            self.check(False, "candidate_rejects_legacy_workspace_token")
                     else:
-                        self.check(False, "candidate_rejects_legacy_workspace_token")
+                        self.check(candidate_token == baseline_token, "upgrade_preserves_current_workspace_token")
+                        self.check(baseline_token_path.read_bytes() == baseline_token_bytes, "upgrade_preserves_current_token_file")
                     self.check(self.snapshot() == before, "upgrade_preserves_history_labels_and_exports")
                     self.check(self.probe("show") == approval, "upgrade_preserves_credential_approval")
                     self.check(not self.api("/api/credentials")["configured"], "unavailable_system_credential_not_activated")
@@ -240,8 +245,8 @@ class Upgrade:
                     upgraded = self.snapshot()
                     self.stop()
                     self.phase = "rollback"
-                    self.start(self.args.baseline, legacy_token=True)
-                    self.check(self.token == baseline_token, "rollback_reuses_legacy_workspace_token")
+                    self.start(self.args.baseline, legacy_token=legacy_token)
+                    self.check(self.token == baseline_token, "rollback_reuses_legacy_workspace_token" if legacy_token else "rollback_reuses_current_workspace_token")
                     self.check(self.snapshot() == upgraded, "baseline_can_read_candidate_database_and_new_record")
                     self.stop()
                     self.check(self.probe("show") == {**approval, "requests": 2}, "rollback_preserves_credential_approval")
@@ -276,6 +281,8 @@ class Upgrade:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", type=Path, required=True)
+    parser.add_argument("--baseline-version", choices=("0.1.0", "0.4.0"), default="0.1.0",
+                        help="Expected published version; selects its explicit workspace-token layout (default: 0.1.0)")
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--probe", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)

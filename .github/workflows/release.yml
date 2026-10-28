@@ -166,6 +166,18 @@ jobs:
             --candidate "target/$RELEASE_TARGET/release/jev-observer$suffix" \
             --probe "target/$RELEASE_TARGET/release/examples/upgrade_probe$suffix" \
             --output upgrade-validation.json
+      - name: Verify upgrade from published 0.4.0
+        shell: bash
+        run: |
+          suffix=""
+          if [[ "$RUNNER_OS" == Windows ]]; then suffix=".exe"; fi
+          python scripts/download-release-baseline.py --version 0.4.0 --target "$RELEASE_TARGET" --output-dir "$RUNNER_TEMP/observer-current-baseline"
+          python scripts/test-upgrade.py \
+            --baseline-version 0.4.0 \
+            --baseline "$RUNNER_TEMP/observer-current-baseline/jev-observer$suffix" \
+            --candidate "target/$RELEASE_TARGET/release/jev-observer$suffix" \
+            --probe "target/$RELEASE_TARGET/release/examples/upgrade_probe$suffix" \
+            --output upgrade-current-validation.json
       - name: Verify pinned SDKs against loopback mock
         shell: bash
         run: |
@@ -224,6 +236,7 @@ jobs:
             sdk-compatibility.json
             current-sdk-compatibility.json
             upgrade-validation.json
+            upgrade-current-validation.json
             ui/test-results/
             ui/test-results-integration/
       - name: Save native Rust dependencies and build outputs
