@@ -2713,6 +2713,17 @@ for (const section of ['requests', 'groups'] as const) {
   });
 }
 
+// Firefox's fill() completes its own native composition. Keep the simulated
+// composition open by emitting explicit updates through the native value setter.
+async function updateComposition(field: Locator, value: string) {
+  await field.evaluate((element, text) => {
+    const input = element as HTMLInputElement;
+    input.dispatchEvent(new CompositionEvent('compositionupdate', { bubbles: true, data: text }));
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, text);
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: text, isComposing: true }));
+  }, value);
+}
+
 for (const section of ['requests', 'groups'] as const) {
   for (const committed of [true, false]) {
     test(`IME ${section} search ${committed ? 'commits only the completed text' : 'cancellation preserves page history'}`, async ({ page }) => {
@@ -2732,14 +2743,14 @@ for (const section of ['requests', 'groups'] as const) {
       await search.fill('ㄱ');
       await search.dispatchEvent('compositionstart');
       await page.clock.runFor(300);
-      await search.fill('가');
+      await updateComposition(search, '가');
       await page.clock.runFor(1200);
       await expect(search).toBeFocused();
       expect(new URL(page.url()).searchParams.has(field)).toBe(false);
       expect(new URL(page.url()).searchParams.get('request_cursor')).toBe('third');
       expect(new URL(page.url()).searchParams.get('group_cursor')).toBe('third');
       expect(queries.every(params => !params.has(field))).toBe(true);
-      await search.fill(committed ? '가나다' : '');
+      await updateComposition(search, committed ? '가나다' : '');
       await search.dispatchEvent('compositionend', { data: committed ? '가나다' : '' });
       await page.clock.runFor(300);
       if (committed) {
@@ -2763,8 +2774,9 @@ for (const reset of ['clear filters', 'browser history'] as const) {
     await page.clock.pauseAt(new Date(now + 1000));
     await harness(page, { path: '/?source=Test+inbox' });
     const search = page.getByLabel('Search requests');
+    await search.focus();
     await search.dispatchEvent('compositionstart');
-    await search.fill('가');
+    await updateComposition(search, '가');
     if (reset === 'clear filters') await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
     else await page.evaluate(() => {
       window.history.pushState(null, '', '/?window=all&search=restored');
@@ -2784,8 +2796,9 @@ test('a parent filter cancels an unmounted group composition without locking the
   await page.clock.pauseAt(new Date(now + 1000));
   const state = await harness(page);
   const search = page.getByLabel('Find a question group');
+  await search.focus();
   await search.dispatchEvent('compositionstart');
-  await search.fill('가');
+  await updateComposition(search, '가');
   await page.getByLabel('Filter by source').selectOption('Test inbox');
   await expect(search).toHaveValue('');
   await page.clock.runFor(300);
@@ -3649,7 +3662,9 @@ for (const { name, value } of [
   expect(widths.scroll).toBeLessThanOrEqual(widths.width + 1);
   if (name === 'interior') await testInfo.attach('box-mobile', { body: await page.screenshot(), contentType: 'image/png' });
   expect((await new AxeBuilder({ page }).include('.answer-card').analyze()).violations).toEqual([]);
-  expect(images).toEqual([]);
+  // Firefox requests the bundled favicon as an image during navigation.
+  const localIcon = new URL('/icon.png', page.url()).href;
+  expect(images.filter(url => url !== localIcon)).toEqual([]);
 });
 
 for (const { name, value } of [
