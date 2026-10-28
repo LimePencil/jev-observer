@@ -32,6 +32,35 @@ fn original_present(answer: &Value, field: &str, presence: &str, legacy: bool) -
     Ok(present)
 }
 
+/// Validate original grouping metadata and recover its per-request task version.
+pub(super) fn validate_grouping_context(record: &Value) -> Result<Option<&str>> {
+    let answers = record["answers"]
+        .as_array()
+        .context("answers must be an array")?;
+    for answer in answers {
+        ensure!(
+            answer["task_version"].is_null() || answer["task_version"].is_string(),
+            "task_version must be a string or null"
+        );
+        ensure!(
+            answer
+                .get("definition_redacted")
+                .is_none_or(Value::is_boolean),
+            "definition_redacted must be a boolean when supplied"
+        );
+    }
+    let task = answers
+        .first()
+        .and_then(|answer| answer["task_version"].as_str());
+    ensure!(
+        answers
+            .iter()
+            .all(|answer| answer["task_version"].as_str() == task),
+        "Mixed task versions in one request"
+    );
+    Ok(task)
+}
+
 pub(super) fn import_observer(
     record: &Value,
     options: &NormalizeOptions,
@@ -217,16 +246,7 @@ pub(super) fn import_observer(
         envelope.insert("result".into(), response);
         response = Value::Object(envelope);
     }
-    let task = answers
-        .first()
-        .and_then(|a| a["task_version"].as_str())
-        .map(str::to_owned);
-    ensure!(
-        answers
-            .iter()
-            .all(|a| a["task_version"].as_str() == task.as_deref()),
-        "Mixed task versions in one request"
-    );
+    let task = validate_grouping_context(record)?.map(str::to_owned);
     let adapter = answers
         .iter()
         .any(|a| a["adapter"] == "jgrep-v1")
@@ -363,6 +383,9 @@ pub(super) fn import_observer(
         }
     }
     let out = privacy_observer(&mut out, options, &mut budget.batch.redaction_remaining)?;
+    // Legacy inputs can omit flags which normalization generates. Validate
+    // their retained types after the final privacy pass as well.
+    validate_grouping_context(&out)?;
     // Reconstruction and retained provenance introduce later privacy passes.
     // Check the actual stored identity, not only the first filtered input.
     check_persisted_import_identity(&out, id, source, event_id, "observer-jsonl")?;
