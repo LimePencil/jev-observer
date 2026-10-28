@@ -1,7 +1,7 @@
 {
   "generator": "cargo-about 0.9.2 and scripts/generate-license-notices.py",
   "inputs": {
-    "Cargo.lock": "b8a81d462168c431cd5550d48cc4ddfc04e97d1f0a7a8beb706d18b6821d7c4f",
+    "Cargo.lock": "627ab9627175535017d7965b9e7e253eb9918ce4c1a5d960346f3f6ca8279bc4",
     "ui/package-lock.json": "5a80db02a39bc53fdcf04b4ef7c07d2b032622b6e52ecbd75c282b0316d77fd2",
     "about.toml": "17417c2133d625da246e8d1f8fa07ae98308faf2064a2c9d0b59186441158f3b",
     "licenses/npm-supplemental.json": "68d7c7f848ae872d263dc85c3705ebc20698a09abe5a97a5e6b5e5844748a25b"
@@ -229,7 +229,7 @@
     },
     {
       "name": "ctutils",
-      "version": "0.4.2",
+      "version": "0.4.4",
       "declared_license": "Apache-2.0 OR MIT"
     },
     {
@@ -1164,12 +1164,12 @@
     },
     {
       "name": "zstd",
-      "version": "0.13.3",
-      "declared_license": "MIT"
+      "version": "0.14.3",
+      "declared_license": "BSD-3-Clause"
     },
     {
       "name": "zstd-safe",
-      "version": "7.3.0",
+      "version": "8.2.0",
       "declared_license": "BSD-3-Clause"
     },
     {
@@ -1654,7 +1654,7 @@
     }
   ],
   "outputs": {
-    "THIRD-PARTY-NOTICES.txt": "0565b7517b254ad26183ee55b7f7240cc0f1868dd659cf3f5ef14970d70cb9bb",
+    "THIRD-PARTY-NOTICES.txt": "ad698e80915bbcde3f5b400aab38d9b153211ae5ea567036209dee40bf2f66c8",
     "rust-standard-library.html": "68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6",
     "musl-COPYRIGHT.txt": "b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b"
   }
