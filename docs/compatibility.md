@@ -55,7 +55,7 @@ Use the origin as the SDK base URL, without `/v1/systemone`: both tested clients
 
 For a key registered through Observer's **Connect an application** panel, pass the returned local client token as the SDK's `api_key` (Python) or `apiKey` (JavaScript). Observer substitutes the registered provider key before the upstream request; a wrong or rotated local token is rejected locally. SDK configurations that pass their provider key directly also need `x-observer-access` with the workspace access token. The registered local token needs no additional access header. The token is not recoverable from the status API. You can reopen the panel to copy it until the page reloads or closes, or the key is replaced or removed.
 
-For typed-answer capture, request uncompressed responses with `headers={"Accept-Encoding": "identity"}` in Python or `defaultHeaders: { "Accept-Encoding": "identity" }` in JavaScript. Both tested configurations include this header, and the mock verifies it reaches the upstream on every request. Observer forwards compressed bodies unchanged but currently marks their saved captures incomplete instead of decoding them. See the [complete client setup examples](../README.md#connect-an-application). An upstream that still returns compressed data cannot provide complete typed capture in this version.
+These legacy fixtures request uncompressed responses with `headers={"Accept-Encoding": "identity"}` in Python or `defaultHeaders: { "Accept-Encoding": "identity" }` in JavaScript, and the mock verifies that the header reaches the upstream on every request. Observer 0.4.0 also inspects one complete gzip member or zstd frame and supported request multipart bodies while forwarding the original bytes unchanged. Raw and decoded bodies must each fit `--capture-limit`. Unsupported encodings, malformed compressed/multipart bodies and oversized bodies produce incomplete captures. See the [complete client setup examples](../README.md#connect-an-application), [transport limits](capture-decoding.md), and the separate [current SDK check](#current-sdk-encoding-check).
 
 ## Verified behavior
 
@@ -91,3 +91,25 @@ npm ci --prefix "$SDK_WORK" --ignore-scripts --no-audit --no-fund
 The runner starts its own proxy process and mock server on temporary loopback ports, uses a temporary database, and shuts them down afterwards. SDK retries are explicitly disabled so the upstream-attempt count is exact. Normal applications can retain their SDK retry policy; Observer does not add another retry layer.
 
 The fixtures and package pins are under [fixtures/sdk](../fixtures/sdk). No streaming behavior, asynchronous Python client, model-list endpoint, browser SDK, provider gateway dialect or actual upstream service was exercised by this check. Other endpoints remain outside the native `POST /v1/systemone` forwarding scope.
+
+## Current SDK encoding check
+
+The 0.4.0 release also runs a separate Linux loopback fixture with **Python `typesafe-sdk==0.7.5` (including its zstd extra)** and **JavaScript `@typesafe-ai/sdk@0.7.0`**. Each client sends small identity JSON, large JSON with default zstd request compression, a compressed PNG multipart request, and a request with compression disabled. The sequence runs with input capture off and on: 16 requests in total. Responses remain identity JSON in this SDK fixture; compressed-response inspection is covered separately by Rust decoder and proxy tests.
+
+The fixture checks exact forwarded request bytes and content headers, unchanged response bytes, complete typed answers, credential redaction, input omission or bounded image retention, encrypted history and zero collection gaps. It uses synthetic data, dummy credentials and a local mock only. It does not establish live provider compatibility, model image support, SDK behavior on every operating system, or replayability of retained multipart inspection data.
+
+After [building the dashboard and executable](../README.md#build-and-develop), install the separately pinned dependencies and run:
+
+```bash
+CURRENT_SDK_WORK=$(mktemp -d)
+uv venv --python 3.12 "$CURRENT_SDK_WORK/python"
+uv pip install --python "$CURRENT_SDK_WORK/python/bin/python" -r fixtures/current-sdk/python-requirements.txt
+cp fixtures/current-sdk/package.json fixtures/current-sdk/package-lock.json "$CURRENT_SDK_WORK/"
+npm ci --prefix "$CURRENT_SDK_WORK" --ignore-scripts --no-audit --no-fund
+"$CURRENT_SDK_WORK/python/bin/python" scripts/current-sdk-compatibility.py \
+  --binary target/release/jev-observer \
+  --node-sdk "$CURRENT_SDK_WORK/node_modules/@typesafe-ai/sdk" \
+  --output "$CURRENT_SDK_WORK/result.json"
+```
+
+Package pins live under [fixtures/current-sdk](../fixtures/current-sdk). The fixture creates and removes its own temporary Observer workspaces; the dependency directory and result file remain available for inspection.

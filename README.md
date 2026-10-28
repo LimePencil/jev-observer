@@ -173,7 +173,7 @@ const client = new TypeSafeClient({
 });
 ```
 
-Observer checks the local client token and substitutes your registered provider key before forwarding. `x-observer-source` identifies your application in history. `Accept-Encoding: identity` allows typed-answer capture; compressed responses pass through, but their saved captures are marked incomplete.
+Observer checks the local client token and substitutes your registered provider key before forwarding. `x-observer-source` identifies your application in history. These examples request uncompressed responses with `Accept-Encoding: identity`. Observer 0.4.0 also inspects supported gzip/zstd bodies and image multipart requests while forwarding the original bytes unchanged. Raw and decoded bodies must each fit the capture limit. Unsupported encodings, malformed compressed/multipart bodies and oversized bodies produce incomplete captures. See [transport formats and limits](docs/capture-decoding.md).
 
 The [connection guide](docs/connection.md) covers direct provider-key authentication, additional metadata and credential handling. The [compatibility guide](docs/compatibility.md) records SDK mock checks and separate real-inference checks for OpenRouter and Laya.
 
