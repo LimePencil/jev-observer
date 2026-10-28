@@ -2500,6 +2500,88 @@ for (const section of ['requests', 'groups'] as const) {
   });
 }
 
+for (const section of ['requests', 'groups'] as const) {
+  for (const committed of [true, false]) {
+    test(`IME ${section} search ${committed ? 'commits only the completed text' : 'cancellation preserves page history'}`, async ({ page }) => {
+      await page.clock.install({ time: new Date(now) });
+      await page.clock.pauseAt(new Date(now + 1000));
+      await paginatedSearchHarness(page);
+      await openThirdPage(page, 'requests');
+      await openThirdPage(page, 'groups');
+      const queries: URLSearchParams[] = [];
+      page.on('request', request => {
+        const url = new URL(request.url());
+        if (url.pathname === '/api/dashboard') queries.push(url.searchParams);
+      });
+      const search = page.getByLabel(section === 'requests' ? 'Search requests' : 'Find a question group');
+      const field = section === 'requests' ? 'search' : 'group_search';
+      // Starting composition must also cancel a draft debounce already queued.
+      await search.fill('ㄱ');
+      await search.dispatchEvent('compositionstart');
+      await page.clock.runFor(300);
+      await search.fill('가');
+      await page.clock.runFor(1200);
+      await expect(search).toBeFocused();
+      expect(new URL(page.url()).searchParams.has(field)).toBe(false);
+      expect(new URL(page.url()).searchParams.get('request_cursor')).toBe('third');
+      expect(new URL(page.url()).searchParams.get('group_cursor')).toBe('third');
+      expect(queries.every(params => !params.has(field))).toBe(true);
+      await search.fill(committed ? '가나다' : '');
+      await search.dispatchEvent('compositionend', { data: committed ? '가나다' : '' });
+      await page.clock.runFor(300);
+      if (committed) {
+        await expect.poll(() => new URL(page.url()).searchParams.get(field)).toBe('가나다');
+        await expect(page.locator('.group-row')).toContainText('department first');
+        expect(new URL(page.url()).searchParams.get('request_cursor')).toBe(section === 'requests' ? null : 'third');
+        expect(queries.filter(params => params.has(field)).every(params => params.get(field) === '가나다')).toBe(true);
+      } else {
+        expect(new URL(page.url()).searchParams.has(field)).toBe(false);
+        await page.getByRole('button', { name: `Newer ${section}`, exact: true }).click();
+        if (section === 'requests') await expect(page.getByLabel('Inspect request request-second', { exact: true })).toBeVisible();
+        else await expect(page.locator('.group-row')).toContainText('department second');
+      }
+    });
+  }
+}
+
+for (const reset of ['clear filters', 'browser history'] as const) {
+  test(`IME request drafts are discarded by ${reset} without locking the next search`, async ({ page }) => {
+    await page.clock.install({ time: new Date(now) });
+    await page.clock.pauseAt(new Date(now + 1000));
+    await harness(page, { path: '/?source=Test+inbox' });
+    const search = page.getByLabel('Search requests');
+    await search.dispatchEvent('compositionstart');
+    await search.fill('가');
+    if (reset === 'clear filters') await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+    else await page.evaluate(() => {
+      window.history.pushState(null, '', '/?window=all&search=restored');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await expect(search).toHaveValue(reset === 'clear filters' ? '' : 'restored');
+    await page.clock.runFor(300);
+    expect(new URL(page.url()).searchParams.get('search')).toBe(reset === 'clear filters' ? null : 'restored');
+    await search.fill('next search');
+    await page.clock.runFor(300);
+    await expect.poll(() => new URL(page.url()).searchParams.get('search')).toBe('next search');
+  });
+}
+
+test('a parent filter cancels an unmounted group composition without locking the next search', async ({ page }) => {
+  await page.clock.install({ time: new Date(now) });
+  await page.clock.pauseAt(new Date(now + 1000));
+  const state = await harness(page);
+  const search = page.getByLabel('Find a question group');
+  await search.dispatchEvent('compositionstart');
+  await search.fill('가');
+  await page.getByLabel('Filter by source').selectOption('Test inbox');
+  await expect(search).toHaveValue('');
+  await page.clock.runFor(300);
+  expect(state.dashboardQueries.every(query => !new URLSearchParams(query).has('group_search'))).toBe(true);
+  await search.fill('department');
+  await page.clock.runFor(300);
+  await expect.poll(() => new URL(page.url()).searchParams.get('group_search')).toBe('department');
+});
+
 test('committing a request search resets both page scopes', async ({ page }) => {
   await page.clock.install({ time: new Date(now) });
   await page.clock.pauseAt(new Date(now + 1000));
