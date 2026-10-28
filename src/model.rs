@@ -139,5 +139,9 @@ mod basic_credential_tests;
 mod input_opt_out_tests;
 
 #[cfg(test)]
+#[path = "model/tests/observer_final_metadata_tests.rs"]
+mod observer_final_metadata_tests;
+
+#[cfg(test)]
 #[path = "model/tests/observer_envelope_context_tests.rs"]
 mod observer_envelope_context_tests;

@@ -32,6 +32,16 @@ fn original_present(answer: &Value, field: &str, presence: &str, legacy: bool) -
     Ok(present)
 }
 
+fn validate_timestamps(record: &Value) -> Result<()> {
+    for key in ["timestamp", "imported_at"] {
+        ensure!(
+            record[key].is_null() || record[key].as_i64().is_some_and(valid_timestamp),
+            "{key} must be valid epoch milliseconds or null"
+        );
+    }
+    Ok(())
+}
+
 /// Validate original grouping metadata and recover its per-request task version.
 pub(super) fn validate_grouping_context(record: &Value) -> Result<Option<&str>> {
     let answers = record["answers"]
@@ -98,12 +108,7 @@ pub(super) fn import_observer(
     }
     let id = required_string(record, "id")?;
     let source = required_string(record, "source")?;
-    for key in ["timestamp", "imported_at"] {
-        ensure!(
-            record[key].is_null() || record[key].as_i64().is_some_and(valid_timestamp),
-            "{key} must be valid epoch milliseconds or null"
-        );
-    }
+    validate_timestamps(record)?;
     for key in ["duration_ms", "cost_usd"] {
         nullable_number(record, key)?;
     }
@@ -383,6 +388,9 @@ pub(super) fn import_observer(
         }
     }
     let out = privacy_observer(&mut out, options, &mut budget.batch.redaction_remaining)?;
+    // Unknown event times acquire imported_at during normalization; privacy
+    // must not turn that generated timestamp into an unsaveable record.
+    validate_timestamps(&out)?;
     // Legacy inputs can omit flags which normalization generates. Validate
     // their retained types after the final privacy pass as well.
     validate_grouping_context(&out)?;
