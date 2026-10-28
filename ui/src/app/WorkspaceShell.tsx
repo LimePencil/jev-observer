@@ -10,7 +10,7 @@ import type { AppShell } from './useAppShell';
 type Props = { state: AppShell; data: Dashboard | null; sample: boolean; includesSamples: boolean; error: string; connectionText: string; children: ReactNode; details: ReactNode };
 
 export function WorkspaceShell({ state, data, sample, includesSamples, error, connectionText, children, details }: Props) {
-  const { panel, setPanel, theme, setTheme, toast, setToast, sidebarOpen, setSidebarOpen, activeNav, navigate, mobileMenuRef } = state;
+  const { setPanel, theme, setTheme, toast, setToast, sidebarOpen, setSidebarOpen, activeNav, navigate, finishMenuNavigation, mobileMenuRef } = state;
   const sidebar = <>
       <Brand onNavigate={() => navigate('overview')} />
       <div className="workspace-switch"><div className="workspace-monogram"><Desktop size={18} weight="bold" /></div><div><strong>Local workspace</strong><span>{sample ? 'Sample environment' : 'On this machine'}</span></div><span className={`connection-dot ${error ? 'offline' : ''}`} title={connectionText} /></div>
@@ -24,7 +24,7 @@ export function WorkspaceShell({ state, data, sample, includesSamples, error, co
   return <Dialog.Root open={sidebarOpen} onOpenChange={setSidebarOpen}><div className="app-shell">
     <a href="#main" className="skip-link">Skip to dashboard</a>
     <aside className="sidebar" aria-label="Workspace navigation">{sidebar}</aside>
-    <Dialog.Portal><Dialog.Overlay className="mobile-shade" /><Dialog.Content className="sidebar is-open mobile-navigation" aria-describedby={undefined} onCloseAutoFocus={event => { if (panel) event.preventDefault(); }}>
+    <Dialog.Portal><Dialog.Overlay className="mobile-shade" /><Dialog.Content className="sidebar is-open mobile-navigation" aria-describedby={undefined} onCloseAutoFocus={finishMenuNavigation}>
       <Dialog.Title className="sr-only">Workspace navigation</Dialog.Title>
       <Dialog.Close className="icon-button navigation-close" aria-label="Close navigation"><X size={18} /></Dialog.Close>
       {sidebar}

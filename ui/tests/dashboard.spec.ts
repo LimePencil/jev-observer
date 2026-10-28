@@ -2315,13 +2315,55 @@ test('workspace navigation respects a changed reduced-motion preference immediat
   await expect(page.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
 });
 
-test('mobile section navigation reaches the selected section after closing the menu', async ({ page }) => {
+for (const section of [
+  { id: 'requests', label: 'Requests' },
+  { id: 'questions', label: 'Question groups' },
+  { id: 'overview', label: 'Jev Observer overview' },
+]) {
+  test(`${section.label} mobile section navigation reaches and focuses its destination after closing the menu`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 600 });
+    await harness(page);
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    const menu = page.getByRole('dialog', { name: 'Workspace navigation' });
+    if (section.id === 'overview') await menu.getByRole('link', { name: section.label, exact: true }).click();
+    else await menu.getByRole('button', { name: new RegExp(`^${section.label}`) }).click();
+    await expect(menu).toHaveCount(0);
+    const destination = page.locator(`#${section.id}`);
+    await expect(destination).toBeFocused();
+    await expect(destination.locator('h1, h2').first()).toBeInViewport();
+    await page.keyboard.press('Tab');
+    await expect(destination.locator('button, input, select, a').first()).toBeFocused();
+  });
+}
+
+test('mobile Overview navigation remains available when dashboard history cannot load', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 600 });
-  await harness(page);
+  const state = await harness(page);
+  state.dashboardError = true;
+  await page.getByLabel('Filter by source').selectOption('Test inbox');
+  await expect(page.getByRole('heading', { name: 'Waiting for your local workspace' })).toBeVisible();
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Requests', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('link', { name: 'Jev Observer overview', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Workspace navigation' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
+  await expect(page.locator('#overview')).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeInViewport();
+});
+
+test('mobile section navigation waits for a missing destination to finish loading', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  const state = await harness(page);
+  let release!: () => void;
+  state.dashboardPending = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await page.getByLabel('Filter by source').selectOption('Test inbox');
+    await expect(page.locator('#requests')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Requests', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Workspace navigation' })).toHaveCount(0);
+    release();
+    await expect(page.locator('#requests')).toBeFocused();
+    await expect(page.getByRole('heading', { name: 'Request stream' })).toBeInViewport();
+  } finally { release(); }
 });
 
 for (const action of ['request metric', 'group filter'] as const) {
