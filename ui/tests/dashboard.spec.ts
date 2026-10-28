@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
@@ -167,7 +169,6 @@ async function harness(page: Page, options: { demo?: boolean; settings?: Partial
     else if (url.pathname.startsWith('/api/groups/')) body = { group, versions: [group, { ...group, id: 'group_v1_2222222222', definition_id: 'def_v1_2222222222', presentation_id: 'presentation_v1_2222222222', definition: { instructions: 'Changed department rules' } }], timeline: state.dashboard.timeline, requests: state.dashboard.requests, answers: [], detail_limit: 100, total_answers: 2 };
     else if (url.pathname === '/api/import') { if (state.importError) return route.fulfill({ status: 400, json: { error: 'Invalid source record' } }); if (state.importDashboard) state.dashboard = structuredClone(state.importDashboard); body = { imported: 2, duplicates: 1 }; }
     else if (url.pathname === '/api/data') { await state.deletePending; state.deleted = true; state.dashboard = { ...state.dashboard, sources: [], models: [], summary: { ...state.dashboard.summary, request_count: 0, answer_count: 0, error_count: 0 }, requests: [], groups: [], timeline: [] }; body = { ok: true }; }
-    else if (url.pathname === '/api/export') return route.fulfill({ status: 200, contentType: 'text/csv', headers: { 'Content-Disposition': 'attachment; filename="observer-test.csv"' }, body: 'id,status\nrequest-one,200\n' });
     else return route.fulfill({ status: 404, json: { error: 'Unknown test endpoint' } });
     return route.fulfill({ json: body });
   });
@@ -1249,29 +1250,101 @@ for (const delayed of ['dashboard', 'health', 'previous process'] as const) {
   });
 }
 
-test('import validation, export download and deliberate deletion work', async ({ page }) => {
+async function serveExportFixture(page: Page, failed = false) {
+  // Browser download policy needs real HTTP responses: fulfilled WebKit routes
+  // do not emit the JSONL download event, even with identical response headers.
+  const server = createServer((request, response) => {
+    const csv = new URL(request.url!, 'http://127.0.0.1').searchParams.get('format') === 'csv';
+    const headers = failed ? { 'Content-Type': 'application/json' } : {
+      'Content-Type': csv ? 'text/csv; charset=utf-8' : 'application/x-ndjson; charset=utf-8',
+      'Content-Disposition': `attachment; filename="observer-test.${csv ? 'csv' : 'jsonl'}"`,
+      'X-Content-Type-Options': 'nosniff',
+    };
+    response.writeHead(failed ? 503 : 200, headers);
+    response.end(failed ? JSON.stringify({ error: 'Export storage unavailable' })
+      : csv ? 'id,status\nrequest-one,200\n' : JSON.stringify(record) + '\n');
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  await page.context().route('**/api/export?**', route => {
+    const url = new URL(route.request().url());
+    return route.continue({ url: `${origin}${url.pathname}${url.search}` });
+  });
+  return async () => {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  };
+}
+
+test('import validation, export delivery and deliberate deletion work', async ({ page, browserName }) => {
   const state = await harness(page);
-  await page.getByRole('button', { name: 'Import records', exact: true }).click();
-  await page.getByLabel('Or paste records').fill('{"test": true}');
-  state.importError = true;
-  await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Invalid source record');
-  state.importError = false;
-  await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('2 records imported');
-  await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Export', exact: true }).click();
-  const download = page.waitForEvent('download');
-  await page.getByRole('menuitem', { name: 'CSV spreadsheet' }).click();
-  expect((await download).suggestedFilename()).toMatch(/\.csv$/);
-  await page.getByRole('button', { name: 'Open settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete history', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Permanently delete history' })).toBeDisabled();
-  expect(state.deleted).toBe(false);
-  await page.getByLabel('Type DELETE to confirm').fill('DELETE');
-  await page.getByRole('button', { name: 'Permanently delete history' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(state.deleted).toBe(true);
+  const closeExport = await serveExportFixture(page);
+  try {
+    await page.getByRole('button', { name: 'Import records', exact: true }).click();
+    await page.getByLabel('Or paste records').fill('{"test": true}');
+    state.importError = true;
+    await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('Invalid source record');
+    state.importError = false;
+    await page.getByRole('dialog').getByRole('button', { name: 'Import records', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('2 records imported');
+    await page.keyboard.press('Escape');
+    for (const [label, format] of [['JSONL records', 'jsonl'], ['CSV spreadsheet', 'csv']] as const) {
+      await page.getByRole('button', { name: 'Export', exact: true }).click();
+      const contents = format === 'csv' ? 'id,status\nrequest-one,200\n' : JSON.stringify(record) + '\n';
+      if (browserName === 'webkit' && format === 'csv') {
+        // Playwright WebKit displays renderable attachments inline on new-tab
+        // navigation, unlike Safari: https://github.com/microsoft/playwright/issues/34076
+        const popup = page.context().waitForEvent('page');
+        const response = page.context().waitForEvent('response', response => new URL(response.url()).pathname === '/api/export');
+        await page.getByRole('menuitem', { name: label }).click();
+        const exported = await popup, delivered = await response;
+        expect(delivered.status()).toBe(200);
+        expect(delivered.headers()['content-type']).toBe('text/csv; charset=utf-8');
+        expect(delivered.headers()['x-content-type-options']).toBe('nosniff');
+        expect(delivered.headers()['content-disposition']).toBe('attachment; filename="observer-test.csv"');
+        expect(await delivered.text()).toBe(contents);
+        await expect(exported.locator('body')).toHaveText(contents);
+        await exported.close();
+      } else {
+        const pending = page.waitForEvent('download');
+        await page.getByRole('menuitem', { name: label }).click();
+        const download = await pending;
+        expect(download.suggestedFilename()).toBe(`observer-test.${format}`);
+        const file = await download.path();
+        expect(file).not.toBeNull();
+        expect(readFileSync(file!, 'utf8')).toBe(contents);
+      }
+    }
+    await page.getByRole('button', { name: 'Open settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Delete history', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Permanently delete history' })).toBeDisabled();
+    expect(state.deleted).toBe(false);
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await page.getByRole('button', { name: 'Permanently delete history' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(state.deleted).toBe(true);
+  } finally { await closeExport(); }
+});
+
+test('export errors open separately and preserve the current investigation', async ({ page }) => {
+  await harness(page, { path: '/?window=all&source=Test+inbox' });
+  const closeExport = await serveExportFixture(page, true);
+  try {
+    const investigation = page.url();
+    for (const label of ['JSONL records', 'CSV spreadsheet']) {
+      await page.getByRole('button', { name: 'Export', exact: true }).click();
+      const popup = page.context().waitForEvent('page');
+      const response = page.context().waitForEvent('response', response => new URL(response.url()).pathname === '/api/export');
+      await page.getByRole('menuitem', { name: label }).click();
+      const errorPage = await popup;
+      expect((await response).status()).toBe(503);
+      await expect(errorPage.locator('body')).toContainText('Export storage unavailable');
+      await expect(page).toHaveURL(investigation);
+      await expect(page.getByLabel('Inspect request request-one', { exact: true })).toBeVisible();
+      await errorPage.close();
+    }
+  } finally { await closeExport(); }
 });
 
 test('mobile and dark theme remain navigable without horizontal page overflow', async ({ page }) => {
