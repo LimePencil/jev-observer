@@ -723,6 +723,15 @@ pub(super) fn privacy_observer(
             &mut SemanticIdentifiers::default(),
         )
     })?;
+    // Empty-answer legacy records may acquire this optional field only during
+    // normalization. Its retained value must still be a supported profile.
+    ensure!(
+        retained["model_profile"].is_null()
+            || retained["model_profile"]
+                .as_str()
+                .is_some_and(crate::catalog::known_profile),
+        RedactionValidationError
+    );
     // Classification and envelope reconstruction still matter without answers.
     // Only genuinely absent legacy fields may select their default meanings.
     for key in ["event_kind", "protocol"] {
