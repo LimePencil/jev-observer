@@ -6,7 +6,11 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
+import subprocess
+import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -15,6 +19,102 @@ spec = importlib.util.spec_from_file_location('soak', Path(__file__).with_name('
 soak = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(soak)
 CANARY = 'private-exception-text-must-not-be-saved'
+
+
+def signal_child(directory):
+    """Reach the real idle wait without opening a database or HTTP connection."""
+    directory = Path(directory)
+
+    class App:
+        def __init__(self, args):
+            self.process = None
+            self.log = None
+            self.phase = 'setup'
+            self.health_reads = 0
+
+        def start(self, binary, extra):
+            self.origin = 'http://127.0.0.1:1'
+            self.token = CANARY
+            self.token_path = Path(str(self.database) + '.token')
+            self.process = SimpleNamespace(pid=os.getpid())
+
+        def stop(self):
+            self.process = None
+            (directory / 'stopped').write_text('yes')
+            time.sleep(.2)
+
+        def api(self, route):
+            count = int(self.health_reads > 0)
+            self.health_reads += 1
+            return {key: count for key in ('forwarded', 'captured', 'persisted')} | {
+                key: 0 for key in ('queue_depth', 'active_captures', 'dropped', 'truncated',
+                                  'write_failures', 'maintenance_failures')}
+
+    class Connection:
+        status = 200
+        def __init__(self, *args, **kwargs): pass
+        def connect(self): pass
+        def request(self, *args): pass
+        def getresponse(self): return self
+        def read(self): return soak.upgrade.RESPONSE
+        def close(self): pass
+
+    server = SimpleNamespace(server_port=1, serve_forever=lambda: None,
+                             shutdown=lambda: None, server_close=lambda: None)
+    arguments = ['soak', '--binary', __file__, '--output', str(directory / 'report.json'),
+                 '--active-state', str(directory / 'state.json'), '--cycles', '1',
+                 '--seconds', '1', '--rate', '1']
+    with mock.patch.object(soak.upgrade, 'Upgrade', App), \
+         mock.patch.object(soak, 'ThreadingHTTPServer', return_value=server), \
+         mock.patch.object(soak.http.client, 'HTTPConnection', Connection), \
+         mock.patch('sys.argv', arguments):
+        return soak.main()
+
+
+@unittest.skipIf(os.name == 'nt', 'Windows terminate() does not deliver a catchable SIGTERM')
+class SignalTests(unittest.TestCase):
+    def test_sigterm_checkpoints_incomplete_cycle_and_stops_owned_process(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            child = subprocess.Popen([sys.executable, __file__, '--signal-child', temporary],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    if (directory / 'state.json').exists():
+                        state = json.loads((directory / 'state.json').read_text())
+                        if state['progress']['subphase'] == 'idle_retention_wait':
+                            break
+                    self.assertIsNone(child.poll(), 'signal fixture exited before its idle wait')
+                    time.sleep(.01)
+                else:
+                    self.fail('signal fixture did not reach its idle wait')
+                child.send_signal(signal.SIGTERM)
+                deadline = time.monotonic() + 5
+                while not (directory / 'stopped').exists() and time.monotonic() < deadline:
+                    self.assertIsNone(child.poll(), 'termination skipped child cleanup')
+                    time.sleep(.01)
+                self.assertTrue((directory / 'stopped').exists())
+                child.send_signal(signal.SIGTERM)
+                stdout, stderr = child.communicate(timeout=10)
+                self.assertEqual(child.returncode, 128 + signal.SIGTERM, stderr)
+                report = json.loads((directory / 'report.json').read_text())
+                state = json.loads((directory / 'state.json').read_text())
+                self.assertFalse(report['passed'])
+                self.assertEqual(report['cycles'], [])
+                self.assertEqual(report['total_offered'], 1)
+                self.assertEqual(report['failure']['signal'], 'SIGTERM')
+                self.assertEqual(report['failure']['progress']['subphase'], 'idle_retention_wait')
+                self.assertEqual(report['failure']['progress']['completed'], 1)
+                self.assertIn('finished_at', report)
+                self.assertEqual(state['phase'], 'stopped')
+                self.assertEqual(state['failure'], report['failure'])
+                self.assertTrue((directory / 'stopped').exists())
+                self.assertNotIn(CANARY, json.dumps(report) + json.dumps(state) + stdout + stderr)
+            finally:
+                if child.poll() is None:
+                    child.kill()
+                    child.communicate(timeout=5)
 
 
 class DiagnosticsTests(unittest.TestCase):
@@ -145,4 +245,6 @@ class DiagnosticsTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) == 3 and sys.argv[1] == '--signal-child':
+        raise SystemExit(signal_child(sys.argv[2]))
     unittest.main()

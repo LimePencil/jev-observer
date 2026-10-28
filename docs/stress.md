@@ -104,6 +104,11 @@ optional `--active-state PATH` publishes process generation, loopback origin and
 the temporary token-file path for a separate read-only monitor; it never writes
 the token value.
 
+A delivered SIGTERM records the interrupted phase, stops the owned Observer
+process, finalizes the report and status file, and exits with status 143. Only
+cycles that finished every retention, paging and restart check are counted as
+complete. Forced process termination cannot run this cleanup or checkpoint.
+
 This checks consistency under a specified synthetic workload. It is not a
 production capacity estimate. The generator bounds outstanding HTTP tasks to 32
 and fails if it falls behind; choose a lower rate when sharing a busy development
