@@ -2,12 +2,12 @@
 
 use super::super::{
     identity::fingerprint,
-    privacy::{privacy, remove_receipt_inputs},
+    privacy::{privacy_observer, remove_receipt_inputs},
     types::Capture,
 };
 use super::{
     ImportRecordBudget, NormalizeOptions, check_persisted_import_identity, normalize_import,
-    required_string,
+    observer::validate_envelope, required_string,
 };
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
@@ -116,7 +116,10 @@ pub(super) fn import_receipt(
         remove_receipt_inputs(&mut out["actions"][0]);
     }
     out["receipt"] = receipt;
-    let out = privacy(&out, options, &[], &mut budget.batch.redaction_remaining)?;
+    let out = privacy_observer(&mut out, options, &mut budget.batch.redaction_remaining)?;
+    // Receipt fields become an Observer envelope before this final privacy
+    // pass. Redaction must not persist malformed generated scalars or arrays.
+    validate_envelope(&out)?;
     check_persisted_import_identity(&out, &capture.id, source, decision_id, "jevrouter-receipt")?;
     Ok(out)
 }
