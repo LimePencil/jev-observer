@@ -95,6 +95,10 @@ mod import_budget_tests;
 mod import_identity_tests;
 
 #[cfg(test)]
+#[path = "model/tests/import_context_tests.rs"]
+mod import_context_tests;
+
+#[cfg(test)]
 #[path = "model/tests/redaction_tests.rs"]
 mod redaction_tests;
 

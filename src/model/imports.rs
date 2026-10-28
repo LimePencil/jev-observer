@@ -416,6 +416,10 @@ pub(super) fn import_records_with_limits(
             // Scrub before normalization so all recomputed identities describe the
             // retained definition, and credential echoes cannot leak into metadata.
             let mut safe = if format == "observer-jsonl" {
+                // Privacy must not repair malformed context or make different
+                // original versions appear consistent through a shared marker.
+                observer::validate_grouping_context(record)
+                    .with_context(|| format!("Invalid record {}", index + 1))?;
                 privacy_observer(record, options, &mut budget.batch.redaction_remaining)?
             } else {
                 privacy_with_input_filter(
