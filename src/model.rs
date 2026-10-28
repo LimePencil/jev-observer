@@ -133,3 +133,7 @@ mod basic_credential_tests;
 #[cfg(test)]
 #[path = "model/tests/input_opt_out_tests.rs"]
 mod input_opt_out_tests;
+
+#[cfg(test)]
+#[path = "model/tests/observer_envelope_context_tests.rs"]
+mod observer_envelope_context_tests;
