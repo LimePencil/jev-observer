@@ -732,6 +732,14 @@ pub(super) fn privacy_observer(
                 .is_some_and(crate::catalog::known_profile),
         RedactionValidationError
     );
+    // Classification and envelope reconstruction still matter without answers.
+    // Only genuinely absent legacy fields may select their default meanings.
+    for key in ["event_kind", "protocol"] {
+        ensure!(
+            value.get(key) == retained.get(key),
+            RedactionValidationError
+        );
+    }
     // Observer imports select their validator from this retained field. Privacy
     // must not silently substitute a different profile before revalidation.
     ensure!(
@@ -746,9 +754,7 @@ pub(super) fn privacy_observer(
                         .unwrap_or("typesafe"),
                 );
                 retained_profile.decisions = retained["protocol"] == "openai-decisions";
-                profile == retained_profile
-                    && value["protocol"] == retained["protocol"]
-                    && value["model_profile"] == retained["model_profile"]
+                profile == retained_profile && value["model_profile"] == retained["model_profile"]
             }),
         RedactionValidationError
     );
