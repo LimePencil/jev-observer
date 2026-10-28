@@ -200,3 +200,43 @@ fn supplied_presence_cannot_hide_original_evidence_or_accept_malformed_flags() {
         .is_err()
     );
 }
+
+#[test]
+fn generated_legacy_presence_flags_cannot_be_redacted_after_validation() {
+    for protocol in [Protocol::Systemone, Protocol::OpenaiDecisions] {
+        for (missing_definition, missing_answer) in [(false, false), (true, false), (false, true)] {
+            let record = imported(
+                &fixture(protocol, missing_definition, missing_answer),
+                "systemone-capture",
+            );
+            let mut legacy = record.clone();
+            for answer in legacy["answers"].as_array_mut().unwrap() {
+                let answer = answer.as_object_mut().unwrap();
+                answer.remove("definition_present");
+                answer.remove("raw_answer_present");
+            }
+            let restored = imported(&legacy, "observer-jsonl");
+            assert_eq!(restored["answers"], record["answers"]);
+            assert_eq!(
+                imported(&restored, "observer-jsonl")["answers"],
+                record["answers"]
+            );
+
+            for field in ["definition_present", "raw_answer_present"] {
+                let error = import_records(
+                    &legacy.to_string(),
+                    "observer-jsonl",
+                    &NormalizeOptions {
+                        redact_keys: vec![field.into()],
+                        ..Default::default()
+                    },
+                )
+                .unwrap_err();
+                assert!(
+                    format!("{error:#}").contains(&format!("{field} must be a boolean")),
+                    "{error:#}"
+                );
+            }
+        }
+    }
+}

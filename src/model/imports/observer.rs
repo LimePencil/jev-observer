@@ -386,6 +386,14 @@ pub(super) fn import_observer(
     // Legacy inputs can omit flags which normalization generates. Validate
     // their retained types after the final privacy pass as well.
     validate_grouping_context(&out)?;
+    for answer in out["answers"].as_array().expect("normalized answers") {
+        for presence in ["definition_present", "raw_answer_present"] {
+            ensure!(
+                answer[presence].is_boolean(),
+                "{presence} must be a boolean when supplied"
+            );
+        }
+    }
     // Reconstruction and retained provenance introduce later privacy passes.
     // Check the actual stored identity, not only the first filtered input.
     check_persisted_import_identity(&out, id, source, event_id, "observer-jsonl")?;
