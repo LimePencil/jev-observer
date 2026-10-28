@@ -138,9 +138,19 @@ fn bounded_read(reader: &mut impl Read, limit: usize) -> Result<Vec<u8>> {
         if count > remaining {
             return Err(CaptureDecodeError);
         }
-        output
-            .try_reserve_exact(count)
-            .map_err(|_| CaptureDecodeError)?;
+        if output.len() + count > output.capacity() {
+            // Amortize decoder chunks without Vec's implicit growth exceeding
+            // the configured inspection limit. Exact per-chunk reserves can
+            // otherwise repeatedly copy an increasingly large decoded body.
+            let capacity = output
+                .capacity()
+                .saturating_mul(2)
+                .max(output.len() + count)
+                .min(limit);
+            output
+                .try_reserve_exact(capacity - output.len())
+                .map_err(|_| CaptureDecodeError)?;
+        }
         output.extend_from_slice(&chunk[..count]);
     }
 }
