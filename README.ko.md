@@ -173,7 +173,7 @@ const client = new TypeSafeClient({
 });
 ```
 
-Observer는 로컬 클라이언트 토큰을 확인한 뒤 등록된 제공업체 키로 바꾸어 요청을 전달합니다. `x-observer-source`는 기록에서 애플리케이션을 구분합니다. `Accept-Encoding: identity`는 구조화된 답변을 수집할 수 있도록 합니다. 압축 응답도 그대로 전달되지만, 저장된 수집 기록은 불완전한 것으로 표시됩니다.
+Observer는 로컬 클라이언트 토큰을 확인한 뒤 등록된 제공업체 키로 바꾸어 요청을 전달합니다. `x-observer-source`는 기록에서 애플리케이션을 구분합니다. 이 예제는 `Accept-Encoding: identity`로 압축되지 않은 응답을 요청합니다. Observer 0.4.0은 지원되는 gzip/zstd 본문과 이미지 multipart 요청도 분석하며, 원본 바이트는 변경 없이 전달합니다. 원본 본문과 압축을 해제한 본문은 각각 수집 크기 제한 이내여야 합니다. 지원되지 않는 인코딩, 잘못된 압축/multipart 형식 또는 크기 제한을 초과한 본문은 불완전한 수집 기록으로 남습니다. [전송 형식과 제한](docs/capture-decoding.md)을 참고하세요.
 
 제공업체 키를 직접 사용하는 인증 방식, 추가 메타데이터, 인증 정보 처리는 [연결 안내](docs/connection.md)를 참고하세요. [호환성 안내](docs/compatibility.md)에는 SDK 모의 서버 검증과 OpenRouter·Laya 실제 추론 검증이 구분되어 있습니다.
 
