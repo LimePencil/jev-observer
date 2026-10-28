@@ -17,6 +17,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import signal
 import statistics
 import tempfile
 import threading
@@ -27,6 +28,11 @@ ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('upgrade', ROOT / 'scripts/test-upgrade.py')
 upgrade = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(upgrade)
+
+
+class TerminationRequested(Exception):
+    def __init__(self, number):
+        self.number = number
 
 
 def now():
@@ -129,7 +135,8 @@ def main():
               'At most 32 HTTP tasks are outstanding; overload fails the check rather than building an unbounded queue.',
               'RSS is sampled after each retention check on Linux, not a peak or a cross-platform metric.',
               'Progress and numeric Linux pressure samples update every five seconds during load dispatch; stalls can delay sampling and unavailable metrics are omitted.',
-              'Failure traces contain code locations only. Last observed health is timestamped and is not a failure-time health request.']}
+              'Failure traces contain code locations only. Last observed health is timestamped and is not a failure-time health request.',
+              'SIGTERM checkpoints incomplete work and stops the owned child before exiting with signal status; forced kills cannot checkpoint.']}
     def save():
         args.output.parent.mkdir(parents=True, exist_ok=True)
         temporary = args.output.with_name(args.output.name + '.tmp')
@@ -176,6 +183,8 @@ def main():
                    'resources': sample_resources()}
         if hasattr(error, 'soak_request'):
             failure['request'] = error.soak_request
+        if isinstance(error, TerminationRequested):
+            failure['signal'] = signal.Signals(error.number).name
         # These are controlled invariant names from this harness/helper, never
         # HTTP or other exception messages. Other assertion sources get locations.
         trace = error.__traceback__
@@ -242,6 +251,13 @@ def main():
         request['request_extension']['credential_echo'] = upgrade.KEY
         bodies.append(json.dumps(request).encode())
     total = 0
+    def terminate(number, frame):
+        # Python's default SIGTERM action skips finally blocks. Convert the
+        # first termination request into our existing failure/cleanup path;
+        # repeated requests must not interrupt the bounded child shutdown.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        raise TerminationRequested(number)
+    previous_sigterm = signal.signal(signal.SIGTERM, terminate)
     try:
         with tempfile.TemporaryDirectory(prefix='observer-retention-soak-') as temporary, contextlib.ExitStack() as cleanup:
             # Stop the child before removing its open database/log files, also
@@ -430,6 +446,9 @@ def main():
             capture_cleanup_failure(error, 'workspace_cleanup')
         capture_failure(error)
     finally:
+        # Shutdown is already underway, including after a successful run. A
+        # process-group SIGTERM must not bypass the final report or child reap.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         for stage, action in (
             ('observer_stop', stop_observer), ('mock_shutdown', mock.shutdown),
             ('mock_close', mock.server_close), ('mock_join', lambda: thread.join(timeout=5)),
@@ -448,9 +467,12 @@ def main():
             save()
         except Exception as error:
             capture_cleanup_failure(error, 'save_report')
+        signal.signal(signal.SIGTERM, previous_sigterm)
     print(json.dumps({'passed': report['passed'], 'cycles': len(report['cycles']),
                       'total_offered': total, 'failure': report.get('failure'),
                       'cleanup_failure': report.get('cleanup_failure')}))
+    if isinstance(original_error, TerminationRequested):
+        return 128 + original_error.number
     return 0 if report['passed'] else 1
 
 
