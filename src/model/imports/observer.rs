@@ -71,11 +71,8 @@ pub(super) fn validate_grouping_context(record: &Value) -> Result<Option<&str>> 
     Ok(task)
 }
 
-pub(super) fn import_observer(
-    record: &Value,
-    options: &NormalizeOptions,
-    budget: &mut ImportRecordBudget<'_>,
-) -> Result<Value> {
+/// Check the shared persisted envelope, including generated receipt metadata.
+pub(super) fn validate_envelope(record: &Value) -> Result<()> {
     ensure!(
         record["schema_version"] == 1,
         "Unsupported Observer schema_version"
@@ -106,8 +103,8 @@ pub(super) fn import_observer(
     ] {
         ensure!(record.get(key).is_some(), "Missing Observer field: {key}");
     }
-    let id = required_string(record, "id")?;
-    let source = required_string(record, "source")?;
+    required_string(record, "id")?;
+    required_string(record, "source")?;
     validate_timestamps(record)?;
     for key in ["duration_ms", "cost_usd"] {
         nullable_number(record, key)?;
@@ -145,6 +142,20 @@ pub(super) fn import_observer(
             "{key} must be a string or null"
         );
     }
+    for key in ["answers", "actions", "labels"] {
+        ensure!(record[key].is_array(), "{key} must be an array");
+    }
+    Ok(())
+}
+
+pub(super) fn import_observer(
+    record: &Value,
+    options: &NormalizeOptions,
+    budget: &mut ImportRecordBudget<'_>,
+) -> Result<Value> {
+    validate_envelope(record)?;
+    let id = required_string(record, "id")?;
+    let source = required_string(record, "source")?;
     let event_id = observer_event_id(record, id);
     // Charge retained provenance and defaults before reconstructing question
     // maps. Derived export fields are not themselves normalization inputs.
