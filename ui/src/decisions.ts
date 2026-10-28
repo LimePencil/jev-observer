@@ -16,13 +16,17 @@ export function typedChoiceLabel(value: ChoiceValue): string {
 
 // Native definitions retain their ordered choices. Canonical IDs are only a
 // lookup key: never parse a key back into a potentially different typed value.
-export function choiceLabel(key: string, definition: unknown, typed = false): string {
+export function choiceLabeler(definition: unknown, typed = false): (key: string) => string {
   if (!typed || !definition || typeof definition !== 'object' || !('choices' in definition)
-    || !Array.isArray(definition.choices)) return key;
-  const choice = definition.choices.find(item => item && typeof item === 'object'
-    && (typeof item.value === 'string' || typeof item.value === 'boolean')
-    && `choice:v1:${JSON.stringify(item.value)}` === key);
-  return choice ? typedChoiceLabel(choice.value) : key;
+    || !Array.isArray(definition.choices)) return key => key;
+  const labels = new Map<string, string>();
+  for (const choice of definition.choices) {
+    if (!choice || typeof choice !== 'object' || (typeof choice.value !== 'string' && typeof choice.value !== 'boolean')) continue;
+    const key = `choice:v1:${JSON.stringify(choice.value)}`;
+    // Preserve the first match even in retained malformed definitions.
+    if (!labels.has(key)) labels.set(key, typedChoiceLabel(choice.value));
+  }
+  return key => labels.get(key) ?? key;
 }
 
 export function decisionValue(value: unknown, kind: string, choiceKey?: string | null): string {

@@ -27,6 +27,10 @@ mod validation;
 #[path = "model/tests/omni.rs"]
 mod omni_tests;
 
+#[cfg(test)]
+#[path = "model/tests/presence_tests.rs"]
+mod presence_tests;
+
 pub use budget::ImportLimitError;
 pub use imports::{
     IMPORT_IDENTITY_ERROR_MESSAGE, ImportIdentityError, import_records, valid_timestamp,

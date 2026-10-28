@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { ArrowRight } from '@phosphor-icons/react';
-import { useEffect, useId, useRef, useState } from 'react';
-import { choiceLabel, typedChoiceLabel } from '../decisions';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { choiceLabeler, typedChoiceLabel } from '../decisions';
 import { chartTime, compact, dateTime, money, ms, number } from '../format';
 import type { Group, TimelineBucket, TimelineMeta } from '../types';
 
@@ -69,8 +69,9 @@ export function Timeline({ data, meta, metric = 'requests', compact: small = fal
 export function Distribution({ group }: { group: Group }) {
   const [expanded, setExpanded] = useState(false);
   const distribution = group.distribution ?? [];
+  const choiceLabel = useMemo(() => choiceLabeler(group.definition, group.adapter === 'openai-decisions-v1'), [group.definition, group.adapter]);
   if (group.kind === 'box') return <p className="caption box-distribution-note">Box answers retain individual geometry. Inspect observations for coordinates and reported confidence; no scalar mean or histogram is computed.</p>;
-  const label = (item: Group['distribution'][number]) => group.adapter !== 'openai-decisions-v1' ? item.label : typeof item.value === 'string' || typeof item.value === 'boolean' ? typedChoiceLabel(item.value) : choiceLabel(item.key ?? item.label, group.definition, true);
+  const label = (item: Group['distribution'][number]) => group.adapter !== 'openai-decisions-v1' ? item.label : typeof item.value === 'string' || typeof item.value === 'boolean' ? typedChoiceLabel(item.value) : choiceLabel(item.key ?? item.label);
   if (!group.valid_count || !distribution.length) return <div className="chart-empty">No valid answers in this window</div>;
   const sorted = [...distribution].sort(group.kind === 'choice' ? (a, b) => b.count - a.count : (a, b) => parseFloat(a.label) - parseFloat(b.label));
   const items = sorted.slice(0, expanded ? sorted.length : group.kind === 'choice' ? 8 : 20);

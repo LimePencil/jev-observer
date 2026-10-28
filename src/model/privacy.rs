@@ -482,6 +482,9 @@ impl<'a> PrivacyContext<'a> {
                     || (matches!(key, "valid" | "abstain") && profile.reported_abstention)
             }
             Self::TypedOption(_) | Self::DecisionLevel(_, _) => key == "description",
+            Self::ObserverAnswer(_, _) => {
+                matches!(key, "definition_present" | "raw_answer_present")
+            }
             _ => false,
         }
     }
