@@ -6,7 +6,8 @@ export function useAppShell() {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'light');
   const [toast, setToast] = useState(''), [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeNav, setActiveNav] = useState('overview');
-  const [deferredNavigation, setDeferredNavigation] = useState<string | null>(null);
+  const [deferredNavigation, setDeferredNavigation] = useState<{ section: string; focus: boolean } | null>(null);
+  const menuNavigation = useRef<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -26,7 +27,7 @@ export function useAppShell() {
     return () => window.removeEventListener('keydown', keydown);
   }, [panel]);
   useEffect(() => {
-    const cancelNavigation = () => setDeferredNavigation(null);
+    const cancelNavigation = () => { setDeferredNavigation(null); menuNavigation.current = null; };
     window.addEventListener('popstate', cancelNavigation);
     return () => window.removeEventListener('popstate', cancelNavigation);
   }, []);
@@ -45,7 +46,7 @@ export function useAppShell() {
     restoreFocusFrame.current = null;
     if (value && !panel) openerRef.current = opener ?? (sidebarOpen ? mobileMenuRef.current : document.activeElement instanceof HTMLElement ? document.activeElement : null);
     updatePanel(value);
-    if (value) { setSidebarOpen(false); setDeferredNavigation(null); }
+    if (value) { setSidebarOpen(false); setDeferredNavigation(null); menuNavigation.current = null; }
     if (!value) restoreFocusFrame.current = requestAnimationFrame(() => {
       restoreFocusFrame.current = null;
       const opener = openerRef.current;
@@ -55,25 +56,36 @@ export function useAppShell() {
   }
   function navigate(section: string, afterRefresh = false) {
     setActiveNav(section); setSidebarOpen(false);
-    setDeferredNavigation(afterRefresh ? section : null);
-    if (!afterRefresh) scrollToSection(section);
+    menuNavigation.current = sidebarOpen ? section : null;
+    setDeferredNavigation(afterRefresh && !sidebarOpen ? { section, focus: false } : null);
+    if (!afterRefresh && !sidebarOpen) scrollToSection(section);
+  }
+  // Complete navigation after the modal releases focus. Returning focus to its
+  // trigger cancels the destination scroll in WebKit.
+  function finishMenuNavigation(event: Event) {
+    const section = menuNavigation.current;
+    menuNavigation.current = null;
+    if (panel || section) event.preventDefault();
+    if (section && !panel) setDeferredNavigation({ section, focus: true });
   }
   const finishNavigation = useCallback(() => {
-    if (!deferredNavigation || panel || sidebarOpen || !document.getElementById(deferredNavigation)) return;
+    if (!deferredNavigation || panel || sidebarOpen || !document.getElementById(deferredNavigation.section)) return;
     // Closing a group drawer may still have a focus-restoration frame queued.
     // Keep that frame from scrolling back to its old opener after navigation.
     if (restoreFocusFrame.current !== null) {
       cancelAnimationFrame(restoreFocusFrame.current); restoreFocusFrame.current = null;
       mainRef.current?.focus({ preventScroll: true });
     }
-    scrollToSection(deferredNavigation);
+    scrollToSection(deferredNavigation.section, deferredNavigation.focus);
     setDeferredNavigation(null);
   }, [deferredNavigation, panel, sidebarOpen]);
-  return { panel, setPanel, theme, setTheme, toast, setToast, sidebarOpen, setSidebarOpen, activeNav, navigate, finishNavigation, notify, searchRef, mainRef, exportRef, mobileMenuRef };
+  return { panel, setPanel, theme, setTheme, toast, setToast, sidebarOpen, setSidebarOpen, activeNav, navigate, finishNavigation, finishMenuNavigation, notify, searchRef, mainRef, exportRef, mobileMenuRef };
 }
 
 export type AppShell = ReturnType<typeof useAppShell>;
 
-function scrollToSection(section: string) {
-  document.getElementById(section)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+function scrollToSection(section: string, focus = false) {
+  const target = document.getElementById(section);
+  if (focus && target) { target.tabIndex = -1; target.focus({ preventScroll: true }); }
+  target?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
 }

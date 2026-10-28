@@ -21,7 +21,7 @@ export default function App() {
   const { panel, setPanel, notify, mainRef, exportRef, searchRef, navigate, finishNavigation } = shell;
   const { filters, historyRevision, historyChanged, invalidate, data, health, sample, includesSamples, error, connectionText, paused, setPaused, gap, pageFailure, navigatePage, slow, frozen, pending, setFilter } = workspace;
   const controllers = useWorkspaceControllers(panel, historyRevision, invalidate, historyChanged, notify);
-  useEffect(() => { if (data) finishNavigation(); }, [data, finishNavigation]);
+  useEffect(() => { finishNavigation(); }, [data, finishNavigation]);
   async function exportData(format: 'jsonl' | 'csv') {
     try { downloadExport(filters, format); notify(`${format.toUpperCase()} export requested. Your browser handles the download; server errors open separately.`); }
     catch (error) { notify(error instanceof Error ? error.message : 'Export failed.'); }
