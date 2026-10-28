@@ -35,7 +35,7 @@
     --blue: #93b9d0; --blue-soft: #27323b; --purple: #baa4cc; --purple-soft: #332d3c;
     --overlay: rgba(5, 10, 6, .58); --shadow: 0 12px 48px rgba(0, 0, 0, .18);
   }
-  body { min-width: 360px; min-height: 100dvh; }
+  body { min-width: 320px; min-height: 100dvh; }
   ::selection { background: var(--accent-soft); color: var(--accent); }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   button, input, select, textarea, a { transition: background-color 120ms, border-color 120ms, color 120ms; }
@@ -242,7 +242,7 @@
   .distribution-bottom .text-button { font-size: 9px; }
   .filter-toggle { display: flex; align-items: center; gap: 5px; background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary); padding: 5px 8px; border-radius: 4px; font-size: 9px; }
   .filter-toggle.selected { color: var(--danger); background: var(--danger-soft); border-color: var(--danger); }
-  .table-scroll { overflow: auto; min-width: 0; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+  .table-scroll { position: relative; overflow: auto; min-width: 0; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
   table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; }
   th { white-space: nowrap; font-weight: 500; color: var(--text-secondary); background: var(--surface-secondary); padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 9px; }
   td { padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
@@ -536,7 +536,7 @@
     .time-select { margin-left: auto; }
     .filter-select select { font-size: 10px; max-width: 102px; }
     .metrics { margin: 21px 0; }
-    .metric-value { font-size: 23px; }
+    .metric-value { font-size: 23px; flex-wrap: wrap; white-space: normal; overflow-wrap: anywhere; }
     .metric { padding: 0 10px; }
     .metric-foot { white-space: normal; font-size: 8px; }
     .activity-grid { grid-template-columns: 1fr; gap: 15px; }
@@ -575,5 +575,11 @@
     .toast { left: 50%; bottom: 15px; max-width: 94vw; min-width: 280px; font-size: 10px; }
     .pause-notice { font-size: 10px; align-items: flex-start; }
     .pause-notice .text-button { white-space: nowrap; }
+  }
+  @media (max-width: 480px) {
+    .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .metric:nth-child(n) { padding: 0 10px; border-right: 1px solid var(--border); }
+    .metric:nth-child(odd) { padding-left: 0; }
+    .metric:nth-child(even), .metric:last-child { padding-right: 0; border-right: 0; }
   }
 }

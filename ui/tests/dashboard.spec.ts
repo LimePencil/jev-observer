@@ -2292,6 +2292,40 @@ for (const retained of [false, true]) {
   });
 }
 
+for (const width of [320, 360, 401, 480, 481, 560]) {
+  test(`narrow dashboard reflows unknown and large metrics at ${width} CSS pixels`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 640 });
+    const state = await harness(page);
+    await page.evaluate(() => document.fonts.ready);
+    for (const large of [false, true]) {
+      Object.assign(state.dashboard.summary, large ? {
+        request_count: 123456, answer_count: 123456, p50_ms: 12345678, p95_ms: 12345678,
+        input_tokens: 123456789, output_tokens: 123456789, cost_usd: 12345.67,
+      } : { p50_ms: null, p95_ms: null, input_tokens: null, output_tokens: null, cost_usd: null });
+      await page.getByRole('button', { name: 'Refresh dashboard' }).click();
+      await expect(page.locator('.metrics .metric').nth(2).locator('.metric-value')).toHaveText(large ? '12345.68 sp50' : 'Unknownp50');
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      const measurements = await page.locator('.metric-value').evaluateAll(elements => elements.map(element => ({
+        width: element.clientWidth, contentWidth: element.scrollWidth,
+      })));
+      for (const measurement of measurements) {
+        expect(measurement.contentWidth).toBeLessThanOrEqual(measurement.width + 1);
+      }
+      if (large) {
+        await expect(page.locator('.metrics .metric').first().locator('.metric-value')).toHaveText('123,456');
+        await expect(page.locator('.metrics .metric').last().locator('.metric-value')).toHaveText('$12,345.67');
+      }
+    }
+    await page.getByRole('button', { name: 'Switch to dark theme' }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole('button', { name: 'Switch to dark theme' })).toBeInViewport({ ratio: 1 });
+    await page.getByText('View chart data', { exact: true }).click();
+    const table = page.locator('.chart-accessible .table-scroll');
+    await expect(table.getByRole('cell').first()).toBeVisible();
+    await table.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  });
+}
+
 test('light and dark dashboard accessibility and assets stay local', async ({ page }) => {
   const requests: string[] = []; page.on('request', request => requests.push(request.url()));
   await harness(page);
