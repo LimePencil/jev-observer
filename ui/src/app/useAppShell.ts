@@ -25,6 +25,11 @@ export function useAppShell() {
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
   }, [panel]);
+  useEffect(() => {
+    const cancelNavigation = () => setDeferredNavigation(null);
+    window.addEventListener('popstate', cancelNavigation);
+    return () => window.removeEventListener('popstate', cancelNavigation);
+  }, []);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   useEffect(() => () => { if (restoreFocusFrame.current !== null) cancelAnimationFrame(restoreFocusFrame.current); }, []);
   useEffect(() => {

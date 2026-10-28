@@ -2292,7 +2292,7 @@ for (const action of ['request metric', 'group filter'] as const) {
   });
 }
 
-for (const action of ['overview navigation', 'settings panel'] as const) {
+for (const action of ['overview navigation', 'settings panel', 'browser history'] as const) {
   test(`${action} cancels pending filtered request navigation`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 600 });
     const state = await harness(page, { path: '/?status=error' });
@@ -2304,6 +2304,11 @@ for (const action of ['overview navigation', 'settings panel'] as const) {
       if (action === 'overview navigation') {
         await page.getByRole('button', { name: 'Open navigation' }).click();
         await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Overview', exact: true }).click();
+      } else if (action === 'browser history') {
+        await page.evaluate(() => {
+          window.history.pushState(null, '', '/?window=7d');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        });
       } else {
         await page.getByRole('button', { name: 'Open navigation' }).click();
         await page.getByRole('dialog', { name: 'Workspace navigation' }).getByRole('button', { name: 'Settings', exact: true }).click();
@@ -2312,6 +2317,8 @@ for (const action of ['overview navigation', 'settings panel'] as const) {
       release();
       await expect(page.locator('#requests h2')).toBeVisible();
       if (action === 'settings panel') await page.getByRole('button', { name: 'Close detail panel' }).click();
+      const loaded = state.dashboardQueries.length;
+      await expect.poll(() => state.dashboardQueries.length).toBeGreaterThan(loaded);
       await expect(page.getByRole('heading', { name: 'Workspace overview' })).toBeInViewport();
       await expect(page.getByRole('heading', { name: 'Request stream' })).not.toBeInViewport();
     } finally { release(); }
