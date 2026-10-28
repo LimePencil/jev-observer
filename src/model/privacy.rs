@@ -661,6 +661,7 @@ fn with_secret_matcher(
     result
 }
 
+#[cfg(test)]
 pub(super) fn privacy(
     value: &Value,
     options: &NormalizeOptions,
