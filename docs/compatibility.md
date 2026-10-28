@@ -113,3 +113,32 @@ npm ci --prefix "$CURRENT_SDK_WORK" --ignore-scripts --no-audit --no-fund
 ```
 
 Package pins live under [fixtures/current-sdk](../fixtures/current-sdk). The fixture creates and removes its own temporary Observer workspaces; the dependency directory and result file remain available for inspection.
+## Published-release upgrade checks
+
+Native release verification exercises both published 0.1.0 and 0.4.0 against
+the candidate executable using temporary encrypted workspaces and a loopback
+provider. Both paths check history, labels, exports, candidate writes, rollback,
+stopped-workspace backup restore, and rejection of wrong keys and future schemas.
+The 0.1.0 path also checks legacy token rotation and rejection; the 0.4.0 path
+requires the existing full-filename workspace token to stay unchanged.
+
+To run the current-release path after building the candidate and
+`cargo build --locked --example upgrade_probe`:
+
+```sh
+python3 scripts/download-release-baseline.py --version 0.4.0 \
+  --target x86_64-unknown-linux-musl --output-dir /tmp/observer-baseline-0.4.0
+python3 scripts/test-upgrade.py --baseline-version 0.4.0 \
+  --baseline /tmp/observer-baseline-0.4.0/jev-observer \
+  --candidate target/debug/jev-observer \
+  --probe target/debug/examples/upgrade_probe \
+  --output /tmp/observer-upgrade-0.4.0.json
+```
+
+Choose the download target for your platform and add `.exe` to executable paths
+on Windows. Omitting `--baseline-version` retains the 0.1.0 check and requires a
+0.1.0 baseline. The fixture covers its System One answers and a dummy credential
+approval digest; it does not establish rollback compatibility for every newer
+answer kind or native credential-store persistence. Follow the
+[backup and downgrade guidance](installation.md#history-backups-and-downgrades)
+for real workspaces.
