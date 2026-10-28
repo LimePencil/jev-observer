@@ -10,6 +10,7 @@ type PageNavigation = { errorRequestOrder: number; scope: string; returnScope: s
 export function useDashboardWorkspace(panelOpen: boolean) {
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [search, setSearch] = useState(() => filters.search), [groupSearch, setGroupSearch] = useState(() => filters.group_search ?? '');
+  const [searchComposing, setSearchComposing] = useState(false), [groupSearchComposing, setGroupSearchComposing] = useState(false);
   const [requestPages, setRequestPages] = useState<string[]>([]), [groupPages, setGroupPages] = useState<string[]>([]);
   const [pageNavigation, setPageNavigation] = useState<PageNavigation | null>(null);
   const [pageFailure, setPageFailure] = useState<{ message: string; navigation: PageNavigation } | null>(null);
@@ -60,14 +61,15 @@ export function useDashboardWorkspace(panelOpen: boolean) {
   useEffect(() => {
     if (pageFailure && pageFailure.navigation.returnScope !== scope) setPageFailure(null);
   }, [scope, pageFailure]);
-  useEffect(() => { const timer = setTimeout(() => setFilters(value => value.search === search ? value : ({ ...value, search, request_cursor: '', group_cursor: '' })), 250); return () => clearTimeout(timer); }, [search]);
-  useEffect(() => { const timer = setTimeout(() => setFilters(value => (value.group_search ?? '') === groupSearch ? value : ({ ...value, group_search: groupSearch, group_cursor: '' })), 250); return () => clearTimeout(timer); }, [groupSearch]);
+  // IME drafts remain editable without replacing the committed scope or cursor history.
+  useEffect(() => { if (searchComposing) return; const timer = setTimeout(() => setFilters(value => value.search === search ? value : ({ ...value, search, request_cursor: '', group_cursor: '' })), 250); return () => clearTimeout(timer); }, [search, searchComposing]);
+  useEffect(() => { if (groupSearchComposing) return; const timer = setTimeout(() => setFilters(value => (value.group_search ?? '') === groupSearch ? value : ({ ...value, group_search: groupSearch, group_cursor: '' })), 250); return () => clearTimeout(timer); }, [groupSearch, groupSearchComposing]);
   // Draft edits can be undone before debounce; only committed searches change the page scope.
   useEffect(() => { setRequestPages(previous => previous.length ? [] : previous); setGroupPages(previous => previous.length ? [] : previous); }, [filters.search]);
   useEffect(() => { setGroupPages(previous => previous.length ? [] : previous); }, [filters.group_search]);
   useEffect(() => { window.history.replaceState(null, '', `${window.location.pathname}?${query(filters)}${window.location.hash}`); }, [filters]);
   useEffect(() => {
-    const restore = () => { const next = readFilters(); setPageNavigation(null); setPageFailure(null); setFilters(next); setSearch(next.search); setGroupSearch(next.group_search ?? ''); setRequestPages([]); setGroupPages([]); setDatesOpen(Boolean(next.from || next.to)); };
+    const restore = () => { const next = readFilters(); setPageNavigation(null); setPageFailure(null); setFilters(next); setSearch(next.search); setGroupSearch(next.group_search ?? ''); setSearchComposing(false); setGroupSearchComposing(false); setRequestPages([]); setGroupPages([]); setDatesOpen(Boolean(next.from || next.to)); };
     window.addEventListener('popstate', restore);
     return () => window.removeEventListener('popstate', restore);
   }, []);
@@ -86,9 +88,16 @@ export function useDashboardWorkspace(panelOpen: boolean) {
   function newerRequests() { navigatePage({ ...filters, request_cursor: requestPages.at(-1) ?? '' }, requestPages.slice(0, -1)); }
   function newerGroups() { navigatePage({ ...filters, group_cursor: groupPages.at(-1) ?? '' }, requestPages, groupPages.slice(0, -1)); }
   function historyChanged() { setPageNavigation(null); setPageFailure(null); setHistoryRevision(value => value + 1); setDisplayed(null); setSelectedGroup(''); setRequestPages([]); setGroupPages([]); setFilters(previous => ({ ...previous, request_cursor: '', group_cursor: '' })); reset(); }
-  function resetFilters() { setPageNavigation(null); setPageFailure(null); setFilters(defaults); setSearch(''); setGroupSearch(''); setRequestPages([]); setGroupPages([]); setDatesOpen(false); }
+  function resetFilters() { setPageNavigation(null); setPageFailure(null); setFilters(defaults); setSearch(''); setGroupSearch(''); setSearchComposing(false); setGroupSearchComposing(false); setRequestPages([]); setGroupPages([]); setDatesOpen(false); }
   const explorerLoading = Boolean(displayed && displayed.scope !== scope && parentScope(displayed.scope) === parentScope(scope));
   const data = displayed && (displayed.scope === scope || explorerLoading) ? displayed.data : null;
+  useEffect(() => {
+    if (!data && groupSearchComposing) {
+      // A parent filter can unmount the group input without compositionend.
+      // Discard that unfinished draft so a later input remains searchable.
+      setGroupSearch(filters.group_search ?? ''); setGroupSearchComposing(false);
+    }
+  }, [data, groupSearchComposing, filters.group_search]);
   const displayedRequestCursor = new URLSearchParams(displayed?.scope ?? '').get('request_cursor');
   const pageLoading = explorerLoading || pageNavigation !== null;
   const latest = snapshot?.scope === scope ? snapshot.data : null;
@@ -111,7 +120,7 @@ export function useDashboardWorkspace(panelOpen: boolean) {
   const includesSamples = Boolean(data?.sample || sample);
   const hasRetainedHistory = Boolean(catalog?.sources.length);
   const connectionText = error ? 'Connection interrupted' : snapshot ? 'Connected locally' : 'Connecting';
-  return { filters, search, setSearch, groupSearch, setGroupSearch, datesOpen, setDatesOpen, paused, setPaused, historyRevision, selectedGroup, setSelectedGroup, metric, setMetric, moreRequests, setMoreRequests, error, slow, invalidate, scope, settings, frozen, pageFailure, setFilter, navigatePage, pageRequests, pageGroups, newerRequests, newerGroups, historyChanged, resetFilters, explorerLoading, data, displayedRequestCursor, pageLoading, sources, models, health, pending, filtered, fromInput, toInput, groups, group, summary, gap, sample, includesSamples, hasRetainedHistory, connectionText };
+  return { filters, search, setSearch, setSearchComposing, groupSearch, setGroupSearch, setGroupSearchComposing, datesOpen, setDatesOpen, paused, setPaused, historyRevision, selectedGroup, setSelectedGroup, metric, setMetric, moreRequests, setMoreRequests, error, slow, invalidate, scope, settings, frozen, pageFailure, setFilter, navigatePage, pageRequests, pageGroups, newerRequests, newerGroups, historyChanged, resetFilters, explorerLoading, data, displayedRequestCursor, pageLoading, sources, models, health, pending, filtered, fromInput, toInput, groups, group, summary, gap, sample, includesSamples, hasRetainedHistory, connectionText };
 }
 
 export type DashboardWorkspace = ReturnType<typeof useDashboardWorkspace>;
