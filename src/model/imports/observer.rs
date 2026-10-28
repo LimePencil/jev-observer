@@ -363,6 +363,16 @@ pub(super) fn import_observer(
         }
     }
     let out = privacy_observer(&mut out, options, &mut budget.batch.redaction_remaining)?;
+    // Legacy exports can omit these flags. Normalization generates them, so
+    // validate their retained types after the final privacy pass too.
+    for answer in out["answers"].as_array().expect("normalized answers") {
+        for presence in ["definition_present", "raw_answer_present"] {
+            ensure!(
+                answer[presence].is_boolean(),
+                "{presence} must be a boolean when supplied"
+            );
+        }
+    }
     // Reconstruction and retained provenance introduce later privacy passes.
     // Check the actual stored identity, not only the first filtered input.
     check_persisted_import_identity(&out, id, source, event_id, "observer-jsonl")?;
