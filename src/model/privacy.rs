@@ -346,6 +346,8 @@ enum PrivacyContext<'a> {
     Observer(&'a Profile),
     ObserverAnswers(&'a Profile),
     ObserverAnswer(&'a Profile, Option<&'a str>),
+    ObserverLabels,
+    ObserverLabel,
     ChoiceCriteria(&'a Profile, &'a str),
     ChoiceProbabilities(&'a str),
     Identifier(IdentifierNamespace<'a>),
@@ -366,6 +368,7 @@ impl<'a> PrivacyContext<'a> {
             (Self::Questions(profile), _) => Self::Definition(profile, Some(key)),
             (Self::Answers(profile), _) => Self::Answer(profile, Some(key)),
             (Self::Observer(profile), "answers") => Self::ObserverAnswers(profile),
+            (Self::Observer(_), "labels") => Self::ObserverLabels,
             (Self::ObserverAnswer(profile, question), "definition") => {
                 Self::Definition(profile, question)
             }
@@ -373,6 +376,9 @@ impl<'a> PrivacyContext<'a> {
                 Self::Answer(profile, question)
             }
             (Self::ObserverAnswer(_, _), "key") => Self::Identifier(IdentifierNamespace::Question),
+            // Review keys identify the same questions as answer keys. Privacy
+            // must not attach a review to another answer or merge two reviews.
+            (Self::ObserverLabel, "key") => Self::Identifier(IdentifierNamespace::Question),
             (Self::Definition(profile, Some(question)), "choices") if profile.decisions => {
                 Self::TypedOptions(question)
             }
@@ -441,6 +447,7 @@ impl<'a> PrivacyContext<'a> {
     fn item(self, index: usize, item: &'a Value) -> Self {
         match self {
             Self::ObserverAnswers(profile) => Self::ObserverAnswer(profile, item["key"].as_str()),
+            Self::ObserverLabels => Self::ObserverLabel,
             Self::ChoiceCriteria(profile, question) if profile.list_choice => {
                 Self::Identifier(IdentifierNamespace::Choice(question))
             }
