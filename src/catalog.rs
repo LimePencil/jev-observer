@@ -1,12 +1,29 @@
 //! Offline, source-reviewed integration catalog. This never discovers providers
 //! or makes inference calls; the configured upstream remains fixed.
-use std::sync::LazyLock;
+use std::{collections::HashMap, sync::LazyLock};
 
 use serde::Deserialize;
 use serde_json::Value;
 
 pub static CATALOG: LazyLock<Value> = LazyLock::new(|| {
     serde_json::from_str(include_str!("model_catalog.json")).expect("embedded model catalog")
+});
+
+// Normalization and import privacy checks select profiles for every record.
+// Parse the fixed catalog once instead of cloning/deserializing its JSON on
+// each lookup. Callers still receive their own value for protocol overrides.
+static PROFILES: LazyLock<HashMap<&'static str, Profile>> = LazyLock::new(|| {
+    CATALOG["models"]
+        .as_array()
+        .expect("catalog models")
+        .iter()
+        .map(|model| {
+            (
+                model["id"].as_str().expect("catalog model id"),
+                serde_json::from_value(model["profile"].clone()).expect("catalog profile"),
+            )
+        })
+        .collect()
 });
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -61,19 +78,9 @@ impl Default for Profile {
 }
 
 pub fn profile(provider: &str) -> Profile {
-    CATALOG["models"]
-        .as_array()
-        .expect("catalog models")
-        .iter()
-        .find(|model| model["id"].as_str() == Some(provider))
-        .map(|model| serde_json::from_value(model["profile"].clone()).expect("catalog profile"))
-        .unwrap_or_default()
+    PROFILES.get(provider).cloned().unwrap_or_default()
 }
 
 pub fn known_profile(id: &str) -> bool {
-    CATALOG["models"]
-        .as_array()
-        .expect("catalog models")
-        .iter()
-        .any(|model| model["id"].as_str() == Some(id))
+    PROFILES.contains_key(id)
 }
