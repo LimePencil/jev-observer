@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { parentScope, query, readFilters } from '../src/api';
-import { connectionSnippet } from '../src/connection';
+import { connectionSnippet, isLoopbackUpstream } from '../src/connection';
 import { costBasis, dateFilter, dateInput, storageHint } from '../src/format';
 
 test('bookmark parsing preserves valid scope and rejects invalid dates or modes', () => {
@@ -59,4 +59,18 @@ test('SDK examples keep credentials in environment variables and model strings e
   expect(costBasis('provider_reported')).toBe('Provider-reported charge');
   expect(costBasis('configured_estimate')).toBe('Configured estimate');
   expect(storageHint('storage_full')).toContain('Free disk space');
+});
+
+test('local SDK timeout detection follows HTTP(S) loopback host boundaries', () => {
+  for (const endpoint of [
+    'http://LOCALHOST:8000/v1/systemone', 'http://127.0.0.1/v1/systemone',
+    'https://127.255.255.255/v1/systemone', 'http://127.1:8000/v1/systemone',
+    'http://[::1]:8000/v1/systemone', 'https://[0:0:0:0:0:0:0:1]/v1/systemone',
+  ]) expect(isLoopbackUpstream(endpoint), endpoint).toBe(true);
+  for (const endpoint of [
+    undefined, '', 'not a URL', 'https://localhost.example/v1/systemone',
+    'https://127.0.0.1.example.com/v1/systemone', 'https://128.0.0.1/v1/systemone',
+    'https://192.168.1.1/v1/systemone', 'https://[::2]/v1/systemone',
+    'https://[::ffff:127.0.0.1]/v1/systemone', 'ftp://127.0.0.1/v1/systemone',
+  ]) expect(isLoopbackUpstream(endpoint), endpoint).toBe(false);
 });

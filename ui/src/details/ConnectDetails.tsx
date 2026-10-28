@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, ClipboardText, Info, ShieldCheck } from '@phosph
 import { useEffect, useRef, useState } from 'react';
 import { useResource } from '../api';
 import { ErrorNotice, Loading } from '../components';
-import { connectionSnippet, protocolEndpoint, protocolLabel } from '../connection';
+import { connectionSnippet, isLoopbackUpstream, protocolEndpoint, protocolLabel } from '../connection';
 import type { CredentialController } from '../credentials';
 import { number } from '../format';
 import { ModelCatalog } from '../ModelCatalog';
@@ -23,7 +23,7 @@ export function ConnectDetails({ health, controller, importCaptures }: { health?
   const [confirmRemove, setConfirmRemove] = useState(false);
   const local = settings?.upstream_auth === 'none';
   const configuredEntry = settings?.model_catalog?.models.find(entry => entry.id === (settings.model_profile || settings.provider));
-  const localModel = local || settings?.upstream.startsWith('http://127.0.0.1:') || settings?.provider?.toLowerCase() === 'laya';
+  const localModel = local || isLoopbackUpstream(settings?.upstream) || settings?.provider?.toLowerCase() === 'laya';
   const protocol = settings?.protocol ?? 'systemone';
   const endpoint = protocolEndpoint(protocol);
   const snippet = connectionSnippet(language, baseUrl, local, model, localModel, protocol);
